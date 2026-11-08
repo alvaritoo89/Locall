@@ -10,7 +10,7 @@ version = "0.0.1"
 edition = "2024"
 rust-version = "1.99"
 license = "Apache-2.0"
-repository = "https://github.com/alvaritoo89/locall"
+repository = "https://github.com/alvaritoo89/Locall"
 publish = false
 
 # En modo desarrollo, Rust no optimiza el código para compilar rápido. Para el cálculo de sha256 eso lo hace muy
