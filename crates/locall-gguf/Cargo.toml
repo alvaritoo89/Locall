@@ -1,0 +1,12 @@
+[package]
+name = "locall-gguf"
+description = "Lector de cabeceras GGUF (versión 3) para Locall: metadatos, compatibilidad y estimación de memoria."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+# Sin dependencias: solo la biblioteca estándar de Rust.
+[dependencies]
