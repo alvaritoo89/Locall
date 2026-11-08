@@ -244,6 +244,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "locall-engine"
+version = "0.0.1"
+dependencies = [
+ "getrandom",
+ "locall-system",
+ "ureq",
+]
+
+[[package]]
 name = "locall-gguf"
 version = "0.0.1"
 
