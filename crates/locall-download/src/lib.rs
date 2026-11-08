@@ -200,6 +200,10 @@ impl Descargador {
     ) -> Result<Huella, ErrorDescarga> {
         let total = pedido.bytes;
         if almacen.contiene(&pedido.huella) {
+            log::info!(
+                "descarga innecesaria: {} ya está en el almacén",
+                pedido.huella
+            );
             progreso(Progreso {
                 descargados: total,
                 total,
@@ -224,11 +228,21 @@ impl Descargador {
         }
         almacen.comprobar_espacio(total - descargados)?;
         progreso(Progreso { descargados, total });
+        if descargados > 0 {
+            log::info!(
+                "reanudando la descarga de {} desde el byte {descargados} de {total}",
+                pedido.url
+            );
+        } else {
+            log::info!("descargando {} ({total} bytes)", pedido.url);
+        }
+        let inicio = std::time::Instant::now();
 
         let mut fallos_seguidos = 0u32;
         while descargados < total {
             if cancelar.load(Ordering::Relaxed) {
                 archivo.sync_all()?;
+                log::info!("descarga pausada en el byte {descargados} de {total}");
                 return Err(ErrorDescarga::Cancelada);
             }
             let antes = descargados;
@@ -258,9 +272,14 @@ impl Descargador {
             };
             if fallos_seguidos > self.opciones.fallos_seguidos_max {
                 archivo.sync_all()?;
+                log::warn!("descarga abandonada tras {fallos_seguidos} fallos seguidos: {motivo}");
                 return Err(ErrorDescarga::IntentosAgotados { ultimo: motivo });
             }
             let espera = esperar.unwrap_or_else(|| self.espera_creciente(fallos_seguidos));
+            log::warn!(
+                "descarga: reintento {fallos_seguidos} en {:.1} s ({motivo})",
+                espera.as_secs_f64()
+            );
             dormir_salvo_cancelacion(espera, cancelar);
         }
 
@@ -269,6 +288,10 @@ impl Descargador {
         drop(archivo);
         let obtenida = Huella::desde_sha256(&calculadora.finalize())?;
         if obtenida != pedido.huella {
+            log::warn!(
+                "descarga descartada: la huella no coincide (esperada {}, obtenida {obtenida})",
+                pedido.huella
+            );
             let _ = std::fs::remove_file(&ruta);
             return Err(ErrorDescarga::HuellaNoCoincide {
                 esperada: pedido.huella.clone(),
@@ -276,6 +299,10 @@ impl Descargador {
             });
         }
         almacen.confirmar_parcial(&pedido.huella)?;
+        log::info!(
+            "descarga verificada: {obtenida} ({total} bytes en {:.1} s)",
+            inicio.elapsed().as_secs_f64()
+        );
         Ok(obtenida)
     }
 

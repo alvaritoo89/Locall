@@ -9,5 +9,7 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
+# La "fachada" estándar de registros de Rust (ya estaba en el proyecto, la trae ureq). MIT/Apache.
+log = { version = "0.4.35", features = ["std"] }
 # Para validar los hilos contra los del equipo.
 locall-system = { path = "../locall-system" }

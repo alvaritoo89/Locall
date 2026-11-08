@@ -239,6 +239,7 @@ name = "locall-config"
 version = "0.0.1"
 dependencies = [
  "locall-system",
+ "log",
 ]
 
 [[package]]
@@ -246,6 +247,7 @@ name = "locall-download"
 version = "0.0.1"
 dependencies = [
  "locall-store",
+ "log",
  "sha2",
  "ureq",
 ]
@@ -256,6 +258,7 @@ version = "0.0.1"
 dependencies = [
  "getrandom",
  "locall-system",
+ "log",
  "serde_json",
  "ureq",
 ]
@@ -277,9 +280,11 @@ name = "locall-scheduler"
 version = "0.0.1"
 dependencies = [
  "locall-compat",
+ "locall-config",
  "locall-engine",
  "locall-gguf",
  "locall-system",
+ "log",
 ]
 
 [[package]]

@@ -287,17 +287,24 @@ impl<A: Arrancador> Planificador<A> {
 
         estado.cola.pop_front();
         // Soltar el motor viejo para el proceso (es rápido). Así la RAM queda libre ANTES de cargar el nuevo.
-        drop(estado.actual.take());
+        soltar_actual(&mut estado, "cambio de modelo");
         estado.cargando = Some(carga.modelo.clone());
         // Cargar puede tardar segundos: se hace SIN el candado, para que los demás puedan consultar el estado.
         drop(estado);
 
+        log::info!("cargando el modelo «{}»", carga.modelo);
+        let inicio = Instant::now();
         let resultado = c.arrancador.arrancar(carga);
 
         let mut estado = c.bloquear();
         estado.cargando = None;
         let respuesta = match resultado {
             Ok(motor) => {
+                log::info!(
+                    "modelo «{}» listo en {:.1} s",
+                    carga.modelo,
+                    inicio.elapsed().as_secs_f64()
+                );
                 let motor = Arc::new(motor);
                 estado.actual = Some(Cargado {
                     carga: carga.clone(),
@@ -310,7 +317,10 @@ impl<A: Arrancador> Planificador<A> {
                     compartido: Arc::clone(c),
                 })
             }
-            Err(e) => Err(ErrorPlanificador::Motor(e)),
+            Err(e) => {
+                log::warn!("no se pudo cargar el modelo «{}»: {e}", carga.modelo);
+                Err(ErrorPlanificador::Motor(e))
+            }
         };
         drop(estado);
         c.cambio.notify_all(); // despertar a los que esperaban
@@ -346,7 +356,7 @@ impl<A: Arrancador> Planificador<A> {
         if estado.prestamos > 0 || estado.cargando.is_some() || estado.actual.is_none() {
             return false;
         }
-        drop(estado.actual.take()); // para el motor
+        soltar_actual(&mut estado, "a petición"); // para el motor
         c.cambio.notify_all();
         true
     }
@@ -359,7 +369,7 @@ impl<A: Arrancador> Drop for Planificador<A> {
             let mut estado = self.compartido.bloquear();
             estado.cerrando = true;
             if estado.prestamos == 0 {
-                drop(estado.actual.take());
+                soltar_actual(&mut estado, "cierre de Locall");
             }
         }
         self.compartido.cambio.notify_all();
@@ -432,10 +442,19 @@ impl<A: Arrancador> Drop for Prestamo<A> {
         estado.ultimo_uso = Instant::now();
         if estado.cerrando && estado.prestamos == 0 {
             // El planificador ya no existe: parar el motor ahora.
-            drop(estado.actual.take());
+            soltar_actual(&mut estado, "cierre de Locall");
         }
         drop(estado);
         self.compartido.cambio.notify_all();
+    }
+}
+
+/// Para el modelo cargado (si lo hay) y lo anota en el registro.
+fn soltar_actual<M>(estado: &mut Interno<M>, motivo: &str) {
+    if let Some(viejo) = estado.actual.take() {
+        let modelo = viejo.carga.modelo.clone();
+        drop(viejo); // para el motor
+        log::info!("modelo «{modelo}» descargado ({motivo})");
     }
 }
 
@@ -456,7 +475,7 @@ fn vigilar<A: Arrancador>(c: &Compartido<A>) {
         {
             let pasado = estado.ultimo_uso.elapsed();
             if pasado >= limite {
-                drop(estado.actual.take()); // para el motor
+                soltar_actual(&mut estado, "inactividad"); // para el motor
                 c.cambio.notify_all();
                 continue;
             }

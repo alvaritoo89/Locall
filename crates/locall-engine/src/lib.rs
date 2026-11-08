@@ -303,6 +303,10 @@ impl Motor {
                 .build(),
         );
 
+        log::info!(
+            "motor arrancado (proceso {}, puerto {puerto})",
+            proceso.id()
+        );
         Ok(Motor {
             proceso,
             puerto,
@@ -329,9 +333,14 @@ impl Motor {
                 .try_wait()
                 .contexto(|| "consultar el estado del motor".into())?
             {
+                let causa = errores::causa_en_archivo(&self.registro);
+                log::warn!(
+                    "el motor se cerró al cargar (código {:?}, causa {causa:?})",
+                    estado.code()
+                );
                 return Err(ErrorMotor::TerminoAlCargar {
                     codigo: estado.code(),
-                    causa: errores::causa_en_archivo(&self.registro),
+                    causa,
                     registro: self.registro.clone(),
                 });
             }
@@ -406,6 +415,7 @@ impl Motor {
 impl Drop for Motor {
     fn drop(&mut self) {
         self.parar_proceso();
+        log::info!("motor parado (proceso {})", self.proceso.id());
     }
 }
 

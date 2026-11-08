@@ -22,7 +22,7 @@ inteligencia artificial **en tu propio equipo**. Sin cuentas, sin suscripciones 
 ningún sitio.
 
 > [!NOTE]
-> Locall está en **desarrollo temprano** (Fase 2: el núcleo). Todavía no hay nada que instalar.
+> Locall está en **desarrollo temprano** (Fase 3: la API local). Todavía no hay nada que instalar.
 
 ## Principios
 
@@ -64,8 +64,8 @@ Pruebas reales en un portátil normal (Intel Core i5-1334U, gráfica integrada I
 
 - [x] Fase 0: investigación y pruebas de concepto en hardware real
 - [x] Fase 1: control del motor desde Rust (arranque, streaming, parada, protección ante cierres bruscos)
-- [ ] **Fase 2: núcleo** · ✓ lector de cabeceras GGUF · ✓ almacén de modelos · ✓ descargas verificadas · ✓ motor · ✓ planificador · configuración y registros
-- [ ] Fase 3: API local
+- [x] Fase 2: núcleo (lector GGUF, almacén, descargas verificadas, motor, planificador, configuración y registros privados)
+- [ ] **Fase 3: API local**
 - [ ] Fase 4: línea de comandos (`locall`)
 - [ ] Fase 5: aplicación de escritorio
 
@@ -81,7 +81,7 @@ Pruebas reales en un portátil normal (Intel Core i5-1334U, gráfica integrada I
 | [`crates/locall-download`](crates/locall-download) | Descargas verificadas por sha256, reanudables y con detección de atascos |
 | [`crates/locall-engine`](crates/locall-engine) | Arranca, vigila y para `llama-server` de forma segura y conversa con él por trozos (con cancelación) |
 | [`crates/locall-scheduler`](crates/locall-scheduler) | Planificador: un modelo a la vez, comprobación de memoria antes de cargar, cola por orden de llegada y descarga por inactividad |
-| [`crates/locall-config`](crates/locall-config) | Carpeta de datos y ajustes del usuario (`config.toml`), validados con mensajes claros |
+| [`crates/locall-config`](crates/locall-config) | Carpeta de datos, ajustes del usuario (`config.toml`) y registros diarios sin datos de las conversaciones |
 | [`docs/adr`](docs/adr) | Decisiones de arquitectura y sus motivos |
 
 ## Desarrollo

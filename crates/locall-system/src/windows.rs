@@ -4,7 +4,7 @@ use std::io;
 use std::os::windows::io::AsRawHandle;
 use std::process::Child;
 
-use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
+use windows_sys::Win32::Foundation::{CloseHandle, HANDLE, SYSTEMTIME};
 use windows_sys::Win32::System::JobObjects::{
     AssignProcessToJobObject, CreateJobObjectW, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
     JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JobObjectExtendedLimitInformation,
@@ -12,10 +12,12 @@ use windows_sys::Win32::System::JobObjects::{
 };
 use windows_sys::Win32::System::ProcessStatus::{K32GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS};
 use windows_sys::Win32::System::Registry::{HKEY_LOCAL_MACHINE, RRF_RT_REG_SZ, RegGetValueW};
-use windows_sys::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
+use windows_sys::Win32::System::SystemInformation::{
+    GetLocalTime, GlobalMemoryStatusEx, MEMORYSTATUSEX,
+};
 use windows_sys::Win32::System::Threading::{OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION};
 
-use crate::Memoria;
+use crate::{FechaHora, Memoria};
 
 /// Convierte un texto a UTF-16 terminado en 0, como lo quiere Windows.
 fn ancho(texto: &str) -> Vec<u16> {
@@ -138,5 +140,25 @@ impl Drop for Trabajo {
     fn drop(&mut self) {
         // SAFETY: cerramos el asa que creamos, una sola vez.
         unsafe { CloseHandle(self.0) };
+    }
+}
+
+/// Fecha y hora local del equipo (con la zona horaria y el horario de verano que tenga configurados).
+pub fn fecha_hora_local() -> FechaHora {
+    // SAFETY: GetLocalTime solo escribe en la estructura que le pasamos, que es nuestra y del tamaño correcto;
+    // no puede fallar.
+    let t: SYSTEMTIME = unsafe {
+        let mut t = std::mem::zeroed();
+        GetLocalTime(&mut t);
+        t
+    };
+    FechaHora {
+        anio: t.wYear,
+        mes: t.wMonth as u8,
+        dia: t.wDay as u8,
+        hora: t.wHour as u8,
+        minuto: t.wMinute as u8,
+        segundo: t.wSecond as u8,
+        milisegundo: t.wMilliseconds,
     }
 }

@@ -10,6 +10,7 @@ publish.workspace = true
 
 [dependencies]
 locall-store = { path = "../locall-store" }
+log = "0.4.35"
 sha2 = "0.11.1"
 # HTTPS con el TLS de Windows (SChannel) y sus certificados (ADR 0010). Sin rustls ni funciones opcionales.
 ureq = { version = "3.5.1", default-features = false, features = ["native-tls-no-default"] }

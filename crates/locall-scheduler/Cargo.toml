@@ -12,4 +12,9 @@ publish.workspace = true
 locall-compat = { path = "../locall-compat" }
 locall-engine = { path = "../locall-engine" }
 locall-gguf = { path = "../locall-gguf" }
+log = "0.4.35"
 locall-system = { path = "../locall-system" }
+
+[dev-dependencies]
+# Para la prueba de privacidad de los registros.
+locall-config = { path = "../locall-config" }

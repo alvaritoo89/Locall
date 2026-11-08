@@ -121,6 +121,54 @@ pub fn memoria_de_proceso(pid: u32) -> io::Result<u64> {
     }
 }
 
+// ─── Fecha y hora ─────────────────────────────────────────────────────────────
+
+/// Una fecha y hora local (para los registros).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct FechaHora {
+    pub anio: u16,
+    pub mes: u8,
+    pub dia: u8,
+    pub hora: u8,
+    pub minuto: u8,
+    pub segundo: u8,
+    pub milisegundo: u16,
+}
+
+impl FechaHora {
+    /// `2026-11-08`
+    pub fn fecha(&self) -> String {
+        format!("{:04}-{:02}-{:02}", self.anio, self.mes, self.dia)
+    }
+}
+
+impl fmt::Display for FechaHora {
+    /// `2026-11-08 18:42:03.123`
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{} {:02}:{:02}:{:02}.{:03}",
+            self.fecha(),
+            self.hora,
+            self.minuto,
+            self.segundo,
+            self.milisegundo
+        )
+    }
+}
+
+/// Fecha y hora local del equipo.
+pub fn fecha_hora_local() -> io::Result<FechaHora> {
+    #[cfg(windows)]
+    {
+        Ok(windows::fecha_hora_local())
+    }
+    #[cfg(not(windows))]
+    {
+        Err(no_soportado())
+    }
+}
+
 // ─── Job Object ───────────────────────────────────────────────────────────────
 
 /// Un grupo de procesos que Windows cierra entero cuando se suelta el `Trabajo` **o cuando muere Locall**,
@@ -173,6 +221,17 @@ fn no_soportado() -> io::Error {
 
 #[cfg(test)]
 mod pruebas {
+    #[test]
+    fn da_la_fecha_y_hora_local() {
+        let ahora = super::fecha_hora_local().unwrap();
+        assert!(
+            ahora.anio >= 2026 && (1..=12).contains(&ahora.mes) && (1..=31).contains(&ahora.dia)
+        );
+        let texto = ahora.to_string();
+        assert_eq!(texto.len(), "2026-11-08 18:42:03.123".len(), "{texto}");
+        assert!(texto.starts_with(&ahora.fecha()));
+    }
+
     use super::*;
 
     #[test]

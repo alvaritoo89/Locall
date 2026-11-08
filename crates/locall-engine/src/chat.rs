@@ -141,6 +141,7 @@ impl Motor {
             if cancelar.load(Ordering::Relaxed) {
                 // Al salir, se suelta el lector y se cierra la conexión: el motor deja de generar.
                 resumen.fin = Fin::Cancelado;
+                log::info!("respuesta cancelada a petición");
                 return Ok(resumen);
             }
             let linea = linea.map_err(|e| ErrorMotor::Conexion(e.to_string()))?;
@@ -173,6 +174,15 @@ impl Motor {
                 resumen.escritura_por_segundo = t.escritura;
             }
         }
+        // Solo cifras: el texto de la conversación NUNCA va al registro (ADR 0014).
+        log::info!(
+            "respuesta: {} tokens leídos ({} de caché), {} generados a {:.1} tokens/s, fin {:?}",
+            resumen.tokens_leidos,
+            resumen.tokens_cache,
+            resumen.tokens_generados,
+            resumen.escritura_por_segundo.unwrap_or(0.0),
+            resumen.fin
+        );
         Ok(resumen)
     }
 
