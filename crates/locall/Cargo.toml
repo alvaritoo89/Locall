@@ -1,0 +1,21 @@
+[package]
+name = "locall"
+description = "Locall: el programa (núcleo, API local y, en la Fase 4, la línea de comandos)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "locall"
+path = "src/main.rs"
+
+[dependencies]
+axum = { version = "0.8.9", default-features = false, features = ["http1", "json", "tokio"] }
+locall-api = { path = "../locall-api" }
+locall-config = { path = "../locall-config" }
+locall-core = { path = "../locall-core" }
+log = "0.4.35"
+tokio = { version = "1.54.1", default-features = false, features = ["rt-multi-thread", "net", "signal", "time"] }

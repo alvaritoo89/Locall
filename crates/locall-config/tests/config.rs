@@ -37,7 +37,7 @@ fn el_archivo_por_defecto_da_los_valores_por_defecto() {
 #[test]
 fn lee_unos_ajustes_cambiados() {
     let texto = "carpeta_modelos = 'D:\\Modelos IA'\r\nhilos = 4\r\ncontexto = 8_192\r\n\
-                 inactividad_minutos = 0\r\nparalelo = 2\r\nregistros_dias = 30\r\n";
+                 inactividad_minutos = 0\r\nparalelo = 2\r\nregistros_dias = 30\r\npuerto = 12000\r\n";
     let (config, _) = Config::desde_texto(texto).unwrap();
     assert_eq!(
         config.carpeta_modelos,
@@ -49,6 +49,7 @@ fn lee_unos_ajustes_cambiados() {
     assert_eq!(config.inactividad(), None, "0 = no descargar nunca");
     assert_eq!(config.paralelo, 2);
     assert_eq!(config.registros_dias, 30);
+    assert_eq!(config.puerto, 12000);
 }
 
 #[test]
@@ -65,6 +66,9 @@ fn los_valores_no_validos_se_explican() {
         m.contains("línea 2") && m.contains("entre 256 y 1048576"),
         "{m}"
     );
+
+    let m = error_de("puerto = 80");
+    assert!(m.contains("entre 1024 y 65535"), "{m}");
 
     let m = error_de("paralelo = 0");
     assert!(m.contains("entre 1 y 16"), "{m}");

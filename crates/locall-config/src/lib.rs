@@ -62,6 +62,11 @@ impl Rutas {
         self.datos.join("locall.db")
     }
 
+    /// El token de la API local (solo lo puede leer el usuario de Windows: está en su carpeta personal).
+    pub fn token(&self) -> PathBuf {
+        self.datos.join("token")
+    }
+
     /// Carpeta de los registros (parte 10b).
     pub fn registros(&self) -> PathBuf {
         self.datos.join("registros")
@@ -98,6 +103,8 @@ pub struct Config {
     pub paralelo: u32,
     /// Días que se guardan los registros.
     pub registros_dias: u32,
+    /// Puerto de la API local (solo en 127.0.0.1).
+    pub puerto: u16,
 }
 
 impl Default for Config {
@@ -109,6 +116,7 @@ impl Default for Config {
             inactividad_minutos: 5,
             paralelo: 1,
             registros_dias: 7,
+            puerto: PUERTO_POR_DEFECTO,
         }
     }
 }
@@ -135,13 +143,20 @@ paralelo = 1
 
 # Días que se guardan los registros
 registros_dias = 7
+
+# Puerto de la API local (solo accesible desde este equipo)
+puerto = 11470
 "#;
+
+/// Puerto de la API por defecto. Elegido para no coincidir con los de Ollama (11434), LM Studio (1234) ni Jan (1337).
+pub const PUERTO_POR_DEFECTO: u16 = 11470;
 
 /// Límites de cada ajuste numérico: (mínimo, máximo).
 const LIMITES_CONTEXTO: (i64, i64) = (256, 1_048_576);
 const LIMITES_INACTIVIDAD: (i64, i64) = (0, 7 * 24 * 60); // hasta una semana
 const LIMITES_PARALELO: (i64, i64) = (1, 16);
 const LIMITES_REGISTROS: (i64, i64) = (1, 365);
+const LIMITES_PUERTO: (i64, i64) = (1024, 65535); // por debajo de 1024 hacen falta permisos de administrador
 
 impl Config {
     /// Lee los ajustes de un texto. Devuelve también los avisos (claves desconocidas).
@@ -162,6 +177,10 @@ impl Config {
                 }
                 "paralelo" => config.paralelo = numero(entrada, LIMITES_PARALELO)?,
                 "registros_dias" => config.registros_dias = numero(entrada, LIMITES_REGISTROS)?,
+                "puerto" => {
+                    config.puerto = u16::try_from(numero(entrada, LIMITES_PUERTO)?)
+                        .map_err(|_| error_valor(entrada, "fuera de rango"))?;
+                }
                 _ => avisos.push(Aviso::ClaveDesconocida {
                     linea: entrada.linea,
                     clave: entrada.clave.clone(),

@@ -1,0 +1,25 @@
+[package]
+name = "locall-api"
+description = "API local de Locall: servidor HTTP en 127.0.0.1 con token y protección frente a webs (ADR 0015)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+# Servidor HTTP (ADR 0015). Solo HTTP/1.1 y JSON: sin HTTP/2, WebSockets ni nada que no usemos.
+axum = { version = "0.8.9", default-features = false, features = ["http1", "json", "tokio"] }
+getrandom = "0.4.3"
+locall-config = { path = "../locall-config" }
+locall-core = { path = "../locall-core" }
+locall-registry = { path = "../locall-registry" }
+locall-scheduler = { path = "../locall-scheduler" }
+log = "0.4.35"
+serde_json = "1.0.154"
+# Para llamar al núcleo (que es de hilos normales) sin bloquear el servidor: spawn_blocking.
+tokio = { version = "1.54.1", default-features = false, features = ["rt", "net"] }
+
+[dev-dependencies]
+tokio = { version = "1.54.1", default-features = false, features = ["rt-multi-thread", "net"] }
