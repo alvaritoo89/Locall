@@ -1,52 +1,11 @@
-//! Pruebas con el `llama-server` real (build b12189) y un modelo pequeño.
-//!
-//! Si no están los archivos, las pruebas se saltan (con un aviso). Rutas por defecto, cambiables con variables
-//! de entorno:
-//! - `LOCALL_MOTOR`: `C:\Locall-poc\motor\cpu\llama-server.exe`
-//! - `LOCALL_MODELOS`: `C:\Locall-poc\modelos` (usa `qwen2.5-1.5b-instruct-q4_k_m.gguf`)
+//! Pruebas del ciclo de vida con el `llama-server` real (build b12189) y un modelo pequeño (ver `comun`).
 
-use std::net::TcpStream;
-use std::path::PathBuf;
+mod comun;
+
 use std::sync::atomic::AtomicBool;
-use std::time::Duration;
 
-use locall_engine::{ConfigMotor, ErrorMotor, Motor};
-
-const MODELO: &str = "qwen2.5-1.5b-instruct-q4_k_m.gguf";
-const CARGA_MAXIMA: Duration = Duration::from_secs(120);
-
-/// Configuración para las pruebas, o `None` si faltan el motor o el modelo.
-fn config(nombre: &str) -> Option<ConfigMotor> {
-    let motor = std::env::var_os("LOCALL_MOTOR").map_or_else(
-        || PathBuf::from(r"C:\Locall-poc\motor\cpu\llama-server.exe"),
-        PathBuf::from,
-    );
-    let modelos = std::env::var_os("LOCALL_MODELOS")
-        .map_or_else(|| PathBuf::from(r"C:\Locall-poc\modelos"), PathBuf::from);
-    let modelo = modelos.join(MODELO);
-    if !motor.is_file() || !modelo.is_file() {
-        eprintln!(
-            "(prueba saltada: faltan {} o {})",
-            motor.display(),
-            modelo.display()
-        );
-        return None;
-    }
-    Some(ConfigMotor {
-        ejecutable: motor,
-        modelo,
-        contexto: 2048,
-        hilos: locall_system::hilos_para_motor(),
-        capas_gpu: 0,
-        registro: std::env::temp_dir()
-            .join(format!("locall-motor-{nombre}-{}.log", std::process::id())),
-    })
-}
-
-/// ¿Hay algo escuchando en ese puerto?
-fn escucha(puerto: u16) -> bool {
-    TcpStream::connect_timeout(&([127, 0, 0, 1], puerto).into(), Duration::from_millis(500)).is_ok()
-}
+use comun::{CARGA_MAXIMA, config, escucha};
+use locall_engine::{ErrorMotor, Motor};
 
 #[test]
 fn arranca_carga_y_se_para() {

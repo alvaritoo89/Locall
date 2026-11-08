@@ -12,5 +12,7 @@ publish.workspace = true
 # Clave aleatoria del motor con el generador seguro del sistema.
 getrandom = "0.4.3"
 locall-system = { path = "../locall-system" }
+# Peticiones y respuestas del motor en JSON (también la usará la API).
+serde_json = "1.0.154"
 # HTTP con el motor, que está en el mismo equipo (127.0.0.1): sin TLS.
 ureq = { version = "3.5.1", default-features = false }

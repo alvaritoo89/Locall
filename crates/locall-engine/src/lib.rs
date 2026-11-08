@@ -24,8 +24,11 @@ use std::time::{Duration, Instant};
 
 use locall_system::{HilosInvalidos, Trabajo};
 
+mod chat;
 #[cfg(test)]
 mod pruebas;
+
+pub use chat::{Evento, Fin, Mensaje, PeticionChat, Resumen, Rol};
 
 /// Cada cuánto se pregunta al motor si ya está listo.
 const INTERVALO_SALUD: Duration = Duration::from_millis(250);
@@ -90,6 +93,16 @@ pub enum ErrorMotor {
     TiempoAgotado { segundos: u64 },
     /// Se canceló la espera (el motor se ha parado).
     Cancelado,
+    /// No se pudo hablar con el motor (conexión rechazada o cortada).
+    Conexion(String),
+    /// El motor respondió algo que no entendemos.
+    Protocolo(String),
+    /// El motor rechazó la petición. `tipo` y `mensaje` son los suyos (la parte 8c los traduce).
+    Respuesta {
+        estado: u16,
+        tipo: String,
+        mensaje: String,
+    },
 }
 
 impl fmt::Display for ErrorMotor {
@@ -110,6 +123,16 @@ impl fmt::Display for ErrorMotor {
                 write!(f, "el modelo no terminó de cargar en {segundos} s")
             }
             ErrorMotor::Cancelado => write!(f, "carga cancelada"),
+            ErrorMotor::Conexion(e) => write!(f, "no se pudo comunicar con el motor: {e}"),
+            ErrorMotor::Protocolo(e) => write!(f, "respuesta del motor no válida: {e}"),
+            ErrorMotor::Respuesta {
+                estado,
+                tipo,
+                mensaje,
+            } => write!(
+                f,
+                "el motor rechazó la petición ({estado}, {tipo}): {mensaje}"
+            ),
         }
     }
 }
@@ -288,12 +311,10 @@ impl Motor {
         let _ = self.proceso.wait();
     }
 
-    #[allow(dead_code)] // se usarán en la parte 8b (conversación)
     fn base_url(&self) -> String {
         format!("http://127.0.0.1:{}", self.puerto)
     }
 
-    #[allow(dead_code)]
     fn cabecera_clave(&self) -> String {
         format!("Bearer {}", self.clave)
     }
