@@ -18,9 +18,12 @@
 //! Las **carpetas snapshot** existen porque llama.cpp encuentra las partes de un modelo dividido por su nombre
 //! (`…-00001-of-00002.gguf`): ahí cada archivo aparece con su nombre original, como enlace duro al blob.
 
+mod mantenimiento;
 mod nombres;
+mod sistema;
 mod snapshot;
 
+pub use mantenimiento::{BlobSinUsar, MARGEN_ESPACIO};
 pub use nombres::{NombreArchivo, Segmento};
 pub use snapshot::Snapshot;
 
@@ -98,6 +101,10 @@ pub enum ErrorAlmacen {
     BlobNoEncontrado(Huella),
     /// Una carpeta snapshot sin archivos.
     SnapshotVacio,
+    /// No hay espacio suficiente en el disco (contando el margen de seguridad).
+    EspacioInsuficiente { necesarios: u64, disponibles: u64 },
+    /// Se intentó borrar un archivo que todavía usa algún modelo.
+    BlobEnUso(Huella),
 }
 
 impl fmt::Display for ErrorAlmacen {
@@ -114,6 +121,18 @@ impl fmt::Display for ErrorAlmacen {
             }
             ErrorAlmacen::BlobNoEncontrado(h) => write!(f, "el archivo {h} no está en el almacén"),
             ErrorAlmacen::SnapshotVacio => write!(f, "un modelo necesita al menos un archivo"),
+            ErrorAlmacen::EspacioInsuficiente {
+                necesarios,
+                disponibles,
+            } => write!(
+                f,
+                "no hay espacio suficiente: hacen falta {:.1} GB (más 1 GB de margen) y quedan {:.1} GB",
+                *necesarios as f64 / 1e9,
+                *disponibles as f64 / 1e9
+            ),
+            ErrorAlmacen::BlobEnUso(h) => {
+                write!(f, "el archivo {h} lo usa algún modelo y no se puede borrar")
+            }
         }
     }
 }
@@ -230,6 +249,12 @@ impl Almacen {
         esperada: Option<&Huella>,
     ) -> Result<Huella, ErrorAlmacen> {
         let archivo = File::open(origen).contexto(|| format!("abrir {}", origen.display()))?;
+        // Sabemos cuánto ocupa: comprobamos el espacio ANTES de empezar a copiar gigas.
+        let tamano = archivo
+            .metadata()
+            .contexto(|| format!("consultar {}", origen.display()))?
+            .len();
+        self.comprobar_espacio(tamano)?;
         self.guardar_desde(archivo, esperada)
     }
 

@@ -64,7 +64,7 @@ Pruebas reales en un portátil normal (Intel Core i5-1334U, gráfica integrada I
 
 - [x] Fase 0: investigación y pruebas de concepto en hardware real
 - [x] Fase 1: control del motor desde Rust (arranque, streaming, parada, protección ante cierres bruscos)
-- [ ] **Fase 2: núcleo** · ✓ lector de cabeceras GGUF · almacén de modelos · descargas · planificador
+- [ ] **Fase 2: núcleo** · ✓ lector de cabeceras GGUF · ✓ almacén de modelos · descargas · planificador
 - [ ] Fase 3: API local
 - [ ] Fase 4: línea de comandos (`locall`)
 - [ ] Fase 5: aplicación de escritorio
@@ -74,6 +74,7 @@ Pruebas reales en un portátil normal (Intel Core i5-1334U, gráfica integrada I
 | Ruta | Contenido |
 |---|---|
 | [`crates/locall-gguf`](crates/locall-gguf) | Lector de cabeceras GGUF con límites de seguridad |
+| [`crates/locall-store`](crates/locall-store) | Almacén de modelos: huellas sha256, snapshots con enlaces duros, espacio y limpieza |
 | [`docs/adr`](docs/adr) | Decisiones de arquitectura y sus motivos |
 
 ## Desarrollo
