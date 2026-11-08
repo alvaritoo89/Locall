@@ -26,7 +26,13 @@ use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
-use locall_engine::{ConfigMotor, ErrorMotor, Motor};
+use locall_engine::{ConfigMotor, Motor};
+
+mod comprobacion;
+#[cfg(test)]
+mod pruebas;
+
+pub use comprobacion::{ErrorCarga, evaluar_carga};
 
 // ─── El trait Arrancador ──────────────────────────────────────────────────────
 
@@ -47,25 +53,40 @@ pub trait Arrancador: Send + Sync + 'static {
 }
 
 /// El arrancador de verdad: `llama-server` mediante `locall-engine`.
+///
+/// Antes de lanzar el motor comprueba (parte 9c) que el modelo es compatible y que **cabe en la memoria
+/// disponible**; si no, devuelve el error al instante, sin arrancar nada.
 #[derive(Debug, Clone)]
 pub struct ArrancadorReal {
     /// Tiempo máximo para cargar un modelo.
     pub espera_maxima: Duration,
+    /// Comprobar compatibilidad y memoria antes de cargar. Solo se desactiva si el usuario insiste en probar
+    /// (la estimación es prudente y puede equivocarse por poco).
+    pub comprobar_antes: bool,
 }
 
 impl Default for ArrancadorReal {
     fn default() -> Self {
         ArrancadorReal {
             espera_maxima: Duration::from_secs(300),
+            comprobar_antes: true,
         }
     }
 }
 
 impl Arrancador for ArrancadorReal {
     type Motor = Motor;
-    type Error = ErrorMotor;
+    type Error = ErrorCarga;
 
-    fn arrancar(&self, carga: &Carga) -> Result<Motor, ErrorMotor> {
+    fn arrancar(&self, carga: &Carga) -> Result<Motor, ErrorCarga> {
+        if self.comprobar_antes {
+            // El planificador ya ha parado el modelo anterior: la memoria que libera cuenta como disponible.
+            let disponibles = locall_system::memoria()
+                .map_err(ErrorCarga::Sistema)?
+                .disponible;
+            let evaluacion = comprobacion::evaluar_con_memoria(carga, disponibles)?;
+            comprobacion::decidir(&evaluacion, disponibles)?;
+        }
         let (motor, _tiempo) =
             Motor::arrancar_listo(&carga.config, self.espera_maxima, &AtomicBool::new(false))?;
         Ok(motor)

@@ -9,7 +9,7 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
+locall-compat = { path = "../locall-compat" }
 locall-engine = { path = "../locall-engine" }
-
-[dev-dependencies]
+locall-gguf = { path = "../locall-gguf" }
 locall-system = { path = "../locall-system" }

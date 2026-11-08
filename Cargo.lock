@@ -269,7 +269,9 @@ dependencies = [
 name = "locall-scheduler"
 version = "0.0.1"
 dependencies = [
+ "locall-compat",
  "locall-engine",
+ "locall-gguf",
  "locall-system",
 ]
 
