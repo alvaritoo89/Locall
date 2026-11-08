@@ -243,6 +243,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "locall-core"
+version = "0.0.1"
+dependencies = [
+ "locall-compat",
+ "locall-config",
+ "locall-download",
+ "locall-engine",
+ "locall-gguf",
+ "locall-registry",
+ "locall-scheduler",
+ "locall-store",
+ "locall-system",
+ "log",
+ "serde_json",
+ "ureq",
+]
+
+[[package]]
 name = "locall-download"
 version = "0.0.1"
 dependencies = [

@@ -1,0 +1,26 @@
+[package]
+name = "locall-core"
+description = "Núcleo de Locall: une almacén, registro, descargas, planificador y configuración en un solo servicio."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+locall-compat = { path = "../locall-compat" }
+locall-config = { path = "../locall-config" }
+locall-download = { path = "../locall-download" }
+locall-engine = { path = "../locall-engine" }
+locall-gguf = { path = "../locall-gguf" }
+locall-registry = { path = "../locall-registry" }
+locall-scheduler = { path = "../locall-scheduler" }
+locall-store = { path = "../locall-store" }
+log = "0.4.35"
+serde_json = "1.0.154"
+# Consultas a la API de Hugging Face, con el HTTPS de Windows (ADR 0010).
+ureq = { version = "3.5.1", default-features = false, features = ["native-tls-no-default"] }
+
+[dev-dependencies]
+locall-system = { path = "../locall-system" }
