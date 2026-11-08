@@ -75,6 +75,7 @@ Pruebas reales en un portátil normal (Intel Core i5-1334U, gráfica integrada I
 |---|---|
 | [`crates/locall-gguf`](crates/locall-gguf) | Lector de cabeceras GGUF con límites de seguridad |
 | [`crates/locall-store`](crates/locall-store) | Almacén de modelos: huellas sha256, snapshots con enlaces duros, espacio y limpieza |
+| [`crates/locall-system`](crates/locall-system) | Información del equipo (memoria, procesador, hilos) y Job Object de Windows |
 | [`docs/adr`](docs/adr) | Decisiones de arquitectura y sus motivos |
 
 ## Desarrollo
