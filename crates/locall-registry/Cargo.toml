@@ -1,0 +1,13 @@
+[package]
+name = "locall-registry"
+description = "Registro de modelos instalados de Locall (SQLite): qué modelo es cada archivo, de dónde vino y su licencia."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+locall-store = { path = "../locall-store" }
+rusqlite = { version = "0.41.1", default-features = false, features = ["bundled"] }
