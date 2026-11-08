@@ -266,6 +266,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "locall-scheduler"
+version = "0.0.1"
+dependencies = [
+ "locall-engine",
+ "locall-system",
+]
+
+[[package]]
 name = "locall-store"
 version = "0.0.1"
 dependencies = [

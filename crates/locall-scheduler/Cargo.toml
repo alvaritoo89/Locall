@@ -1,0 +1,15 @@
+[package]
+name = "locall-scheduler"
+description = "Planificador de Locall: decide qué modelo está cargado, lo presta y lo descarga cuando no se usa."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+locall-engine = { path = "../locall-engine" }
+
+[dev-dependencies]
+locall-system = { path = "../locall-system" }

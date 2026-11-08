@@ -80,6 +80,7 @@ Pruebas reales en un portátil normal (Intel Core i5-1334U, gráfica integrada I
 | [`crates/locall-registry`](crates/locall-registry) | Registro de modelos instalados (SQLite con migraciones) |
 | [`crates/locall-download`](crates/locall-download) | Descargas verificadas por sha256, reanudables y con detección de atascos |
 | [`crates/locall-engine`](crates/locall-engine) | Arranca, vigila y para `llama-server` de forma segura y conversa con él por trozos (con cancelación) |
+| [`crates/locall-scheduler`](crates/locall-scheduler) | Planificador: un modelo cargado a la vez, préstamos y descarga por inactividad |
 | [`docs/adr`](docs/adr) | Decisiones de arquitectura y sus motivos |
 
 ## Desarrollo
