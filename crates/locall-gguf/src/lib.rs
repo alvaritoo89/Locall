@@ -19,7 +19,7 @@
 //! leída del archivo se comprueba contra un **límite** antes de reservar memoria, y los errores se devuelven como
 //! [`ErrorGguf`] en lugar de provocar un cierre del programa.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::fs::File;
 use std::io::{self, BufReader, Read};
@@ -172,6 +172,9 @@ pub struct Cabecera {
     pub metadatos: BTreeMap<String, Valor>,
     /// Bytes que ocupa la cabecera completa (metadatos + descripción de tensores).
     pub bytes_cabecera: u64,
+    /// Tipos de datos (cuantización) que usan los tensores, por su número en ggml (`ggml_type`).
+    /// Sirve para comprobar que el motor sabe leerlos.
+    pub tipos_tensor: BTreeSet<u32>,
 }
 
 /// Los datos de la cabecera que más interesan a Locall.
@@ -281,14 +284,15 @@ pub fn leer<R: Read>(fuente: R) -> Result<Cabecera, ErrorGguf> {
         metadatos.insert(clave, valor);
     }
 
-    // La descripción de los tensores no nos interesa, pero hay que recorrerla para saber dónde acaba la cabecera
-    // y comprobar que el archivo está completo.
+    // De la descripción de los tensores solo guardamos su tipo; hay que recorrerla entera para saber dónde acaba
+    // la cabecera y comprobar que el archivo está completo.
+    let mut tipos_tensor = BTreeSet::new();
     for _ in 0..tensores {
         l.saltar_texto()?; // nombre
         let dimensiones = u64::from(l.u32()?);
         limite("dimensiones de un tensor", dimensiones, MAX_DIMENSIONES)?;
         l.saltar(8 * dimensiones)?; // tamaño de cada dimensión (i64)
-        let _tipo = l.u32()?;
+        tipos_tensor.insert(l.u32()?);
         let _posicion = l.u64()?;
     }
 
@@ -297,6 +301,7 @@ pub fn leer<R: Read>(fuente: R) -> Result<Cabecera, ErrorGguf> {
         tensores,
         metadatos,
         bytes_cabecera: l.leidos,
+        tipos_tensor,
     })
 }
 
@@ -508,6 +513,7 @@ mod pruebas {
         let r = cabecera.resumen();
         assert_eq!(cabecera.version, 3);
         assert_eq!(cabecera.tensores, 1);
+        assert_eq!(cabecera.tipos_tensor, BTreeSet::from([0])); // F32
         assert_eq!(cabecera.bytes_cabecera, bytes.len() as u64);
         assert_eq!(r.arquitectura.as_deref(), Some("qwen2"));
         assert_eq!(r.capas, Some(28));
