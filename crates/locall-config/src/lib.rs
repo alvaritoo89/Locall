@@ -105,6 +105,9 @@ pub struct Config {
     pub registros_dias: u32,
     /// Puerto de la API local (solo en 127.0.0.1).
     pub puerto: u16,
+    /// Minutos sin uso tras los que Locall se cierra solo (0 = nunca). La CLI y la app lo vuelven a abrir cuando
+    /// haga falta (ADR 0015).
+    pub cierre_inactividad_minutos: u32,
 }
 
 impl Default for Config {
@@ -117,6 +120,7 @@ impl Default for Config {
             paralelo: 1,
             registros_dias: 7,
             puerto: PUERTO_POR_DEFECTO,
+            cierre_inactividad_minutos: 30,
         }
     }
 }
@@ -146,6 +150,9 @@ registros_dias = 7
 
 # Puerto de la API local (solo accesible desde este equipo)
 puerto = 11470
+
+# Minutos sin usarse tras los que Locall se cierra solo (0 = nunca)
+cierre_inactividad_minutos = 30
 "#;
 
 /// Puerto de la API por defecto. Elegido para no coincidir con los de Ollama (11434), LM Studio (1234) ni Jan (1337).
@@ -177,6 +184,9 @@ impl Config {
                 }
                 "paralelo" => config.paralelo = numero(entrada, LIMITES_PARALELO)?,
                 "registros_dias" => config.registros_dias = numero(entrada, LIMITES_REGISTROS)?,
+                "cierre_inactividad_minutos" => {
+                    config.cierre_inactividad_minutos = numero(entrada, LIMITES_INACTIVIDAD)?;
+                }
                 "puerto" => {
                     config.puerto = u16::try_from(numero(entrada, LIMITES_PUERTO)?)
                         .map_err(|_| error_valor(entrada, "fuera de rango"))?;
@@ -246,6 +256,12 @@ impl Config {
         self.carpeta_modelos
             .clone()
             .unwrap_or_else(|| rutas.modelos_por_defecto())
+    }
+
+    /// Tiempo sin uso tras el que Locall se cierra solo (`None` = nunca).
+    pub fn cierre_inactividad(&self) -> Option<Duration> {
+        (self.cierre_inactividad_minutos > 0)
+            .then(|| Duration::from_secs(u64::from(self.cierre_inactividad_minutos) * 60))
     }
 
     /// Tiempo de inactividad para el planificador (`None` = no descargar nunca).

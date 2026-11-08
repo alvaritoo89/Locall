@@ -14,7 +14,8 @@
 //! Los errores tienen siempre la forma `{"error": {"code": "...", "message": "..."}}`: `code` en inglés y fijo, para
 //! los programas; `message` en español, para las personas.
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, PoisonError};
+use std::time::{Duration, Instant};
 
 use axum::Json;
 use axum::Router;
@@ -33,6 +34,7 @@ use serde_json::{Value, json};
 mod chat;
 mod flujo;
 mod modelos;
+mod openai;
 pub mod token;
 
 /// Versión del motor con la que se ha probado esta versión de Locall.
@@ -46,16 +48,66 @@ struct Compartido {
     nucleo: Arc<Nucleo>,
     token: Arc<str>,
     puerto: u16,
+    actividad: Actividad,
+}
+
+/// Cuándo se usó Locall por última vez (para el cierre por inactividad).
+#[derive(Clone, Debug)]
+pub struct Actividad(Arc<Mutex<Instant>>);
+
+impl Actividad {
+    pub fn nueva() -> Actividad {
+        Actividad(Arc::new(Mutex::new(Instant::now())))
+    }
+
+    /// Anota que ahora se está usando.
+    pub fn tocar(&self) {
+        *self.0.lock().unwrap_or_else(PoisonError::into_inner) = Instant::now();
+    }
+
+    /// Tiempo desde el último uso.
+    pub fn inactivo(&self) -> Duration {
+        self.0
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .elapsed()
+    }
+}
+
+/// Termina cuando Locall lleva `limite` sin usarse: sin peticiones y sin trabajo en marcha (una descarga o una
+/// respuesta largas cuentan como uso aunque no lleguen peticiones nuevas). Se comprueba cada `intervalo`.
+pub async fn esperar_inactividad(
+    nucleo: Arc<Nucleo>,
+    actividad: Actividad,
+    limite: Duration,
+    intervalo: Duration,
+) {
+    loop {
+        tokio::time::sleep(intervalo).await;
+        if nucleo.ocupado() {
+            actividad.tocar();
+        } else if actividad.inactivo() >= limite {
+            log::info!("{} s sin uso: Locall se cierra solo", limite.as_secs());
+            return;
+        }
+    }
 }
 
 /// Construye las rutas de la API con su seguridad. `puerto` es en el que se escucha (para validar `Host`).
 pub fn rutas(nucleo: Arc<Nucleo>, token: String, puerto: u16) -> Router {
+    rutas_vigiladas(nucleo, token, puerto).0
+}
+
+/// Como [`rutas`], devolviendo además la [`Actividad`] para el cierre por inactividad.
+pub fn rutas_vigiladas(nucleo: Arc<Nucleo>, token: String, puerto: u16) -> (Router, Actividad) {
+    let actividad = Actividad::nueva();
     let compartido = Compartido {
         nucleo,
         token: token.into(),
         puerto,
+        actividad: actividad.clone(),
     };
-    Router::new()
+    let rutas = Router::new()
         .route("/api/version", get(version))
         .route("/api/status", get(estado))
         .route("/api/models", get(modelos))
@@ -67,13 +119,17 @@ pub fn rutas(nucleo: Arc<Nucleo>, token: String, puerto: u16) -> Router {
         .route("/api/models/import", post(modelos::importar))
         .route("/api/hub/{owner}/{name}", get(modelos::hub))
         .route("/api/chat", post(chat::chat))
+        // Compatibles con OpenAI (ADR 0016).
+        .route("/v1/models", get(openai::modelos))
+        .route("/v1/chat/completions", post(openai::completar))
         .fallback(no_existe)
         // La seguridad envuelve TODO, también las rutas que no existen: sin token, ni siquiera se sabe cuáles hay.
         .layer(middleware::from_fn_with_state(
             compartido.clone(),
             seguridad,
         ))
-        .with_state(compartido)
+        .with_state(compartido);
+    (rutas, actividad)
 }
 
 // ─── Seguridad ────────────────────────────────────────────────────────────────
@@ -115,7 +171,10 @@ async fn seguridad(
             "token_invalid",
             "el token no es correcto",
         )),
-        Some(_) => Ok(siguiente.run(peticion).await),
+        Some(_) => {
+            c.actividad.tocar();
+            Ok(siguiente.run(peticion).await)
+        }
     }
 }
 

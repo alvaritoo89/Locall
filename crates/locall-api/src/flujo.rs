@@ -71,11 +71,36 @@ pub(crate) async fn esperar_fin<T>(mut rx: mpsc::Receiver<Paso<T>>) -> Result<T,
     }
 }
 
-/// Responde por trozos. `fin_json` convierte el resultado final en el último evento.
+/// Responde por trozos en NDJSON (API propia). `fin_json` convierte el resultado final en el último evento.
 pub(crate) async fn en_trozos<T: Send + 'static>(
-    mut rx: mpsc::Receiver<Paso<T>>,
+    rx: mpsc::Receiver<Paso<T>>,
     fin_json: fn(&T) -> Value,
 ) -> Result<Response, ErrorApi> {
+    transmitir(rx, "application/x-ndjson; charset=utf-8", move |paso| {
+        let linea = match paso {
+            Paso::Evento(json) => json,
+            Paso::Fin(Ok(valor)) => fin_json(&valor),
+            Paso::Fin(Err(e)) => json!({"type": "error", "error": ErrorApi::from(e).cuerpo()}),
+        };
+        Some(format!(
+            "{linea}
+"
+        ))
+    })
+    .await
+}
+
+/// Responde por trozos con el formato que diga `convertir` (NDJSON, SSE…). `convertir` recibe cada paso y
+/// devuelve el texto que se envía al cliente, o `None` para no enviar nada por ese paso.
+pub(crate) async fn transmitir<T, F>(
+    mut rx: mpsc::Receiver<Paso<T>>,
+    tipo: &'static str,
+    convertir: F,
+) -> Result<Response, ErrorApi>
+where
+    T: Send + 'static,
+    F: FnMut(Paso<T>) -> Option<String> + Send + 'static,
+{
     // El primer mensaje decide: si es un error, respuesta HTTP de error; si no, empezamos a enviar.
     let primero = match rx.recv().await {
         Some(Paso::Fin(Err(e))) => return Err(e.into()),
@@ -83,32 +108,29 @@ pub(crate) async fn en_trozos<T: Send + 'static>(
         None => return Err(error_interno()),
     };
     let flujo = futures_util::stream::unfold(
-        (Some(primero), rx, false),
-        move |(pendiente, mut rx, terminado)| async move {
+        (Some(primero), rx, convertir, false),
+        |(mut pendiente, mut rx, mut convertir, terminado)| async move {
             if terminado {
                 return None;
             }
-            let paso = match pendiente {
-                Some(p) => p,
-                None => rx.recv().await?,
-            };
-            let (linea, terminado) = match paso {
-                Paso::Evento(json) => (json, false),
-                Paso::Fin(Ok(valor)) => (fin_json(&valor), true),
-                Paso::Fin(Err(e)) => {
-                    let error = ErrorApi::from(e);
-                    (json!({"type": "error", "error": error.cuerpo()}), true)
+            loop {
+                let paso = match pendiente.take() {
+                    Some(p) => p,
+                    None => rx.recv().await?,
+                };
+                let es_fin = matches!(paso, Paso::Fin(_));
+                if let Some(texto) = convertir(paso) {
+                    return Some((Ok::<_, Infallible>(texto), (None, rx, convertir, es_fin)));
                 }
-            };
-            Some((
-                Ok::<_, Infallible>(format!("{linea}\n")),
-                (None, rx, terminado),
-            ))
+                if es_fin {
+                    return None;
+                }
+            }
         },
     );
     Ok((
         StatusCode::OK,
-        [(header::CONTENT_TYPE, "application/x-ndjson; charset=utf-8")],
+        [(header::CONTENT_TYPE, tipo)],
         Body::from_stream(flujo),
     )
         .into_response())

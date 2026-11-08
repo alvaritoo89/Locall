@@ -162,6 +162,21 @@ impl Nucleo {
         &self.rutas
     }
 
+    /// ¿Está trabajando? (instalando un modelo, cargándolo o respondiendo). Un modelo cargado sin usar no cuenta.
+    pub fn ocupado(&self) -> bool {
+        let instalando = !self
+            .instalando
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .is_empty();
+        instalando
+            || match self.planificador.estado() {
+                Estado::Cargando { .. } => true,
+                Estado::Listo { en_uso, .. } => en_uso > 0,
+                Estado::Vacio => false,
+            }
+    }
+
     /// Qué está haciendo el planificador (qué modelo está cargado).
     pub fn estado(&self) -> Estado {
         self.planificador.estado()

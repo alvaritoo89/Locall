@@ -7,6 +7,7 @@
 use std::path::PathBuf;
 use std::process::ExitCode;
 use std::sync::Arc;
+use std::time::Duration;
 
 use locall_config::{Config, Rutas, registros};
 use locall_core::{Nucleo, OpcionesNucleo};
@@ -66,6 +67,7 @@ fn servir() -> Result<(), String> {
 
     // Primero el puerto: si ya hay otro Locall abierto, salir sin tocar nada (ni la base de datos ni el almacén).
     let puerto = config.puerto;
+    let cierre = config.cierre_inactividad();
     let escucha = std::net::TcpListener::bind(("127.0.0.1", puerto)).map_err(|e| {
         if e.kind() == std::io::ErrorKind::AddrInUse {
             format!(
@@ -114,19 +116,45 @@ fn servir() -> Result<(), String> {
             env!("CARGO_PKG_VERSION")
         );
         println!("Token de la API: en {}", rutas.token().display());
-        println!("Ctrl+C para parar.");
+        match cierre {
+            Some(limite) => println!(
+                "Ctrl+C para parar. Se cerrará solo tras {} min sin uso (cierre_inactividad_minutos).",
+                limite.as_secs() / 60
+            ),
+            None => println!("Ctrl+C para parar."),
+        }
         log::info!("API escuchando en 127.0.0.1:{puerto}");
 
-        axum::serve(escucha, locall_api::rutas(nucleo, token, puerto))
-            .with_graceful_shutdown(async {
-                let _ = tokio::signal::ctrl_c().await;
-                println!();
-                println!("Parando Locall…");
-            })
+        let (rutas_api, actividad) = locall_api::rutas_vigiladas(Arc::clone(&nucleo), token, puerto);
+
+        // Se para con Ctrl+C o tras un rato sin uso, lo que llegue antes.
+        let parar = Arc::new(tokio::sync::Notify::new());
+        let aviso = Arc::clone(&parar);
+        tokio::spawn(async move {
+            let _ = tokio::signal::ctrl_c().await;
+            println!();
+            println!("Parando Locall…");
+            aviso.notify_one();
+        });
+        if let Some(limite) = cierre {
+            let aviso = Arc::clone(&parar);
+            tokio::spawn(async move {
+                locall_api::esperar_inactividad(nucleo, actividad, limite, Duration::from_secs(30)).await;
+                println!("Sin uso desde hace {} min: Locall se cierra solo.", limite.as_secs() / 60);
+                aviso.notify_one();
+            });
+        } else {
+            drop(nucleo);
+        }
+
+        axum::serve(escucha, rutas_api)
+            .with_graceful_shutdown(async move { parar.notified().await })
             .await
             .map_err(|e| format!("el servidor se detuvo por un error: {e}"))
     })?;
-    // Aquí ya se ha soltado el núcleo: el planificador ha parado el motor.
+    // Cerrar las tareas pendientes (el vigilante guarda una copia del núcleo): al soltarse la última copia del
+    // núcleo, el planificador para el motor.
+    drop(tiempo_de_ejecucion);
     log::info!("Locall parado");
     Ok(())
 }

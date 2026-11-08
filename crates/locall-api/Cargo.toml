@@ -22,9 +22,11 @@ locall-scheduler = { path = "../locall-scheduler" }
 log = "0.4.35"
 serde_json = "1.0.154"
 # Para llamar al núcleo (que es de hilos normales) sin bloquear el servidor: spawn_blocking.
-tokio = { version = "1.54.1", default-features = false, features = ["rt", "net", "sync"] }
+tokio = { version = "1.54.1", default-features = false, features = ["rt", "net", "sync", "time"] }
 
 [dev-dependencies]
+# Para combinar dos esperas en la prueba de inactividad.
+futures-util = { version = "0.3.34", default-features = false }
 # El Hugging Face falso de las pruebas calcula las huellas con el almacén.
 locall-store = { path = "../locall-store" }
 tokio = { version = "1.54.1", default-features = false, features = ["rt-multi-thread", "net"] }
