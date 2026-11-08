@@ -20,27 +20,18 @@
 //! Si algo falla antes del primer evento (modelo inexistente, no cabe en la memoria…), se responde con un error HTTP
 //! normal. Si falla a mitad, llega un evento `{"type":"error","error":{...}}` y se cierra.
 
-use std::convert::Infallible;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 
 use axum::Json;
-use axum::body::{Body, Bytes};
+use axum::body::Bytes;
 use axum::extract::State;
-use axum::http::{StatusCode, header};
+use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use locall_core::ErrorNucleo;
 use locall_engine::{Evento, Fin, Mensaje, PeticionChat, Resumen, Rol};
 use serde_json::{Value, json};
-use tokio::sync::mpsc;
 
-use crate::{Compartido, ErrorApi};
-
-/// Lo que el hilo del núcleo envía al servidor.
-enum Mensajero {
-    Evento(Value),
-    Fin(Result<Resumen, ErrorNucleo>),
-}
+use crate::{Compartido, ErrorApi, flujo};
 
 pub(crate) async fn chat(State(c): State<Compartido>, cuerpo: Bytes) -> Result<Response, ErrorApi> {
     let (modelo, peticion, en_trozos) = leer_peticion(&cuerpo)?;
@@ -55,89 +46,23 @@ pub(crate) async fn chat(State(c): State<Compartido>, cuerpo: Bytes) -> Result<R
         return Err(ErrorNucleo::NoInstalado(modelo).into());
     }
 
-    // El núcleo trabaja en un hilo aparte y nos manda los eventos por un canal.
-    let (tx, mut rx) = mpsc::channel::<Mensajero>(64);
-    let cancelar = Arc::new(AtomicBool::new(false));
-
-    // Vigilante: si el cliente se va (se suelta el receptor), cancelar. Funciona también mientras se espera turno.
-    let vigilado = tx.clone();
-    let bandera = Arc::clone(&cancelar);
-    tokio::spawn(async move {
-        vigilado.closed().await;
-        bandera.store(true, Ordering::Relaxed);
-    });
-
+    // El núcleo trabaja en un hilo aparte y nos manda los eventos por un canal (ver `flujo`).
+    let (emisor, rx) = flujo::canal::<Resumen>();
     let nucleo = Arc::clone(&c.nucleo);
-    let bandera = Arc::clone(&cancelar);
     tokio::task::spawn_blocking(move || {
-        let resultado = nucleo.chat(&modelo, &peticion, &bandera, |evento| {
-            if let Some(json) = evento_json(&evento)
-                && tx.blocking_send(Mensajero::Evento(json)).is_err()
-            {
-                bandera.store(true, Ordering::Relaxed); // el cliente se ha ido
-            }
+        let cancelar = Arc::clone(&emisor.cancelar);
+        let resultado = nucleo.chat(&modelo, &peticion, &cancelar, |evento| {
+            emisor.evento(evento_json(&evento));
         });
-        let _ = tx.blocking_send(Mensajero::Fin(resultado));
+        emisor.fin(resultado);
     });
 
-    if !en_trozos {
-        // Sin trozos: esperar al final y responder de una vez.
-        loop {
-            match rx.recv().await {
-                Some(Mensajero::Evento(_)) => {}
-                Some(Mensajero::Fin(Ok(resumen))) => {
-                    return Ok(Json(respuesta_completa(&resumen)).into_response());
-                }
-                Some(Mensajero::Fin(Err(e))) => return Err(e.into()),
-                None => return Err(error_interno()),
-            }
-        }
+    if en_trozos {
+        flujo::en_trozos(rx, fin_json).await
+    } else {
+        let resumen = flujo::esperar_fin(rx).await?;
+        Ok(Json(respuesta_completa(&resumen)).into_response())
     }
-
-    // Con trozos: el primer mensaje decide si respondemos con un error HTTP o empezamos a enviar.
-    let primero = match rx.recv().await {
-        Some(Mensajero::Fin(Err(e))) => return Err(e.into()),
-        Some(m) => m,
-        None => return Err(error_interno()),
-    };
-    let flujo = futures_util::stream::unfold(
-        (Some(primero), rx, false),
-        |(pendiente, mut rx, terminado)| async move {
-            if terminado {
-                return None;
-            }
-            let mensaje = match pendiente {
-                Some(m) => m,
-                None => rx.recv().await?,
-            };
-            let (linea, terminado) = match mensaje {
-                Mensajero::Evento(json) => (json, false),
-                Mensajero::Fin(Ok(resumen)) => (fin_json(&resumen), true),
-                Mensajero::Fin(Err(e)) => {
-                    let error = ErrorApi::from(e);
-                    (json!({"type": "error", "error": error.cuerpo()}), true)
-                }
-            };
-            Some((
-                Ok::<_, Infallible>(format!("{linea}\n")),
-                (None, rx, terminado),
-            ))
-        },
-    );
-    Ok((
-        StatusCode::OK,
-        [(header::CONTENT_TYPE, "application/x-ndjson; charset=utf-8")],
-        Body::from_stream(flujo),
-    )
-        .into_response())
-}
-
-fn error_interno() -> ErrorApi {
-    ErrorApi::new(
-        StatusCode::INTERNAL_SERVER_ERROR,
-        "internal_error",
-        "error interno de Locall",
-    )
 }
 
 fn invalida(mensaje: impl Into<String>) -> ErrorApi {
@@ -219,14 +144,14 @@ fn leer_peticion(cuerpo: &[u8]) -> Result<(String, PeticionChat, bool), ErrorApi
 }
 
 /// Un evento del motor en JSON (ya traducido por `locall-engine`: sin datos privados).
-fn evento_json(evento: &Evento<'_>) -> Option<Value> {
-    Some(match evento {
+fn evento_json(evento: &Evento<'_>) -> Value {
+    match evento {
         Evento::Leyendo { procesados, total } => {
             json!({"type": "prompt_progress", "processed": procesados, "total": total})
         }
         Evento::Razonamiento(t) => json!({"type": "reasoning", "text": t}),
         Evento::Texto(t) => json!({"type": "text", "text": t}),
-    })
+    }
 }
 
 fn fin_texto(fin: Fin) -> &'static str {

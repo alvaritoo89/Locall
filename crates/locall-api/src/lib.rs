@@ -22,7 +22,7 @@ use axum::extract::{Path, Request, State};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post};
+use axum::routing::{delete, get, post};
 use locall_core::{ErrorNucleo, Nucleo};
 use locall_engine::{Causa, ErrorMotor};
 use locall_registry::Modelo;
@@ -31,6 +31,8 @@ use locall_scheduler::Estado;
 use serde_json::{Value, json};
 
 mod chat;
+mod flujo;
+mod modelos;
 pub mod token;
 
 /// Versión del motor con la que se ha probado esta versión de Locall.
@@ -57,7 +59,13 @@ pub fn rutas(nucleo: Arc<Nucleo>, token: String, puerto: u16) -> Router {
         .route("/api/version", get(version))
         .route("/api/status", get(estado))
         .route("/api/models", get(modelos))
-        .route("/api/models/{id}", get(modelo))
+        .route(
+            "/api/models/{id}",
+            get(modelo).merge(delete(modelos::eliminar)),
+        )
+        .route("/api/models/pull", post(modelos::instalar))
+        .route("/api/models/import", post(modelos::importar))
+        .route("/api/hub/{owner}/{name}", get(modelos::hub))
         .route("/api/chat", post(chat::chat))
         .fallback(no_existe)
         // La seguridad envuelve TODO, también las rutas que no existen: sin token, ni siquiera se sabe cuáles hay.
@@ -178,7 +186,7 @@ async fn no_existe() -> ErrorApi {
 }
 
 /// Un modelo en JSON. Nunca incluye rutas del disco.
-fn modelo_json(m: &Modelo) -> Value {
+pub(crate) fn modelo_json(m: &Modelo) -> Value {
     json!({
         "id": m.id.to_string(),
         "name": m.nombre,
@@ -283,6 +291,9 @@ impl From<ErrorNucleo> for ErrorApi {
             }
             ErrorNucleo::Protegido(_) => (S::FORBIDDEN, "gated_repo"),
             ErrorNucleo::Incompatible(_) => (S::UNPROCESSABLE_ENTITY, "model_incompatible"),
+            ErrorNucleo::Cabecera(_) => (S::UNPROCESSABLE_ENTITY, "invalid_model_file"),
+            ErrorNucleo::FaltaParte(_) => (S::UNPROCESSABLE_ENTITY, "model_parts_missing"),
+            ErrorNucleo::SinHuella(_) => (S::UNPROCESSABLE_ENTITY, "unverifiable_file"),
             ErrorNucleo::Cancelado => (S::CONFLICT, "cancelled"),
             ErrorNucleo::Red(_) | ErrorNucleo::HuggingFace { .. } | ErrorNucleo::RespuestaHf(_) => {
                 (S::BAD_GATEWAY, "hub_unavailable")

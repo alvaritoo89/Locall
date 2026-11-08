@@ -391,6 +391,7 @@ dependencies = [
  "locall-engine",
  "locall-registry",
  "locall-scheduler",
+ "locall-store",
  "log",
  "serde_json",
  "tokio",

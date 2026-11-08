@@ -65,7 +65,7 @@ Pruebas reales en un portátil normal (Intel Core i5-1334U, gráfica integrada I
 - [x] Fase 0: investigación y pruebas de concepto en hardware real
 - [x] Fase 1: control del motor desde Rust (arranque, streaming, parada, protección ante cierres bruscos)
 - [x] Fase 2: núcleo (lector GGUF, almacén, descargas verificadas, motor, planificador, configuración y registros privados)
-- [ ] **Fase 3: API local** · ✓ núcleo · ✓ servidor y seguridad · ✓ conversación · descargas · compatibilidad con OpenAI
+- [ ] **Fase 3: API local** · ✓ núcleo · ✓ servidor y seguridad · ✓ conversación · ✓ descargas · compatibilidad con OpenAI
 - [ ] Fase 4: línea de comandos (`locall`)
 - [ ] Fase 5: aplicación de escritorio
 
