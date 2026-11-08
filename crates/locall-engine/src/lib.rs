@@ -25,10 +25,15 @@ use std::time::{Duration, Instant};
 use locall_system::{HilosInvalidos, Trabajo};
 
 mod chat;
+mod errores;
 #[cfg(test)]
 mod pruebas;
 
 pub use chat::{Evento, Fin, Mensaje, PeticionChat, Resumen, Rol};
+pub use errores::Causa;
+
+/// Veces que se intenta arrancar si otro programa ocupa el puerto elegido.
+pub const INTENTOS_PUERTO: u32 = 3;
 
 /// Cada cuánto se pregunta al motor si ya está listo.
 const INTERVALO_SALUD: Duration = Duration::from_millis(250);
@@ -84,9 +89,10 @@ pub enum ErrorMotor {
     Clave(String),
     /// Error del sistema (lanzar el proceso, crear el registro, el Job Object…).
     Io { contexto: String, error: io::Error },
-    /// El motor terminó antes de estar listo. Los detalles están en su registro.
+    /// El motor terminó antes de estar listo. `causa` es lo reconocido en su registro.
     TerminoAlCargar {
         codigo: Option<i32>,
+        causa: Causa,
         registro: PathBuf,
     },
     /// El motor no estuvo listo en el tiempo máximo.
@@ -97,7 +103,8 @@ pub enum ErrorMotor {
     Conexion(String),
     /// El motor respondió algo que no entendemos.
     Protocolo(String),
-    /// El motor rechazó la petición. `tipo` y `mensaje` son los suyos (la parte 8c los traduce).
+    /// El motor rechazó la petición. `tipo` y `mensaje` son los suyos: el mensaje puede contener datos privados
+    /// (rutas), así que solo se guarda para diagnóstico y **no** se muestra al usuario.
     Respuesta {
         estado: u16,
         tipo: String,
@@ -112,7 +119,14 @@ impl fmt::Display for ErrorMotor {
             ErrorMotor::Hilos(e) => write!(f, "{e}"),
             ErrorMotor::Clave(e) => write!(f, "no se pudo generar la clave del motor: {e}"),
             ErrorMotor::Io { contexto, error } => write!(f, "no se pudo {contexto}: {error}"),
-            ErrorMotor::TerminoAlCargar { codigo, registro } => {
+            ErrorMotor::TerminoAlCargar {
+                codigo,
+                causa,
+                registro,
+            } => {
+                if let Some(mensaje) = causa.mensaje() {
+                    return write!(f, "{mensaje}");
+                }
                 write!(f, "el motor se cerró mientras cargaba el modelo")?;
                 if let Some(c) = codigo {
                     write!(f, " (código {c})")?;
@@ -129,10 +143,11 @@ impl fmt::Display for ErrorMotor {
                 estado,
                 tipo,
                 mensaje,
-            } => write!(
-                f,
-                "el motor rechazó la petición ({estado}, {tipo}): {mensaje}"
-            ),
+            } => match errores::causa_de_respuesta(*estado, tipo, mensaje).mensaje() {
+                Some(texto) => write!(f, "{texto}"),
+                // Sin el mensaje del motor (D4): podría llevar la ruta del modelo.
+                None => write!(f, "el motor rechazó la petición ({estado}, {tipo})"),
+            },
         }
     }
 }
@@ -143,6 +158,21 @@ impl std::error::Error for ErrorMotor {
             ErrorMotor::Hilos(e) => Some(e),
             ErrorMotor::Io { error, .. } => Some(error),
             _ => None,
+        }
+    }
+}
+
+impl ErrorMotor {
+    /// La causa reconocida, para que la app o la API decidan qué ofrecer (reintentar, bajar el contexto…).
+    pub fn causa(&self) -> Causa {
+        match self {
+            ErrorMotor::TerminoAlCargar { causa, .. } => causa.clone(),
+            ErrorMotor::Respuesta {
+                estado,
+                tipo,
+                mensaje,
+            } => errores::causa_de_respuesta(*estado, tipo, mensaje),
+            _ => Causa::Desconocida,
         }
     }
 }
@@ -175,8 +205,46 @@ pub struct Motor {
 }
 
 impl Motor {
-    /// Lanza el motor. Vuelve enseguida: para esperar a que cargue el modelo, usa [`Motor::esperar_listo`].
+    /// Arranca el motor y espera a que cargue el modelo. Devuelve el motor y lo que tardó en cargar.
+    ///
+    /// Si otro programa ocupa el puerto justo antes que el motor (raro, pero posible), lo reintenta con otro
+    /// puerto, hasta [`INTENTOS_PUERTO`] veces.
+    pub fn arrancar_listo(
+        config: &ConfigMotor,
+        espera_maxima: Duration,
+        cancelar: &AtomicBool,
+    ) -> Result<(Motor, Duration), ErrorMotor> {
+        Motor::arrancar_listo_con(config, espera_maxima, cancelar, puerto_libre)
+    }
+
+    /// Como [`Motor::arrancar_listo`], eligiendo el puerto con `elegir_puerto` (para poder probar el reintento).
+    pub(crate) fn arrancar_listo_con(
+        config: &ConfigMotor,
+        espera_maxima: Duration,
+        cancelar: &AtomicBool,
+        mut elegir_puerto: impl FnMut() -> Result<u16, ErrorMotor>,
+    ) -> Result<(Motor, Duration), ErrorMotor> {
+        let mut intento = 1;
+        loop {
+            let mut motor = Motor::arrancar_en(config, elegir_puerto()?)?;
+            match motor.esperar_listo(espera_maxima, cancelar) {
+                Ok(tiempo) => return Ok((motor, tiempo)),
+                Err(ErrorMotor::TerminoAlCargar {
+                    causa: Causa::PuertoOcupado,
+                    ..
+                }) if intento < INTENTOS_PUERTO => intento += 1,
+                Err(e) => return Err(e),
+            }
+        }
+    }
+
+    /// Lanza el motor. Vuelve enseguida: para esperar a que cargue el modelo, usa [`Motor::esperar_listo`]
+    /// (o todo junto, con reintento si el puerto se ocupa: [`Motor::arrancar_listo`]).
     pub fn arrancar(config: &ConfigMotor) -> Result<Motor, ErrorMotor> {
+        Motor::arrancar_en(config, puerto_libre()?)
+    }
+
+    pub(crate) fn arrancar_en(config: &ConfigMotor, puerto: u16) -> Result<Motor, ErrorMotor> {
         for ruta in [&config.ejecutable, &config.modelo] {
             if !ruta.is_file() {
                 return Err(ErrorMotor::NoEncontrado(ruta.clone()));
@@ -185,7 +253,6 @@ impl Motor {
         locall_system::validar_hilos(config.hilos).map_err(ErrorMotor::Hilos)?;
 
         let clave = generar_clave()?;
-        let puerto = puerto_libre()?;
 
         // El trabajo se crea ANTES de lanzar el motor: si no se puede, no arrancamos.
         let trabajo = Trabajo::nuevo().contexto(|| "crear el Job Object".into())?;
@@ -249,6 +316,7 @@ impl Motor {
             {
                 return Err(ErrorMotor::TerminoAlCargar {
                     codigo: estado.code(),
+                    causa: errores::causa_en_archivo(&self.registro),
                     registro: self.registro.clone(),
                 });
             }
@@ -349,7 +417,7 @@ fn generar_clave() -> Result<String, ErrorMotor> {
 /// Pide a Windows un puerto libre (abrir en el puerto 0 hace que el sistema elija uno) y lo libera para el motor.
 ///
 /// Hay un instante en que otro programa podría ocuparlo; entonces el motor no arranca y se ve como
-/// [`ErrorMotor::TerminoAlCargar`]. La parte 8c lo reconocerá en el registro para reintentar con otro puerto.
+/// [`ErrorMotor::TerminoAlCargar`] con [`Causa::PuertoOcupado`], y [`Motor::arrancar_listo`] reintenta con otro.
 fn puerto_libre() -> Result<u16, ErrorMotor> {
     let oyente = TcpListener::bind("127.0.0.1:0").contexto(|| "buscar un puerto libre".into())?;
     Ok(oyente

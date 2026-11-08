@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use comun::motor_listo;
-use locall_engine::{ErrorMotor, Evento, Fin, Mensaje, PeticionChat, Rol};
+use locall_engine::{Causa, ErrorMotor, Evento, Fin, Mensaje, PeticionChat, Rol};
 
 fn pregunta(texto: &str, max_tokens: u32) -> PeticionChat {
     PeticionChat {
@@ -131,12 +131,14 @@ fn informa_si_el_prompt_no_cabe() {
         .chat(&pregunta(&enorme, 10), &AtomicBool::new(false), |_| {})
         .unwrap_err();
 
-    match error {
-        ErrorMotor::Respuesta { estado, tipo, .. } => {
-            assert_eq!(estado, 400);
-            assert_eq!(tipo, "exceed_context_size_error");
-        }
-        otro => panic!("error inesperado: {otro:?}"),
+    eprintln!("mensaje: {error}");
+    assert!(matches!(error, ErrorMotor::Respuesta { estado: 400, .. }));
+    match error.causa() {
+        Causa::ContextoExcedido {
+            pedidos: Some(p),
+            maximo: Some(2048),
+        } => assert!(p > 2048),
+        otra => panic!("causa inesperada: {otra:?}"),
     }
     drop(motor);
     let _ = std::fs::remove_file(&config.registro);

@@ -196,3 +196,133 @@ fn construye_el_cuerpo_de_la_peticion() {
         "sin temperatura, la del modelo"
     );
 }
+
+// ─── Errores comprensibles ───────────────────────────────────────────────────
+
+use crate::Causa;
+use crate::errores::{causa_de_respuesta, causa_en_registro};
+
+// Líneas reales del registro de llama-server b12189, provocando cada fallo.
+const REG_PUERTO: &str = "0.00.020.056 E srv         start: couldn't bind HTTP server socket, hostname: 127.0.0.1, port: 18993\n0.00.020.177 E srv  server_run_i: exiting due to HTTP server error";
+const REG_ARQUITECTURA: &str = "0.00.037.414 E llama_model_load: error loading model: unknown model architecture: 'inventada'\n0.00.037.418 E llama_model_load_from_file_impl: failed to load model";
+const REG_CORTADO: &str = "0.00.058.140 E llama_model_load: error loading model: tensor 'token_embd.weight' data is not within the file bounds, model is corrupted or incomplete\n0.00.058.159 E llama_model_load_from_file_impl: failed to load model";
+const REG_MEMORIA: &str = "0.00.886.245 E llama_init_from_model: failed to initialize the context: failed to allocate buffer for kv cache\n0.00.886.255 E cmn  common_init_: failed to create context with model 'C:/Users/ana/modelos/qwen.gguf'";
+const REG_NO_GGUF: &str = "0.00.026.345 E llama_model_load: error loading model: llama_model_loader: failed to load model from danado.gguf\n0.00.026.345 E llama_model_load_from_file_impl: failed to load model";
+
+#[test]
+fn reconoce_los_fallos_de_carga() {
+    assert_eq!(causa_en_registro(REG_PUERTO), Causa::PuertoOcupado);
+    assert_eq!(
+        causa_en_registro(REG_ARQUITECTURA),
+        Causa::ArquitecturaNoSoportada("inventada".into())
+    );
+    assert_eq!(causa_en_registro(REG_CORTADO), Causa::ModeloDanado);
+    assert_eq!(causa_en_registro(REG_MEMORIA), Causa::MemoriaInsuficiente);
+    assert_eq!(causa_en_registro(REG_NO_GGUF), Causa::ModeloDanado);
+    assert_eq!(causa_en_registro("algo nuevo y raro"), Causa::Desconocida);
+}
+
+#[test]
+fn reconoce_los_errores_de_respuesta() {
+    assert_eq!(
+        causa_de_respuesta(
+            400,
+            "exceed_context_size_error",
+            "request (6030 tokens) exceeds the available context size (2048 tokens), try increasing it"
+        ),
+        Causa::ContextoExcedido {
+            pedidos: Some(6030),
+            maximo: Some(2048)
+        }
+    );
+    assert_eq!(
+        causa_de_respuesta(401, "authentication_error", "Invalid API Key"),
+        Causa::ClaveRechazada
+    );
+    assert_eq!(
+        causa_de_respuesta(503, "unavailable_error", "Loading model"),
+        Causa::Cargando
+    );
+    assert_eq!(
+        causa_de_respuesta(500, "server_error", "x"),
+        Causa::Desconocida
+    );
+}
+
+#[test]
+fn los_mensajes_son_propios_y_sin_rutas() {
+    // Un error desconocido del motor NO muestra su mensaje (podría llevar la ruta, con el usuario de Windows).
+    let error = ErrorMotor::Respuesta {
+        estado: 500,
+        tipo: "server_error".into(),
+        mensaje: "fallo leyendo C:/Users/ana/modelos/qwen.gguf".into(),
+    };
+    let texto = error.to_string();
+    assert!(!texto.contains("ana"), "{texto}");
+    assert!(texto.contains("server_error"));
+
+    // Uno reconocido se explica en español.
+    let error = ErrorMotor::TerminoAlCargar {
+        codigo: Some(1),
+        causa: Causa::ModeloDanado,
+        registro: PathBuf::from("r.log"),
+    };
+    assert!(error.to_string().contains("vuelve a descargarlo"));
+    assert_eq!(error.causa(), Causa::ModeloDanado);
+}
+
+/// Motor y modelo reales para las pruebas de este módulo (o `None` si faltan).
+fn config_real(nombre: &str) -> Option<ConfigMotor> {
+    let ejecutable = PathBuf::from(r"C:\Locall-poc\motor\cpu\llama-server.exe");
+    let modelo = PathBuf::from(r"C:\Locall-poc\modelos\qwen2.5-1.5b-instruct-q4_k_m.gguf");
+    if !ejecutable.is_file() || !modelo.is_file() {
+        eprintln!("(prueba saltada: faltan el motor o el modelo)");
+        return None;
+    }
+    Some(ConfigMotor {
+        ejecutable,
+        modelo,
+        contexto: 2048,
+        hilos: locall_system::hilos_para_motor(),
+        capas_gpu: 0,
+        registro: std::env::temp_dir()
+            .join(format!("locall-motor-{nombre}-{}.log", std::process::id())),
+    })
+}
+
+#[test]
+fn reintenta_si_otro_programa_ocupa_el_puerto() {
+    let Some(config) = config_real("puerto") else {
+        return;
+    };
+    // "Otro programa" ocupa un puerto, y hacemos que sea el primero que se elige.
+    let ocupante = TcpListener::bind("127.0.0.1:0").unwrap();
+    let ocupado = ocupante.local_addr().unwrap().port();
+    let mut elegidos = Vec::new();
+
+    let (motor, _) = Motor::arrancar_listo_con(
+        &config,
+        Duration::from_secs(120),
+        &AtomicBool::new(false),
+        || {
+            let puerto = if elegidos.is_empty() {
+                ocupado
+            } else {
+                puerto_libre()?
+            };
+            elegidos.push(puerto);
+            Ok(puerto)
+        },
+    )
+    .unwrap();
+
+    assert_eq!(
+        elegidos.len(),
+        2,
+        "un fallo por el puerto ocupado y un acierto"
+    );
+    assert_ne!(motor.puerto(), ocupado);
+    drop(motor);
+    drop(ocupante);
+    let _ = std::fs::remove_file(&config.registro);
+}
