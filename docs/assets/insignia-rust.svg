@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="88" height="22" role="img" aria-label="rust: 1.99+">
+  <title>rust: 1.99+</title>
+  <rect width="88" height="22" rx="4" fill="#5B7464"/>
+  <rect width="41" height="22" rx="4" fill="#2B2B2B"/>
+  <rect x="37" width="4" height="22" fill="#2B2B2B"/>
+  <g fill="#FFFFFF" font-family="Segoe UI,Verdana,DejaVu Sans,sans-serif" font-size="11.5" text-anchor="middle">
+    <text x="20" y="15">rust</text>
+    <text x="64" y="15" font-weight="600">1.99+</text>
+  </g>
+</svg>
