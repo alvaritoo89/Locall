@@ -1,11 +1,11 @@
-"""Prueba de Locall con el cliente OFICIAL de OpenAI (paquete `openai` de Python). ADR 0016.
+r"""Prueba de Locall con el cliente OFICIAL de OpenAI (paquete `openai` de Python). ADR 0016.
 
 No forma parte de `cargo test` porque necesita instalar el paquete `openai`. Para repetirla:
 
-    python -m venv %TEMP%env-openai
-    %TEMP%env-openai\Scripts\python -m pip install openai
+    python -m venv %TEMP%\venv-openai
+    %TEMP%\venv-openai\Scripts\python -m pip install openai
     (con `locall serve` en marcha y un modelo instalado como «qwen»)
-    %TEMP%env-openai\Scripts\python scripts\probar_openai.py %LOCALAPPDATA%\Locall	oken 11470
+    %TEMP%\venv-openai\Scripts\python scripts\probar_openai.py %LOCALAPPDATA%\Locall\token 11470
 
 Comprueba: lista de modelos, respuesta entera, por trozos con el uso al final, y que los errores (función no
 admitida, clave incorrecta, modelo inexistente) llegan como las excepciones que espera el cliente.
