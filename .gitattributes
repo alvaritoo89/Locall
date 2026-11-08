@@ -1,0 +1,7 @@
+# Finales de línea uniformes (LF) dentro del repositorio, sea cual sea el sistema operativo.
+* text=auto eol=lf
+
+# Archivos binarios: nunca tocar
+*.png binary
+*.ico binary
+*.gguf binary

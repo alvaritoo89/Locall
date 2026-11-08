@@ -1,0 +1,17 @@
+# Resultados de compilación de Rust
+/target/
+
+# Modelos y motores: nunca van al repositorio (pesan gigas y tienen sus propias licencias)
+*.gguf
+/engines/bin/
+
+# Archivos locales de editores y del sistema
+.vscode/
+.idea/
+*.swp
+Thumbs.db
+desktop.ini
+
+# Secretos locales (por si acaso)
+*.key
+.env
