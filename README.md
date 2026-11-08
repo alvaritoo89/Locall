@@ -81,6 +81,7 @@ Pruebas reales en un portátil normal (Intel Core i5-1334U, gráfica integrada I
 | [`crates/locall-download`](crates/locall-download) | Descargas verificadas por sha256, reanudables y con detección de atascos |
 | [`crates/locall-engine`](crates/locall-engine) | Arranca, vigila y para `llama-server` de forma segura y conversa con él por trozos (con cancelación) |
 | [`crates/locall-scheduler`](crates/locall-scheduler) | Planificador: un modelo a la vez, comprobación de memoria antes de cargar, cola por orden de llegada y descarga por inactividad |
+| [`crates/locall-config`](crates/locall-config) | Carpeta de datos y ajustes del usuario (`config.toml`), validados con mensajes claros |
 | [`docs/adr`](docs/adr) | Decisiones de arquitectura y sus motivos |
 
 ## Desarrollo

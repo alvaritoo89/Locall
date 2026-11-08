@@ -1,0 +1,184 @@
+//! Pruebas de los ajustes de Locall.
+
+use std::path::PathBuf;
+use std::time::Duration;
+
+use locall_config::{ARCHIVO_POR_DEFECTO, Aviso, Config, ErrorConfig, Hilos, Rutas};
+
+struct CarpetaDePrueba(PathBuf);
+
+impl CarpetaDePrueba {
+    fn nueva(nombre: &str) -> CarpetaDePrueba {
+        let ruta =
+            std::env::temp_dir().join(format!("locall-config-{nombre}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&ruta);
+        CarpetaDePrueba(ruta)
+    }
+}
+
+impl Drop for CarpetaDePrueba {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+/// El mensaje de error de un texto de configuración.
+fn error_de(texto: &str) -> String {
+    Config::desde_texto(texto).unwrap_err().to_string()
+}
+
+#[test]
+fn el_archivo_por_defecto_da_los_valores_por_defecto() {
+    let (config, avisos) = Config::desde_texto(ARCHIVO_POR_DEFECTO).unwrap();
+    assert_eq!(config, Config::default());
+    assert!(avisos.is_empty());
+}
+
+#[test]
+fn lee_unos_ajustes_cambiados() {
+    let texto = "carpeta_modelos = 'D:\\Modelos IA'\r\nhilos = 4\r\ncontexto = 8_192\r\n\
+                 inactividad_minutos = 0\r\nparalelo = 2\r\nregistros_dias = 30\r\n";
+    let (config, _) = Config::desde_texto(texto).unwrap();
+    assert_eq!(
+        config.carpeta_modelos,
+        Some(PathBuf::from(r"D:\Modelos IA"))
+    );
+    assert_eq!(config.hilos, Hilos::Numero(4));
+    assert_eq!(config.hilos_para_motor(), 4);
+    assert_eq!(config.contexto, 8192);
+    assert_eq!(config.inactividad(), None, "0 = no descargar nunca");
+    assert_eq!(config.paralelo, 2);
+    assert_eq!(config.registros_dias, 30);
+}
+
+#[test]
+fn los_valores_no_validos_se_explican() {
+    // El fallo de la Fase 0: 246 hilos en un equipo de 12. Aquí, un número que ningún equipo tiene.
+    let m = error_de("hilos = 100000");
+    assert!(
+        m.contains("línea 1") && m.contains("hilos") && m.contains("entre 1 y"),
+        "{m}"
+    );
+
+    let m = error_de("\ncontexto = 10");
+    assert!(
+        m.contains("línea 2") && m.contains("entre 256 y 1048576"),
+        "{m}"
+    );
+
+    let m = error_de("paralelo = 0");
+    assert!(m.contains("entre 1 y 16"), "{m}");
+
+    let m = error_de("hilos = 'muchos'");
+    assert!(m.contains("\"auto\" o un número"), "{m}");
+
+    let m = error_de("contexto = '4096'");
+    assert!(m.contains("sin comillas"), "{m}");
+
+    let m = error_de("carpeta_modelos = 'modelos'");
+    assert!(m.contains("ruta completa"), "{m}");
+
+    let m = error_de("carpeta_modelos = \"C:\\Modelos\"");
+    assert!(m.contains("comillas simples"), "{m}");
+}
+
+#[test]
+fn una_clave_desconocida_es_un_aviso() {
+    let (config, avisos) = Config::desde_texto("contexto = 2048\ncontexo = 9999\n").unwrap();
+    assert_eq!(config.contexto, 2048);
+    assert_eq!(
+        avisos,
+        [Aviso::ClaveDesconocida {
+            linea: 2,
+            clave: "contexo".into()
+        }]
+    );
+    assert!(avisos[0].to_string().contains("«contexo» no existe"));
+}
+
+#[test]
+fn hilos_auto_usa_todos() {
+    let (config, _) = Config::desde_texto("hilos = 'AUTO'").unwrap();
+    assert_eq!(config.hilos, Hilos::Auto);
+    assert_eq!(config.hilos_para_motor(), locall_system::hilos_para_motor());
+}
+
+#[test]
+fn inactividad_en_minutos() {
+    let config = Config::default();
+    assert_eq!(config.inactividad(), Some(Duration::from_secs(5 * 60)));
+}
+
+#[test]
+fn las_rutas_cuelgan_de_la_carpeta_de_datos() {
+    let rutas = Rutas::en(r"C:\Datos\Locall");
+    assert_eq!(
+        rutas.config(),
+        PathBuf::from(r"C:\Datos\Locall\config.toml")
+    );
+    assert_eq!(
+        rutas.base_de_datos(),
+        PathBuf::from(r"C:\Datos\Locall\locall.db")
+    );
+    assert_eq!(
+        rutas.registros(),
+        PathBuf::from(r"C:\Datos\Locall\registros")
+    );
+    assert_eq!(
+        Config::default().carpeta_modelos(&rutas),
+        PathBuf::from(r"C:\Datos\Locall\modelos")
+    );
+}
+
+#[test]
+fn la_carpeta_por_defecto_esta_en_appdata_local() {
+    // Solo si la prueba no se ejecuta con LOCALL_DATOS (que la sustituye).
+    if std::env::var_os("LOCALL_DATOS").is_some() {
+        return;
+    }
+    let rutas = Rutas::por_defecto().unwrap();
+    let local = PathBuf::from(std::env::var_os("LOCALAPPDATA").unwrap());
+    assert_eq!(rutas.datos(), local.join("Locall"));
+    assert!(!rutas.datos().to_string_lossy().contains("Roaming"));
+}
+
+#[test]
+fn sin_archivo_se_usan_los_valores_por_defecto() {
+    let carpeta = CarpetaDePrueba::nueva("sin-archivo");
+    let (config, avisos) = Config::leer(&carpeta.0.join("config.toml")).unwrap();
+    assert_eq!(config, Config::default());
+    assert!(avisos.is_empty());
+}
+
+#[test]
+fn crea_el_archivo_pero_nunca_pisa_el_del_usuario() {
+    let carpeta = CarpetaDePrueba::nueva("crear");
+    let rutas = Rutas::en(carpeta.0.clone());
+
+    assert!(
+        Config::crear_si_no_existe(&rutas).unwrap(),
+        "la primera vez lo crea"
+    );
+    assert_eq!(
+        std::fs::read_to_string(rutas.config()).unwrap(),
+        ARCHIVO_POR_DEFECTO
+    );
+
+    // El usuario lo cambia…
+    std::fs::write(rutas.config(), "contexto = 2048\n").unwrap();
+    // …y Locall no lo vuelve a crear ni lo pisa.
+    assert!(!Config::crear_si_no_existe(&rutas).unwrap());
+    let (config, _) = Config::leer(&rutas.config()).unwrap();
+    assert_eq!(config.contexto, 2048);
+}
+
+#[test]
+fn un_archivo_que_no_es_texto_se_explica() {
+    let carpeta = CarpetaDePrueba::nueva("binario");
+    std::fs::create_dir_all(&carpeta.0).unwrap();
+    let ruta = carpeta.0.join("config.toml");
+    std::fs::write(&ruta, [0xFF, 0xFE, 0x00, 0x41]).unwrap(); // UTF-16, como guardan algunos editores
+    let error = Config::leer(&ruta).unwrap_err();
+    assert!(matches!(error, ErrorConfig::Sintaxis { .. }), "{error:?}");
+    assert!(error.to_string().contains("UTF-8"));
+}

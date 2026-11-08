@@ -235,6 +235,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "locall-config"
+version = "0.0.1"
+dependencies = [
+ "locall-system",
+]
+
+[[package]]
 name = "locall-download"
 version = "0.0.1"
 dependencies = [
