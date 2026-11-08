@@ -40,8 +40,12 @@
 
 - **Comprobado** con pruebas que siguen el formato documentado de OpenAI, contra el motor real: respuesta entera,
   SSE con uso al final y errores.
-- **No comprobado todavía** con un cliente oficial (el SDK de OpenAI no está instalado en el equipo de desarrollo) ni
-  con herramientas como Continue u Open WebUI. Hasta probarlo, no se anuncia compatibilidad con ellas.
+- **Comprobado con el cliente oficial** `openai` 3.46.0 de Python (2026-11-08, `scripts/probar_openai.py`):
+  `models.list()`, respuesta entera, `stream=True` con `include_usage`, y los errores llegan como las excepciones
+  que espera el cliente (`BadRequestError` con «tools», `AuthenticationError`, `NotFoundError`), con nuestro mensaje
+  en español.
+- **No comprobado todavía** con herramientas como Continue u Open WebUI. Hasta probarlas, no se anuncia
+  compatibilidad con ellas.
 - Las herramientas que se ejecutan **dentro de un navegador** envían `Origin` y se rechazan (ADR 0015); las que
   hablan desde un servidor o una extensión, no.
 
