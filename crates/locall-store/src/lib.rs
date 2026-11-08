@@ -8,12 +8,21 @@
 //! ```text
 //! <raíz>\
 //! ├── blobs\sha256-<64 caracteres hexadecimales>   ← el contenido, verificado
-//! ├── snapshots\...                                 ← (parte 3b) nombres originales, con enlaces duros
+//! ├── snapshots\<modelo>\<revisión>\<nombre original>   ← enlaces duros a los blobs (0 bytes extra)
 //! └── tmp\                                          ← archivos a medio guardar
 //! ```
 //!
 //! Guardar es **atómico**: el archivo se escribe en `tmp\`, se verifica y solo entonces se mueve a `blobs\`.
 //! Si algo falla a mitad, en `blobs\` nunca queda un archivo incompleto.
+//!
+//! Las **carpetas snapshot** existen porque llama.cpp encuentra las partes de un modelo dividido por su nombre
+//! (`…-00001-of-00002.gguf`): ahí cada archivo aparece con su nombre original, como enlace duro al blob.
+
+mod nombres;
+mod snapshot;
+
+pub use nombres::{NombreArchivo, Segmento};
+pub use snapshot::Snapshot;
 
 use std::fmt;
 use std::fs::{self, File};
@@ -80,6 +89,15 @@ pub enum ErrorAlmacen {
     HuellaInvalida(String),
     /// El contenido no coincide con la huella esperada: el archivo está dañado o no es el que debía ser.
     HuellaNoCoincide { esperada: Huella, obtenida: Huella },
+    /// Un nombre de archivo o de carpeta no es seguro (rutas, caracteres prohibidos, nombres reservados…).
+    NombreInvalido {
+        nombre: String,
+        motivo: &'static str,
+    },
+    /// Se pidió usar un archivo que no está en el almacén.
+    BlobNoEncontrado(Huella),
+    /// Una carpeta snapshot sin archivos.
+    SnapshotVacio,
 }
 
 impl fmt::Display for ErrorAlmacen {
@@ -91,6 +109,11 @@ impl fmt::Display for ErrorAlmacen {
                 f,
                 "el archivo no coincide con el original (esperada {esperada}, obtenida {obtenida}); se ha descartado"
             ),
+            ErrorAlmacen::NombreInvalido { nombre, motivo } => {
+                write!(f, "nombre no válido «{nombre}»: {motivo}")
+            }
+            ErrorAlmacen::BlobNoEncontrado(h) => write!(f, "el archivo {h} no está en el almacén"),
+            ErrorAlmacen::SnapshotVacio => write!(f, "un modelo necesita al menos un archivo"),
         }
     }
 }
@@ -125,6 +148,7 @@ impl<T> ConContexto<T> for io::Result<T> {
 pub struct Almacen {
     raiz: PathBuf,
     blobs: PathBuf,
+    snapshots: PathBuf,
     tmp: PathBuf,
 }
 
@@ -136,12 +160,49 @@ impl Almacen {
     pub fn abrir(raiz: impl Into<PathBuf>) -> Result<Almacen, ErrorAlmacen> {
         let raiz = raiz.into();
         let blobs = raiz.join("blobs");
+        let snapshots = raiz.join("snapshots");
         let tmp = raiz.join("tmp");
-        for carpeta in [&blobs, &tmp] {
+        for carpeta in [&blobs, &snapshots, &tmp] {
             fs::create_dir_all(carpeta)
                 .contexto(|| format!("crear la carpeta {}", carpeta.display()))?;
         }
-        Ok(Almacen { raiz, blobs, tmp })
+        Ok(Almacen {
+            raiz,
+            blobs,
+            snapshots,
+            tmp,
+        })
+    }
+
+    /// Incorpora al almacén un archivo que **ya está en este mismo disco**, sin copiarlo: verifica su huella y crea
+    /// un enlace duro en `blobs\`. Útil para importar modelos ya descargados sin gastar el doble de espacio.
+    ///
+    /// Importante: el blob y el archivo original pasan a ser **el mismo archivo**. Si alguien modificara el
+    /// original, el blob también cambiaría; por eso Locall solo debe adoptar archivos que no se vayan a tocar.
+    pub fn adoptar_archivo(
+        &self,
+        origen: &Path,
+        esperada: Option<&Huella>,
+    ) -> Result<Huella, ErrorAlmacen> {
+        let huella = huella_de_archivo(origen)?;
+        if let Some(esperada) = esperada
+            && *esperada != huella
+        {
+            return Err(ErrorAlmacen::HuellaNoCoincide {
+                esperada: esperada.clone(),
+                obtenida: huella,
+            });
+        }
+        let destino = self.ruta_blob(&huella);
+        if !destino.is_file() {
+            fs::hard_link(origen, &destino).contexto(|| {
+                format!(
+                    "enlazar {} en el almacén (¿está en otro disco?)",
+                    origen.display()
+                )
+            })?;
+        }
+        Ok(huella)
     }
 
     /// La carpeta raíz del almacén.

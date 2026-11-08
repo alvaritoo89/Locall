@@ -75,6 +75,7 @@ version = "0.0.1"
 name = "locall-store"
 version = "0.0.1"
 dependencies = [
+ "locall-gguf",
  "sha2",
 ]
 
