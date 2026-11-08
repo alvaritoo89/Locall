@@ -117,6 +117,11 @@ impl Almacen {
         for entrada in entradas {
             let entrada = entrada.contexto(|| "leer una entrada de tmp".into())?;
             let ruta = entrada.path();
+            // Las descargas pausadas (`.parcial`) NO son basura: se reanudan la próxima vez. Solo se borran si el
+            // usuario cancela la descarga.
+            if ruta.extension().is_some_and(|e| e == "parcial") {
+                continue;
+            }
             let Ok(metadatos) = entrada.metadata() else {
                 continue;
             };
@@ -248,18 +253,36 @@ mod pruebas {
         let tmp = almacen.raiz().join("tmp");
         let viejo = tmp.join("viejo.tmp");
         let reciente = tmp.join("reciente.tmp");
-        fs::write(&viejo, b"x").unwrap();
-        fs::write(&reciente, b"x").unwrap();
+        let pausada = tmp.join("sha256-abc.parcial"); // una descarga pausada, también antigua
+        for ruta in [&viejo, &reciente, &pausada] {
+            fs::write(ruta, b"x").unwrap();
+        }
         let hace_dos_horas = SystemTime::now() - Duration::from_secs(2 * 60 * 60);
-        File::options()
-            .write(true)
-            .open(&viejo)
-            .unwrap()
-            .set_modified(hace_dos_horas)
-            .unwrap();
+        for ruta in [&viejo, &pausada] {
+            File::options()
+                .write(true)
+                .open(ruta)
+                .unwrap()
+                .set_modified(hace_dos_horas)
+                .unwrap();
+        }
 
         assert_eq!(almacen.limpiar_temporales().unwrap(), 1);
         assert!(!viejo.exists());
         assert!(reciente.exists());
+        assert!(pausada.exists(), "una descarga pausada no se borra");
+    }
+
+    #[test]
+    fn confirma_una_descarga_verificada() {
+        let carpeta = CarpetaDePrueba::nueva("confirmar");
+        let almacen = Almacen::abrir(carpeta.0.join("a")).unwrap();
+        let huella = crate::huella_de_bytes(b"abc");
+        fs::write(almacen.ruta_parcial(&huella), b"abc").unwrap();
+
+        almacen.confirmar_parcial(&huella).unwrap();
+
+        assert!(almacen.contiene(&huella));
+        assert!(!almacen.ruta_parcial(&huella).exists());
     }
 }

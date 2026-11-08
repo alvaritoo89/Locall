@@ -1,0 +1,15 @@
+[package]
+name = "locall-download"
+description = "Descargador de Locall: descargas verificadas por sha256, reanudables y con detección de atascos."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+locall-store = { path = "../locall-store" }
+sha2 = "0.11.1"
+# HTTPS con el TLS de Windows (SChannel) y sus certificados (ADR 0010). Sin rustls ni funciones opcionales.
+ureq = { version = "3.5.1", default-features = false, features = ["native-tls-no-default"] }

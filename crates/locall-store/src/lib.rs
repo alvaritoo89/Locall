@@ -73,6 +73,19 @@ impl Huella {
     fn desde_bytes(bytes: &[u8]) -> Huella {
         Huella(bytes.iter().map(|b| format!("{b:02x}")).collect())
     }
+
+    /// Construye la huella a partir de un resultado de sha256 calculado fuera del almacén (por ejemplo, por el
+    /// descargador mientras descarga). Exige exactamente 32 bytes.
+    pub fn desde_sha256(resultado: &[u8]) -> Result<Huella, ErrorAlmacen> {
+        if resultado.len() == 32 {
+            Ok(Huella::desde_bytes(resultado))
+        } else {
+            Err(ErrorAlmacen::HuellaInvalida(format!(
+                "{} bytes (se esperaban 32)",
+                resultado.len()
+            )))
+        }
+    }
 }
 
 impl fmt::Display for Huella {
@@ -239,6 +252,24 @@ impl Almacen {
         self.ruta_blob(huella).is_file()
     }
 
+    /// Dónde se guarda una descarga a medias del archivo con esta huella: `tmp\sha256-<hex>.parcial`.
+    /// Al usar la huella como nombre, una descarga interrumpida se reanuda sola la próxima vez.
+    pub fn ruta_parcial(&self, huella: &Huella) -> PathBuf {
+        self.tmp.join(format!("{}.parcial", huella.nombre_blob()))
+    }
+
+    /// Pasa a `blobs\` una descarga ya completa **y verificada por quien la descargó**. Es instantáneo (mover dentro
+    /// del mismo disco) y atómico. Si el blob ya existía, se descarta la copia descargada.
+    pub fn confirmar_parcial(&self, huella: &Huella) -> Result<(), ErrorAlmacen> {
+        let origen = self.ruta_parcial(huella);
+        let destino = self.ruta_blob(huella);
+        if destino.is_file() {
+            fs::remove_file(&origen).contexto(|| format!("borrar {}", origen.display()))?;
+            return Ok(());
+        }
+        fs::rename(&origen, &destino).contexto(|| format!("mover a {}", destino.display()))
+    }
+
     /// Guarda una copia del archivo `origen` en el almacén y devuelve su huella.
     ///
     /// Si se indica `esperada` y el contenido no coincide, no se guarda nada y se devuelve
@@ -308,6 +339,11 @@ impl Almacen {
         }
         Ok(huella)
     }
+}
+
+/// Calcula la huella sha256 de unos bytes en memoria.
+pub fn huella_de_bytes(datos: &[u8]) -> Huella {
+    Huella::desde_bytes(&Sha256::digest(datos))
 }
 
 /// Calcula la huella sha256 de un archivo sin copiarlo (por ejemplo, para verificar un modelo ya descargado).
