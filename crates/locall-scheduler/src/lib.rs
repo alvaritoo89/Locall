@@ -3,7 +3,7 @@
 //! El planificador decide **qué modelo está cargado**. La app, la API y la CLI no hablan con el motor
 //! directamente: piden al planificador "quiero usar este modelo" y reciben un [`Prestamo`].
 //!
-//! Reglas (parte 9a):
+//! Reglas:
 //!
 //! 1. **Un solo modelo a la vez** (cabe en equipos de 16 GB; decisión de la Fase 0). Si piden el mismo modelo con la
 //!    misma configuración, se reutiliza; si piden otro, se para el actual y se arranca el nuevo.
@@ -11,13 +11,17 @@
 //!    Varios pueden tener a la vez un préstamo del *mismo* modelo.
 //! 3. Si el modelo lleva [`Opciones::inactividad`] sin usarse y nadie lo tiene prestado, **se descarga solo** para
 //!    liberar la RAM.
+//! 4. **Cola por orden de llegada:** se atiende a quien llegó primero. Quien pide el modelo ya cargado no se cuela
+//!    por delante de quien espera otro modelo (si no, ese podría esperar para siempre). Se puede **cancelar**
+//!    mientras se espera turno.
 //!
 //! El planificador no conoce `llama-server`: trabaja con cualquier [`Arrancador`]. Locall usa [`ArrancadorReal`]
 //! (el motor de `locall-engine`); las pruebas usan uno de imitación, rápido y exacto.
 
+use std::collections::VecDeque;
 use std::fmt;
 use std::ops::Deref;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
@@ -105,6 +109,38 @@ pub enum Estado {
     Listo { modelo: String, en_uso: usize },
 }
 
+/// Lo que puede salir mal al pedir un modelo.
+#[derive(Debug)]
+pub enum ErrorPlanificador<E> {
+    /// Se canceló mientras esperaba su turno.
+    Cancelado,
+    /// El motor no pudo arrancar.
+    Motor(E),
+}
+
+impl<E: fmt::Display> fmt::Display for ErrorPlanificador<E> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ErrorPlanificador::Cancelado => {
+                write!(f, "petición cancelada mientras esperaba su turno")
+            }
+            ErrorPlanificador::Motor(e) => write!(f, "{e}"),
+        }
+    }
+}
+
+impl<E: std::error::Error + 'static> std::error::Error for ErrorPlanificador<E> {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            ErrorPlanificador::Cancelado => None,
+            ErrorPlanificador::Motor(e) => Some(e),
+        }
+    }
+}
+
+/// Cada cuánto mira la petición en espera si la han cancelado.
+const MIRAR_CANCELACION: Duration = Duration::from_millis(50);
+
 // ─── El planificador ─────────────────────────────────────────────────────────
 
 /// El planificador. Se comparte entre hilos con una referencia (`&Planificador`) o un `Arc<Planificador>`.
@@ -133,6 +169,10 @@ struct Interno<M> {
     ultimo_uso: Instant,
     /// El planificador se está cerrando: el vigilante debe terminar.
     cerrando: bool,
+    /// Turnos de las peticiones que esperan, por orden de llegada.
+    cola: VecDeque<u64>,
+    /// Número del próximo turno que se reparte.
+    siguiente_turno: u64,
 }
 
 struct Cargado<M> {
@@ -151,6 +191,8 @@ impl<A: Arrancador> Planificador<A> {
                 prestamos: 0,
                 ultimo_uso: Instant::now(),
                 cerrando: false,
+                cola: VecDeque::new(),
+                siguiente_turno: 0,
             }),
             cambio: Condvar::new(),
         });
@@ -167,40 +209,62 @@ impl<A: Arrancador> Planificador<A> {
 
     /// Pide usar el modelo de `carga`. Si hace falta, para el modelo actual y carga este.
     ///
-    /// **Bloquea** mientras otro hilo esté cargando un modelo o mientras otro modelo tenga préstamos activos.
-    pub fn usar(&self, carga: &Carga) -> Result<Prestamo<A>, A::Error> {
+    /// **Bloquea** hasta que sea su turno. Para poder cancelar la espera, usa [`Planificador::usar_con`].
+    pub fn usar(&self, carga: &Carga) -> Result<Prestamo<A>, ErrorPlanificador<A::Error>> {
+        self.usar_con(carga, &AtomicBool::new(false))
+    }
+
+    /// Como [`Planificador::usar`], pero si otro hilo pone `cancelar` a `true` mientras espera su turno, se va de
+    /// la cola con [`ErrorPlanificador::Cancelado`]. (Una carga ya empezada no se interrumpe.)
+    pub fn usar_con(
+        &self,
+        carga: &Carga,
+        cancelar: &AtomicBool,
+    ) -> Result<Prestamo<A>, ErrorPlanificador<A::Error>> {
         let c = &self.compartido;
         let mut estado = c.bloquear();
+
+        // Coger turno, como en la pescadería.
+        let turno = estado.siguiente_turno;
+        estado.siguiente_turno += 1;
+        estado.cola.push_back(turno);
+
         loop {
-            // 1) Alguien está cargando: esperar a que termine (quizá sea justo nuestro modelo).
-            if estado.cargando.is_some() {
-                estado = c.esperar(estado);
-                continue;
+            if cancelar.load(Ordering::Relaxed) {
+                estado.cola.retain(|&t| t != turno);
+                drop(estado);
+                c.cambio.notify_all(); // el siguiente de la cola quizá ya puede pasar
+                return Err(ErrorPlanificador::Cancelado);
             }
-            // 2) Ya está cargado el que queremos: prestarlo.
-            // (Primero se copia el `Arc` del motor y se termina de leer; después se modifica el estado: Rust no
-            // deja modificar algo mientras se está leyendo.)
-            let mismo = estado
-                .actual
-                .as_ref()
-                .filter(|actual| actual.carga == *carga)
-                .map(|actual| Arc::clone(&actual.motor));
-            if let Some(motor) = mismo {
-                estado.prestamos += 1;
-                return Ok(Prestamo {
-                    motor,
-                    compartido: Arc::clone(c),
-                });
+            // Solo actúa el primero de la cola, y nunca mientras alguien está cargando un modelo.
+            if estado.cola.front() == Some(&turno) && estado.cargando.is_none() {
+                // a) Ya está cargado el que queremos: prestarlo. (Primero se copia el `Arc` del motor y se
+                //    termina de leer; después se modifica el estado: Rust no deja modificar algo mientras se lee.)
+                let mismo = estado
+                    .actual
+                    .as_ref()
+                    .filter(|actual| actual.carga == *carga)
+                    .map(|actual| Arc::clone(&actual.motor));
+                if let Some(motor) = mismo {
+                    estado.cola.pop_front();
+                    estado.prestamos += 1;
+                    drop(estado);
+                    c.cambio.notify_all(); // el siguiente quizá quiere el mismo modelo: que pase también
+                    return Ok(Prestamo {
+                        motor,
+                        compartido: Arc::clone(c),
+                    });
+                }
+                // b) Hay otro modelo, pero nadie lo usa: vía libre para cambiarlo.
+                if estado.prestamos == 0 {
+                    break;
+                }
+                // c) Hay otro modelo en uso: esperar a que lo suelten.
             }
-            // 3) Hay otro modelo y alguien lo está usando: esperar a que lo suelten.
-            if estado.prestamos > 0 {
-                estado = c.esperar(estado);
-                continue;
-            }
-            // 4) Vía libre: parar el actual (si lo hay) y cargar el nuevo.
-            break;
+            estado = c.esperar_un_rato(estado);
         }
 
+        estado.cola.pop_front();
         // Soltar el motor viejo para el proceso (es rápido). Así la RAM queda libre ANTES de cargar el nuevo.
         drop(estado.actual.take());
         estado.cargando = Some(carga.modelo.clone());
@@ -225,10 +289,16 @@ impl<A: Arrancador> Planificador<A> {
                     compartido: Arc::clone(c),
                 })
             }
-            Err(e) => Err(e),
+            Err(e) => Err(ErrorPlanificador::Motor(e)),
         };
+        drop(estado);
         c.cambio.notify_all(); // despertar a los que esperaban
         respuesta
+    }
+
+    /// Peticiones esperando turno.
+    pub fn en_cola(&self) -> usize {
+        self.compartido.bloquear().cola.len()
     }
 
     /// Qué está haciendo ahora.
@@ -291,6 +361,18 @@ impl<A: Arrancador> Compartido<A> {
     /// los cambios del estado son pequeños y quedan siempre coherentes.
     fn bloquear(&self) -> MutexGuard<'_, Interno<A::Motor>> {
         self.estado.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// Como [`Compartido::esperar`], pero se despierta como mucho a los [`MIRAR_CANCELACION`] para comprobar si
+    /// han cancelado la petición (quien cancela no puede avisar a la `Condvar`: solo cambia su `AtomicBool`).
+    fn esperar_un_rato<'a>(
+        &self,
+        estado: MutexGuard<'a, Interno<A::Motor>>,
+    ) -> MutexGuard<'a, Interno<A::Motor>> {
+        self.cambio
+            .wait_timeout(estado, MIRAR_CANCELACION)
+            .unwrap_or_else(PoisonError::into_inner)
+            .0
     }
 
     /// Suelta el candado y duerme hasta que alguien avise de un cambio.

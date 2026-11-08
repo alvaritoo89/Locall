@@ -53,9 +53,15 @@ pub struct ConfigMotor {
     pub hilos: usize,
     /// Capas que se pasan a la gráfica. 0 = solo procesador.
     pub capas_gpu: u32,
+    /// Conversaciones que el motor atiende a la vez ("huecos"). Locall usa [`PARALELO_POR_DEFECTO`] = 1
+    /// (ADR 0012): cada conversación dispone de todo el contexto y de toda la velocidad; las demás esperan turno.
+    pub paralelo: u32,
     /// Archivo donde se guardan los mensajes del motor (se sobrescribe en cada arranque).
     pub registro: PathBuf,
 }
+
+/// Conversaciones a la vez por defecto (ADR 0012).
+pub const PARALELO_POR_DEFECTO: u32 = 1;
 
 /// Argumentos de `llama-server`. **No incluye la clave**: esa va por variable de entorno (D3).
 pub fn argumentos(config: &ConfigMotor, puerto: u16) -> Vec<OsString> {
@@ -71,6 +77,7 @@ pub fn argumentos(config: &ConfigMotor, puerto: u16) -> Vec<OsString> {
     par("--threads", config.hilos.to_string().into()); // D5
     par("--ctx-size", config.contexto.to_string().into());
     par("--n-gpu-layers", config.capas_gpu.to_string().into());
+    par("--parallel", config.paralelo.to_string().into());
     par("--cors-origins", "localhost".into()); // D4: ninguna web ajena
     args.push("--no-webui".into());
     args
@@ -83,6 +90,8 @@ pub fn argumentos(config: &ConfigMotor, puerto: u16) -> Vec<OsString> {
 pub enum ErrorMotor {
     /// No existe el ejecutable o el modelo.
     NoEncontrado(PathBuf),
+    /// Un ajuste de [`ConfigMotor`] no es válido.
+    ConfigInvalida(String),
     /// El número de hilos no es posible en este equipo.
     Hilos(HilosInvalidos),
     /// No se pudo generar la clave aleatoria.
@@ -116,6 +125,7 @@ impl fmt::Display for ErrorMotor {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ErrorMotor::NoEncontrado(ruta) => write!(f, "no se encuentra {}", ruta.display()),
+            ErrorMotor::ConfigInvalida(e) => write!(f, "configuración del motor no válida: {e}"),
             ErrorMotor::Hilos(e) => write!(f, "{e}"),
             ErrorMotor::Clave(e) => write!(f, "no se pudo generar la clave del motor: {e}"),
             ErrorMotor::Io { contexto, error } => write!(f, "no se pudo {contexto}: {error}"),
@@ -251,6 +261,11 @@ impl Motor {
             }
         }
         locall_system::validar_hilos(config.hilos).map_err(ErrorMotor::Hilos)?;
+        if config.paralelo == 0 {
+            return Err(ErrorMotor::ConfigInvalida(
+                "el motor debe atender al menos 1 conversación a la vez".into(),
+            ));
+        }
 
         let clave = generar_clave()?;
 

@@ -40,6 +40,7 @@ pub fn config(nombre: &str) -> Option<ConfigMotor> {
         contexto: 2048,
         hilos: locall_system::hilos_para_motor(),
         capas_gpu: 0,
+        paralelo: 1,
         registro: std::env::temp_dir()
             .join(format!("locall-motor-{nombre}-{}.log", std::process::id())),
     })

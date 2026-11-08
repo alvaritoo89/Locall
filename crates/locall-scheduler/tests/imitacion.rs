@@ -2,13 +2,13 @@
 //! apunta todo lo que le piden. Así las pruebas con varios hilos son rápidas y exactas.
 
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
 use locall_engine::ConfigMotor;
-use locall_scheduler::{Arrancador, Carga, Estado, Opciones, Planificador};
+use locall_scheduler::{Arrancador, Carga, ErrorPlanificador, Estado, Opciones, Planificador};
 
 // ─── El motor de imitación ───────────────────────────────────────────────────
 
@@ -86,6 +86,7 @@ fn carga(modelo: &str) -> Carga {
             contexto: 4096,
             hilos: 1,
             capas_gpu: 0,
+            paralelo: 1,
             registro: PathBuf::from("motor.log"),
         },
     }
@@ -304,4 +305,140 @@ fn un_prestamo_sobrevive_al_planificador() {
     // ...y al soltarlo, el motor se para.
     drop(prestamo);
     assert_eq!(reg.vivos.load(Ordering::SeqCst), 0);
+}
+
+// ─── Cola (parte 9b) ─────────────────────────────────────────────────────────
+
+/// Espera (hasta 2 s) a que haya `n` peticiones en la cola.
+fn espera_cola(plan: &Planificador<Imitacion>, n: usize) {
+    let inicio = Instant::now();
+    while plan.en_cola() != n {
+        assert!(
+            inicio.elapsed() < Duration::from_secs(2),
+            "la cola no llegó a {n}"
+        );
+        thread::sleep(Duration::from_millis(5));
+    }
+}
+
+#[test]
+fn atiende_por_orden_de_llegada() {
+    let (plan, reg) = planificador(0, None);
+    thread::scope(|s| {
+        let prestamo_a = plan.usar(&carga("a")).unwrap();
+        // b, c y d llegan en este orden mientras a está en uso.
+        for (i, modelo) in ["b", "c", "d"].into_iter().enumerate() {
+            let plan = &plan;
+            s.spawn(move || drop(plan.usar(&carga(modelo)).unwrap()));
+            espera_cola(plan, i + 1);
+        }
+        drop(prestamo_a);
+    });
+    assert_eq!(cargas(&reg), ["a", "b", "c", "d"]);
+}
+
+#[test]
+fn nadie_se_cuela_por_delante_de_quien_espera_otro_modelo() {
+    let (plan, reg) = planificador(0, None);
+    thread::scope(|s| {
+        let prestamo_a = plan.usar(&carga("a")).unwrap();
+        // Primero llega quien quiere b (tiene que esperar a que suelten a)...
+        let b = s.spawn(|| {
+            let p = plan.usar(&carga("b")).unwrap();
+            thread::sleep(Duration::from_millis(100));
+            drop(p);
+        });
+        espera_cola(&plan, 1);
+        // ...y después quien quiere a, que YA está cargado. No debe colarse: espera detrás de b.
+        let a_otra_vez = s.spawn(|| drop(plan.usar(&carga("a")).unwrap()));
+        espera_cola(&plan, 2);
+        thread::sleep(Duration::from_millis(100));
+        assert_eq!(plan.en_cola(), 2, "quien pidió a no se ha colado");
+
+        drop(prestamo_a);
+        b.join().unwrap();
+        a_otra_vez.join().unwrap();
+    });
+    // a → b → a: el segundo "a" se atendió después de b.
+    assert_eq!(cargas(&reg), ["a", "b", "a"]);
+}
+
+#[test]
+fn los_que_quieren_el_mismo_modelo_pasan_juntos() {
+    let (plan, reg) = planificador(0, None);
+    thread::scope(|s| {
+        let prestamo_a = plan.usar(&carga("a")).unwrap();
+        // Tres peticiones seguidas que quieren b esperan detrás de a.
+        for n in 1..=3 {
+            s.spawn(|| {
+                let p = plan.usar(&carga("b")).unwrap();
+                thread::sleep(Duration::from_millis(300)); // lo usan un rato
+                drop(p);
+            });
+            espera_cola(&plan, n);
+        }
+        drop(prestamo_a);
+
+        // Al soltar a: b se carga una vez y los tres lo usan a la vez.
+        let inicio = Instant::now();
+        while plan.estado()
+            != (Estado::Listo {
+                modelo: "b".into(),
+                en_uso: 3,
+            })
+        {
+            assert!(
+                inicio.elapsed() < Duration::from_millis(250),
+                "los tres deberían estar usando b a la vez: {:?}",
+                plan.estado()
+            );
+            thread::sleep(Duration::from_millis(5));
+        }
+    });
+    assert_eq!(cargas(&reg), ["a", "b"]);
+}
+
+#[test]
+fn se_puede_cancelar_mientras_se_espera_turno() {
+    let (plan, reg) = planificador(0, None);
+    let cancelar = AtomicBool::new(false);
+    thread::scope(|s| {
+        let _prestamo_a = plan.usar(&carga("a")).unwrap();
+        let espera = s.spawn(|| plan.usar_con(&carga("b"), &cancelar));
+        espera_cola(&plan, 1);
+
+        let inicio = Instant::now();
+        cancelar.store(true, Ordering::Relaxed);
+        let resultado = espera.join().unwrap();
+
+        assert!(matches!(resultado, Err(ErrorPlanificador::Cancelado)));
+        assert!(
+            inicio.elapsed() < Duration::from_millis(500),
+            "tardó en enterarse"
+        );
+        assert_eq!(plan.en_cola(), 0, "se ha ido de la cola");
+    });
+    assert_eq!(cargas(&reg), ["a"], "b no llegó a cargarse");
+}
+
+#[test]
+fn cancelar_al_primero_deja_pasar_al_siguiente() {
+    let (plan, reg) = planificador(0, None);
+    let cancelar_b = AtomicBool::new(false);
+    thread::scope(|s| {
+        let prestamo_a = plan.usar(&carga("a")).unwrap();
+        let b = s.spawn(|| plan.usar_con(&carga("b"), &cancelar_b).map(drop));
+        espera_cola(&plan, 1);
+        let c = s.spawn(|| plan.usar(&carga("c")).map(drop));
+        espera_cola(&plan, 2);
+
+        cancelar_b.store(true, Ordering::Relaxed);
+        assert!(matches!(
+            b.join().unwrap(),
+            Err(ErrorPlanificador::Cancelado)
+        ));
+        drop(prestamo_a);
+        c.join().unwrap().unwrap();
+    });
+    assert_eq!(cargas(&reg), ["a", "c"]);
 }

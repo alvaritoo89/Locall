@@ -36,6 +36,7 @@ fn carga(nombre: &str, archivo: &str) -> Option<Carga> {
             contexto: 2048,
             hilos: locall_system::hilos_para_motor(),
             capas_gpu: 0,
+            paralelo: 1,
             registro: std::env::temp_dir()
                 .join(format!("locall-plan-{nombre}-{}.log", std::process::id())),
         },
@@ -134,5 +135,30 @@ fn descarga_el_modelo_real_por_inactividad() {
     thread::sleep(Duration::from_millis(1500));
     assert!(espera_a_que_muera(pid), "no se descargó por inactividad");
     assert_eq!(plan.estado(), Estado::Vacio);
+    let _ = std::fs::remove_file(&pequeno.config.registro);
+}
+
+#[test]
+fn dos_conversaciones_a_la_vez_con_un_solo_hueco() {
+    let Some(pequeno) = carga("dos-a-la-vez", "qwen2.5-1.5b-instruct-q4_k_m.gguf") else {
+        return;
+    };
+    let plan = Planificador::nuevo(ArrancadorReal::default(), Opciones { inactividad: None });
+    // Con paralelo = 1, el motor atiende una y la otra espera dentro del motor: las dos deben terminar bien.
+    let resumenes: Vec<_> = thread::scope(|s| {
+        let hilos: Vec<_> = (0..2)
+            .map(|_| {
+                s.spawn(|| {
+                    let prestamo = plan.usar(&pequeno).unwrap();
+                    prestamo
+                        .chat(&pregunta(), &AtomicBool::new(false), |_| {})
+                        .unwrap()
+                })
+            })
+            .collect();
+        hilos.into_iter().map(|h| h.join().unwrap()).collect()
+    });
+    assert!(resumenes.iter().all(|r| r.tokens_generados > 0));
+    drop(plan);
     let _ = std::fs::remove_file(&pequeno.config.registro);
 }
