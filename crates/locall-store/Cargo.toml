@@ -1,0 +1,12 @@
+[package]
+name = "locall-store"
+description = "Almacén de modelos de Locall: archivos guardados una sola vez por su huella sha256 y verificados."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+sha2 = "0.11.1"

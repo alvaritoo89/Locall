@@ -12,3 +12,14 @@ rust-version = "1.99"
 license = "Apache-2.0"
 repository = "https://github.com/alvaritoo89/locall"
 publish = false
+
+# En modo desarrollo, Rust no optimiza el código para compilar rápido. Para el cálculo de sha256 eso lo hace muy
+# lento con archivos de gigas, así que optimizamos solo esas bibliotecas (nuestro código sigue compilando rápido).
+[profile.dev.package.sha2]
+opt-level = 3
+
+[profile.dev.package.digest]
+opt-level = 3
+
+[profile.dev.package.block-buffer]
+opt-level = 3
