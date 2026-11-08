@@ -384,14 +384,17 @@ name = "locall-api"
 version = "0.0.1"
 dependencies = [
  "axum",
+ "futures-util",
  "getrandom",
  "locall-config",
  "locall-core",
+ "locall-engine",
  "locall-registry",
  "locall-scheduler",
  "log",
  "serde_json",
  "tokio",
+ "ureq",
 ]
 
 [[package]]

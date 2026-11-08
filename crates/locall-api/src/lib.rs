@@ -22,12 +22,15 @@ use axum::extract::{Path, Request, State};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
-use axum::routing::get;
+use axum::routing::{get, post};
 use locall_core::{ErrorNucleo, Nucleo};
+use locall_engine::{Causa, ErrorMotor};
 use locall_registry::Modelo;
+use locall_scheduler::ErrorCarga;
 use locall_scheduler::Estado;
 use serde_json::{Value, json};
 
+mod chat;
 pub mod token;
 
 /// Versión del motor con la que se ha probado esta versión de Locall.
@@ -55,6 +58,7 @@ pub fn rutas(nucleo: Arc<Nucleo>, token: String, puerto: u16) -> Router {
         .route("/api/status", get(estado))
         .route("/api/models", get(modelos))
         .route("/api/models/{id}", get(modelo))
+        .route("/api/chat", post(chat::chat))
         .fallback(no_existe)
         // La seguridad envuelve TODO, también las rutas que no existen: sin token, ni siquiera se sabe cuáles hay.
         .layer(middleware::from_fn_with_state(
@@ -198,7 +202,7 @@ fn modelo_json(m: &Modelo) -> Value {
 
 /// Ejecuta una función del núcleo (que puede bloquear: base de datos, disco) en un hilo aparte, para no
 /// detener el servidor mientras tanto.
-async fn en_hilo<T: Send + 'static>(
+pub(crate) async fn en_hilo<T: Send + 'static>(
     f: impl FnOnce() -> Result<T, ErrorNucleo> + Send + 'static,
 ) -> Result<T, ErrorApi> {
     match tokio::task::spawn_blocking(f).await {
@@ -208,6 +212,20 @@ async fn en_hilo<T: Send + 'static>(
             "internal_error",
             "error interno de Locall",
         )),
+    }
+}
+
+/// El código de un error del motor según su causa reconocida (ADR 0011).
+fn codigo_del_motor(e: &ErrorMotor) -> (StatusCode, &'static str) {
+    use StatusCode as S;
+    match e.causa() {
+        Causa::ContextoExcedido { .. } => (S::BAD_REQUEST, "context_exceeded"),
+        Causa::MemoriaInsuficiente => (S::SERVICE_UNAVAILABLE, "insufficient_memory"),
+        Causa::ModeloDanado => (S::INTERNAL_SERVER_ERROR, "model_damaged"),
+        Causa::ArquitecturaNoSoportada(_) => (S::UNPROCESSABLE_ENTITY, "model_incompatible"),
+        Causa::Cargando => (S::SERVICE_UNAVAILABLE, "model_loading"),
+        _ if matches!(e, ErrorMotor::NoEncontrado(_)) => (S::SERVICE_UNAVAILABLE, "engine_missing"),
+        _ => (S::INTERNAL_SERVER_ERROR, "engine_error"),
     }
 }
 
@@ -222,7 +240,11 @@ pub struct ErrorApi {
 }
 
 impl ErrorApi {
-    fn new(estado: StatusCode, codigo: &'static str, mensaje: impl Into<String>) -> ErrorApi {
+    pub(crate) fn new(
+        estado: StatusCode,
+        codigo: &'static str,
+        mensaje: impl Into<String>,
+    ) -> ErrorApi {
         ErrorApi {
             estado,
             codigo,
@@ -231,9 +253,16 @@ impl ErrorApi {
     }
 }
 
+impl ErrorApi {
+    /// `{"code": "...", "message": "..."}`
+    pub(crate) fn cuerpo(&self) -> Value {
+        json!({ "code": self.codigo, "message": self.mensaje })
+    }
+}
+
 impl IntoResponse for ErrorApi {
     fn into_response(self) -> Response {
-        let cuerpo = json!({ "error": { "code": self.codigo, "message": self.mensaje } });
+        let cuerpo = json!({ "error": self.cuerpo() });
         (self.estado, Json(cuerpo)).into_response()
     }
 }
@@ -258,6 +287,16 @@ impl From<ErrorNucleo> for ErrorApi {
             ErrorNucleo::Red(_) | ErrorNucleo::HuggingFace { .. } | ErrorNucleo::RespuestaHf(_) => {
                 (S::BAD_GATEWAY, "hub_unavailable")
             }
+            ErrorNucleo::Carga(carga) => match carga {
+                ErrorCarga::NoCabe { .. } => (S::SERVICE_UNAVAILABLE, "insufficient_memory"),
+                ErrorCarga::Incompatible(_) => (S::UNPROCESSABLE_ENTITY, "model_incompatible"),
+                ErrorCarga::Cabecera(_) | ErrorCarga::FaltaParte(_) => {
+                    (S::INTERNAL_SERVER_ERROR, "model_damaged")
+                }
+                ErrorCarga::Motor(m) => codigo_del_motor(m),
+                ErrorCarga::Sistema(_) => (S::INTERNAL_SERVER_ERROR, "internal_error"),
+            },
+            ErrorNucleo::Motor(m) => codigo_del_motor(m),
             _ => (S::INTERNAL_SERVER_ERROR, "internal_error"),
         };
         if estado.is_server_error() {
