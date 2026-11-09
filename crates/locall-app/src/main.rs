@@ -223,23 +223,94 @@ async fn instalar(
     resultado
 }
 
+// ─── Órdenes: conversaciones guardadas ────────────────────────────────────────
+
+/// Las conversaciones guardadas, de la más reciente a la más antigua (sin los mensajes).
+#[tauri::command]
+async fn conversaciones(conexion: tauri::State<'_, Conexion>) -> Result<Value, String> {
+    let conexion = conexion.inner().clone();
+    en_hilo(move || {
+        conexion.con_cliente(|c| Ok(c.get("/api/conversations")?["conversations"].take()))
+    })
+    .await
+}
+
+/// Una conversación con sus mensajes.
+#[tauri::command]
+async fn abrir_conversacion(
+    conexion: tauri::State<'_, Conexion>,
+    id: i64,
+) -> Result<Value, String> {
+    let conexion = conexion.inner().clone();
+    en_hilo(move || conexion.con_cliente(|c| c.get(&format!("/api/conversations/{id}")))).await
+}
+
+/// Crea una conversación vacía con este título.
+#[tauri::command]
+async fn crear_conversacion(
+    conexion: tauri::State<'_, Conexion>,
+    titulo: String,
+) -> Result<Value, String> {
+    let conexion = conexion.inner().clone();
+    en_hilo(move || {
+        conexion.con_cliente(|c| c.post("/api/conversations", &json!({"title": titulo})))
+    })
+    .await
+}
+
+/// Cambia el título de una conversación. Devuelve la conversación cambiada.
+#[tauri::command]
+async fn renombrar_conversacion(
+    conexion: tauri::State<'_, Conexion>,
+    id: i64,
+    titulo: String,
+) -> Result<Value, String> {
+    let conexion = conexion.inner().clone();
+    en_hilo(move || {
+        conexion.con_cliente(|c| {
+            c.patch(
+                &format!("/api/conversations/{id}"),
+                &json!({"title": titulo}),
+            )
+        })
+    })
+    .await
+}
+
+/// Elimina una conversación de verdad (también del disco).
+#[tauri::command]
+async fn eliminar_conversacion(
+    conexion: tauri::State<'_, Conexion>,
+    id: i64,
+) -> Result<(), String> {
+    let conexion = conexion.inner().clone();
+    en_hilo(move || {
+        conexion.con_cliente(|c| c.delete(&format!("/api/conversations/{id}")).map(|_| ()))
+    })
+    .await
+}
+
 // ─── Órdenes: conversar ───────────────────────────────────────────────────────
 
 /// Respuestas en marcha, con su aviso de parar (clave: el identificador que elige la interfaz).
 #[derive(Default, Clone)]
 struct Respuestas(Arc<Mutex<HashMap<String, Arc<AtomicBool>>>>);
 
-/// Pide una respuesta a `modelo` para la conversación `mensajes` (`[{role, content}]`). Cada trozo (texto,
-/// razonamiento, progreso de lectura) se envía a la interfaz por `canal` en cuanto llega; al terminar devuelve el
-/// resumen (`finish`, `usage`, `speed`). Si se para, devuelve `finish: "cancelled"`: la interfaz ya tiene el texto.
+/// Escribe `contenido` en la conversación guardada `conversacion` y pide la respuesta a `modelo`. Locall envía al
+/// modelo la conversación entera y guarda la pregunta y la respuesta. Cada trozo (texto, razonamiento, progreso de
+/// lectura) se envía a la interfaz por `canal` en cuanto llega; al terminar devuelve el último evento (`finish`,
+/// `usage`, `speed`, y la conversación y el mensaje guardados). Si se para, devuelve `finish: "cancelled"`: la
+/// interfaz ya tiene el texto, y Locall guarda lo que llegó marcado como cortado.
 #[tauri::command]
 #[allow(clippy::too_many_arguments)] // las órdenes de Tauri reciben cada dato de la interfaz como argumento
 async fn conversar(
     conexion: tauri::State<'_, Conexion>,
     respuestas: tauri::State<'_, Respuestas>,
     peticion: String,
+    conversacion: i64,
+    contenido: String,
     modelo: String,
-    mensajes: Vec<Value>,
+    sistema: String,
     temperatura: Option<f64>,
     canal: Channel<Value>,
 ) -> Result<Value, String> {
@@ -254,12 +325,17 @@ async fn conversar(
 
     let resultado = en_hilo(move || {
         let cliente = conexion.cliente()?;
-        let mut cuerpo = json!({"model": modelo, "messages": mensajes, "stream": true});
-        if let Some(t) = temperatura {
-            cuerpo["options"] = json!({"temperature": t});
-        }
+        let cuerpo = json!({
+            "content": contenido,
+            "model": modelo,
+            "system": sistema,
+            "temperature": temperatura,
+        });
         let respuesta = cliente
-            .post_sin_leer("/api/chat", &cuerpo)
+            .post_sin_leer(
+                &format!("/api/conversations/{conversacion}/messages"),
+                &cuerpo,
+            )
             .map_err(|e| e.to_string())?;
         for linea in BufReader::new(respuesta.into_body().into_reader()).lines() {
             if parar.load(Ordering::Relaxed) {
@@ -337,6 +413,11 @@ fn main() {
             consultar_repo,
             instalar,
             cancelar_instalacion,
+            conversaciones,
+            abrir_conversacion,
+            crear_conversacion,
+            renombrar_conversacion,
+            eliminar_conversacion,
             conversar,
             parar
         ])

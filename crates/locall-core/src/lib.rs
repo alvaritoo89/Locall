@@ -14,15 +14,16 @@
 use std::collections::BTreeSet;
 use std::fmt;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::AtomicBool;
-use std::sync::{Mutex, MutexGuard, PoisonError};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Condvar, Mutex, MutexGuard, PoisonError};
+use std::time::Duration;
 
 use locall_compat::{Evaluacion, Problema};
 use locall_config::{Config, ErrorConfig, Rutas};
 use locall_download::{Descargador, ErrorDescarga, Opciones as OpcionesDescarga, Pedido};
-use locall_engine::{ConfigMotor, ErrorMotor, Evento, PeticionChat, Resumen};
+use locall_engine::{ConfigMotor, ErrorMotor, Evento, Fin, Mensaje, PeticionChat, Resumen, Rol};
 use locall_gguf::{Cabecera, ErrorGguf};
-use locall_registry::{ArchivoModelo, ErrorRegistro, Modelo, ModeloNuevo, Registro};
+use locall_registry::{ArchivoModelo, ErrorRegistro, MensajeNuevo, Modelo, ModeloNuevo, Registro};
 use locall_scheduler::{
     ArrancadorReal, Carga, ErrorCarga, ErrorPlanificador, Estado, Opciones as OpcionesPlan,
     Planificador,
@@ -34,6 +35,8 @@ mod nombres;
 
 use huggingface::HuggingFace;
 pub use huggingface::{ArchivoHf, HUGGING_FACE, InfoRevision};
+/// Los tipos de las conversaciones guardadas (para los clientes del núcleo).
+pub use locall_registry::{Autor, Conversacion, MensajeGuardado};
 
 // ─── Tipos públicos ───────────────────────────────────────────────────────────
 
@@ -70,6 +73,42 @@ pub struct PeticionInstalar {
     pub id: Option<String>,
 }
 
+/// El resultado de [`Nucleo::conversar`].
+#[derive(Debug, Clone)]
+pub struct RespuestaGuardada {
+    /// La conversación, ya actualizada.
+    pub conversacion: Conversacion,
+    /// La respuesta guardada (`None` si se paró antes de que llegara nada).
+    pub respuesta: Option<MensajeGuardado>,
+    /// Las cifras de la respuesta.
+    pub resumen: Resumen,
+}
+
+/// El turno de una conversación (ver `Nucleo::conversando`): al soltarlo, queda libre.
+struct TurnoConversacion<'a> {
+    nucleo: &'a Nucleo,
+    id: i64,
+}
+
+impl Drop for TurnoConversacion<'_> {
+    fn drop(&mut self) {
+        let (ocupadas, aviso) = &self.nucleo.conversando;
+        ocupadas
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .remove(&self.id);
+        aviso.notify_all();
+    }
+}
+
+/// Convierte el «no encontrado» del registro en el error propio de las conversaciones.
+fn no_encontrada(e: ErrorRegistro, id: i64) -> ErrorNucleo {
+    match e {
+        ErrorRegistro::NoEncontrado(_) => ErrorNucleo::ConversacionNoEncontrada(id),
+        otro => ErrorNucleo::Registro(otro),
+    }
+}
+
 /// Progreso de una instalación.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ProgresoInstalacion {
@@ -97,6 +136,10 @@ pub struct Nucleo {
     planificador: Planificador<ArrancadorReal>,
     /// Identificadores que se están instalando ahora (dos instalaciones del mismo modelo a la vez se pisarían).
     instalando: Mutex<BTreeSet<String>>,
+    /// Conversaciones que están recibiendo un mensaje ahora. Cada una atiende **un mensaje cada vez**: si llega otro
+    /// (por ejemplo, justo después de parar una respuesta), espera a que el anterior termine de guardarse, para que
+    /// los mensajes no se guarden desordenados.
+    conversando: (Mutex<BTreeSet<i64>>, Condvar),
 }
 
 impl Nucleo {
@@ -146,6 +189,7 @@ impl Nucleo {
             registro: Mutex::new(registro),
             planificador,
             instalando: Mutex::new(BTreeSet::new()),
+            conversando: (Mutex::new(BTreeSet::new()), Condvar::new()),
         })
     }
 
@@ -490,6 +534,173 @@ impl Nucleo {
         Ok(prestamo.chat(peticion, cancelar, al_recibir)?)
     }
 
+    // ─── Conversaciones guardadas ─────────────────────────────────────────────
+
+    /// Las conversaciones guardadas, de la más reciente a la más antigua.
+    pub fn conversaciones(&self) -> Result<Vec<Conversacion>, ErrorNucleo> {
+        Ok(self.registro().conversaciones()?)
+    }
+
+    /// Una conversación con sus mensajes.
+    pub fn conversacion(
+        &self,
+        id: i64,
+    ) -> Result<(Conversacion, Vec<MensajeGuardado>), ErrorNucleo> {
+        let registro = self.registro();
+        let c = registro
+            .conversacion(id)?
+            .ok_or(ErrorNucleo::ConversacionNoEncontrada(id))?;
+        Ok((c, registro.mensajes(id)?))
+    }
+
+    /// Crea una conversación vacía.
+    pub fn crear_conversacion(&self, titulo: &str) -> Result<Conversacion, ErrorNucleo> {
+        let titulo = if titulo.trim().is_empty() {
+            "Nueva conversación"
+        } else {
+            titulo
+        };
+        Ok(self
+            .registro()
+            .crear_conversacion(titulo, locall_registry::ahora())?)
+    }
+
+    pub fn renombrar_conversacion(&self, id: i64, titulo: &str) -> Result<(), ErrorNucleo> {
+        self.registro()
+            .renombrar_conversacion(id, titulo)
+            .map_err(|e| no_encontrada(e, id))
+    }
+
+    /// Elimina una conversación de verdad (también del disco: ver `locall-registry`).
+    pub fn eliminar_conversacion(&self, id: i64) -> Result<(), ErrorNucleo> {
+        self.registro()
+            .eliminar_conversacion(id)
+            .map_err(|e| no_encontrada(e, id))?;
+        log::info!("conversación {id} eliminada");
+        Ok(())
+    }
+
+    /// Escribe `contenido` en la conversación `id` y guarda la respuesta del modelo.
+    ///
+    /// Se envía al modelo **toda la conversación guardada** (con las instrucciones del sistema). Si el modelo falla
+    /// (por ejemplo, porque la conversación ya no cabe), la pregunta se quita, para que al reintentar no quede
+    /// repetida. Si se para antes de que llegue nada, también.
+    #[allow(clippy::too_many_arguments)]
+    pub fn conversar(
+        &self,
+        id: i64,
+        contenido: &str,
+        modelo: &str,
+        sistema: &str,
+        temperatura: Option<f32>,
+        cancelar: &AtomicBool,
+        al_recibir: impl FnMut(Evento<'_>),
+    ) -> Result<RespuestaGuardada, ErrorNucleo> {
+        let _turno = self.turno_de_conversacion(id, cancelar)?;
+        // 0) Que existan la conversación y el modelo (en ese orden), antes de guardar nada.
+        if self.registro().conversacion(id)?.is_none() {
+            return Err(ErrorNucleo::ConversacionNoEncontrada(id));
+        }
+        if self.modelo(modelo)?.is_none() {
+            return Err(ErrorNucleo::NoInstalado(modelo.to_owned()));
+        }
+        // 1) Guardar la pregunta y los ajustes, y leer la conversación entera.
+        let historial = {
+            let mut registro = self.registro();
+            registro
+                .ajustar_conversacion(id, modelo, sistema, temperatura.map(f64::from))
+                .map_err(|e| no_encontrada(e, id))?;
+            registro.anadir_mensaje(
+                id,
+                &MensajeNuevo::del_usuario(contenido),
+                locall_registry::ahora(),
+            )?;
+            registro.mensajes(id)?
+        };
+
+        // 2) Preguntar al modelo.
+        let mut mensajes = Vec::with_capacity(historial.len() + 1);
+        if !sistema.trim().is_empty() {
+            mensajes.push(Mensaje::nuevo(Rol::Sistema, sistema.trim()));
+        }
+        for m in &historial {
+            let rol = match m.autor {
+                Autor::Usuario => Rol::Usuario,
+                Autor::Asistente => Rol::Asistente,
+            };
+            mensajes.push(Mensaje::nuevo(rol, m.contenido.clone()));
+        }
+        let peticion = PeticionChat {
+            mensajes,
+            max_tokens: None,
+            temperatura,
+            semilla: None,
+        };
+        let resumen = match self.chat(modelo, &peticion, cancelar, al_recibir) {
+            Ok(r) => r,
+            Err(e) => {
+                let _ = self.registro().quitar_ultimo_mensaje(id);
+                return Err(e);
+            }
+        };
+
+        // 3) Guardar la respuesta (también si se paró a medias, marcada como cortada).
+        let mut registro = self.registro();
+        let respuesta = if resumen.texto.is_empty() && resumen.razonamiento.is_empty() {
+            registro.quitar_ultimo_mensaje(id)?; // se paró antes de que llegara nada
+            None
+        } else {
+            Some(
+                registro
+                    .anadir_mensaje(
+                        id,
+                        &MensajeNuevo {
+                            autor: Autor::Asistente,
+                            contenido: resumen.texto.clone(),
+                            razonamiento: resumen.razonamiento.clone(),
+                            modelo: Some(modelo.to_owned()),
+                            tokens: Some(resumen.tokens_generados),
+                            velocidad: resumen.escritura_por_segundo,
+                            cortada: resumen.fin == Fin::Cancelado,
+                        },
+                        locall_registry::ahora(),
+                    )
+                    // (si se eliminó la conversación mientras respondía)
+                    .map_err(|e| no_encontrada(e, id))?,
+            )
+        };
+        let conversacion = registro
+            .conversacion(id)?
+            .ok_or(ErrorNucleo::ConversacionNoEncontrada(id))?;
+        Ok(RespuestaGuardada {
+            conversacion,
+            respuesta,
+            resumen,
+        })
+    }
+
+    /// Espera a que la conversación `id` no esté atendiendo otro mensaje y la marca como ocupada hasta que se suelte
+    /// lo devuelto. Mientras espera, mira `cancelar`.
+    fn turno_de_conversacion<'a>(
+        &'a self,
+        id: i64,
+        cancelar: &AtomicBool,
+    ) -> Result<TurnoConversacion<'a>, ErrorNucleo> {
+        let (ocupadas, aviso) = &self.conversando;
+        let mut lista = ocupadas.lock().unwrap_or_else(PoisonError::into_inner);
+        while lista.contains(&id) {
+            if cancelar.load(Ordering::Relaxed) {
+                return Err(ErrorNucleo::Cancelado);
+            }
+            lista = aviso
+                .wait_timeout(lista, Duration::from_millis(100))
+                .unwrap_or_else(PoisonError::into_inner)
+                .0;
+        }
+        lista.insert(id);
+        Ok(TurnoConversacion { nucleo: self, id })
+    }
+
     /// Cómo arrancar el motor para un modelo instalado, con los ajustes del usuario.
     pub fn carga(&self, id: &str) -> Result<Carga, ErrorNucleo> {
         let modelo = self
@@ -672,6 +883,8 @@ pub enum ErrorNucleo {
     YaInstalado(String),
     YaInstalandose(String),
     NoInstalado(String),
+    /// No hay ninguna conversación con ese número.
+    ConversacionNoEncontrada(i64),
     /// El modelo se está usando o cargando ahora mismo.
     EnUso(String),
     Descarga(ErrorDescarga),
@@ -747,6 +960,9 @@ impl fmt::Display for ErrorNucleo {
             ErrorNucleo::YaInstalado(id) => write!(f, "ya hay un modelo instalado como «{id}»"),
             ErrorNucleo::YaInstalandose(id) => write!(f, "«{id}» ya se está instalando"),
             ErrorNucleo::NoInstalado(id) => write!(f, "no hay ningún modelo instalado como «{id}»"),
+            ErrorNucleo::ConversacionNoEncontrada(id) => {
+                write!(f, "no existe la conversación {id}")
+            }
             ErrorNucleo::EnUso(id) => write!(
                 f,
                 "«{id}» se está usando ahora mismo; inténtalo cuando termine"

@@ -4,7 +4,17 @@ import { Biblioteca } from "./Biblioteca";
 import { Chat } from "./Chat";
 import { Icono } from "./comun";
 import { Inicio } from "./Inicio";
-import { type EstadoLocall, type Modelo, minutosSegundos, pedirEstado, pedirModelos, tamano, textoError } from "./locall";
+import {
+  type Conversacion,
+  type EstadoLocall,
+  type Modelo,
+  minutosSegundos,
+  pedirConversaciones,
+  pedirEstado,
+  pedirModelos,
+  tamano,
+  textoError,
+} from "./locall";
 import logoClaro from "./assets/logo-claro.png";
 import logoOscuro from "./assets/logo-oscuro.png";
 
@@ -18,6 +28,11 @@ export function App() {
   const [estado, setEstado] = useState<EstadoLocall | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [modelos, setModelos] = useState<Modelo[] | null>(null);
+  const [conversaciones, setConversaciones] = useState<Conversacion[] | null>(null);
+  /** La conversación abierta en el chat (`null`: una nueva). */
+  const [abierta, setAbierta] = useState<number | null>(null);
+  /** Hay una respuesta en marcha: mientras tanto no se cambia de conversación. */
+  const [ocupado, setOcupado] = useState(false);
 
   // Preguntar el estado al empezar y cada 2 s. (La primera vez puede tardar: si Locall no está abierto, se abre.)
   useEffect(() => {
@@ -42,19 +57,36 @@ export function App() {
   }, []);
   useEffect(recargarModelos, [pagina, recargarModelos]);
 
+  // Las conversaciones guardadas: al empezar, al cambiar de pantalla y cuando el chat cambia algo.
+  const recargarConversaciones = useCallback(() => {
+    pedirConversaciones()
+      .then(setConversaciones)
+      .catch(() => setConversaciones((actual) => actual ?? []));
+  }, []);
+  useEffect(recargarConversaciones, [pagina, recargarConversaciones]);
+
+  /** Abre una conversación en el chat (desde el Inicio, «Continuar»). */
+  const continuar = (id: number) => {
+    if (!ocupado) setAbierta(id);
+    setPagina("chat");
+  };
+
   return (
     <div className="app">
       <div className="cuerpo">
         <BarraLateral pagina={pagina} irA={setPagina} />
         <main className="contenido">
           {pagina === "inicio" && (
-            <Inicio estado={estado} error={error} modelos={modelos} irABiblioteca={() => setPagina("biblioteca")} />
+            <Inicio estado={estado} error={error} modelos={modelos} irABiblioteca={() => setPagina("biblioteca")}
+              ultima={conversaciones?.[0] ?? null} continuar={continuar} />
           )}
           {pagina === "biblioteca" && <Biblioteca estado={estado} modelos={modelos} recargar={recargarModelos} />}
           {/* El chat se monta siempre (oculto si no está a la vista): así no se pierde la conversación al cambiar de
               pantalla, ni se corta una respuesta a medias. */}
           <div className="pantalla-chat" hidden={pagina !== "chat"}>
-            <Chat estado={estado} modelos={modelos} irABiblioteca={() => setPagina("biblioteca")} />
+            <Chat estado={estado} modelos={modelos} irABiblioteca={() => setPagina("biblioteca")}
+              conversaciones={conversaciones} recargarConversaciones={recargarConversaciones}
+              abierta={abierta} abrir={(id) => !ocupado && setAbierta(id)} alCambiarOcupado={setOcupado} />
           </div>
           {(pagina === "explorar" || pagina === "ajustes") && <Proximamente pagina={pagina} />}
         </main>

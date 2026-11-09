@@ -82,6 +82,11 @@ impl Api {
                 .delete(&url)
                 .header("Authorization", &autorizacion)
                 .call(),
+            ("PATCH", Some(c)) => agente
+                .patch(&url)
+                .header("Authorization", &autorizacion)
+                .header("Content-Type", "application/json")
+                .send(c.to_string()),
             (_, Some(c)) => agente
                 .post(&url)
                 .header("Authorization", &autorizacion)

@@ -52,6 +52,34 @@ const MIGRACIONES: &[&str] = &[
 
     CREATE INDEX archivos_por_huella ON archivos(huella);
     ",
+    // Versión 2: conversaciones guardadas y sus mensajes (Fase 5, parte 5d).
+    "
+    CREATE TABLE conversaciones (
+        id           INTEGER PRIMARY KEY,
+        titulo       TEXT    NOT NULL,
+        modelo       TEXT,
+        sistema      TEXT    NOT NULL DEFAULT '',
+        temperatura  REAL,
+        creada       INTEGER NOT NULL,
+        actualizada  INTEGER NOT NULL
+    ) STRICT;
+
+    CREATE TABLE mensajes (
+        conversacion_id  INTEGER NOT NULL REFERENCES conversaciones(id) ON DELETE CASCADE,
+        orden            INTEGER NOT NULL,
+        rol              TEXT    NOT NULL CHECK (rol IN ('user', 'assistant')),
+        contenido        TEXT    NOT NULL,
+        razonamiento     TEXT    NOT NULL DEFAULT '',
+        modelo           TEXT,
+        tokens           INTEGER,
+        velocidad        REAL,
+        cortada          INTEGER NOT NULL DEFAULT 0 CHECK (cortada IN (0, 1)),
+        creado           INTEGER NOT NULL,
+        PRIMARY KEY (conversacion_id, orden)
+    ) STRICT;
+
+    CREATE INDEX conversaciones_por_fecha ON conversaciones(actualizada);
+    ",
 ];
 
 /// Versión del esquema que entiende esta versión de Locall.
@@ -229,6 +257,8 @@ impl Registro {
 
     fn preparar(mut conexion: Connection) -> Resultado<Registro> {
         conexion.pragma_update(None, "foreign_keys", "ON")?; // que ON DELETE CASCADE funcione
+        // Lo borrado se rellena con ceros: una conversación eliminada no debe poder recuperarse del archivo.
+        conexion.pragma_update(None, "secure_delete", "ON")?;
         conexion.busy_timeout(Duration::from_secs(5))?; // esperar si otro proceso está escribiendo
         migrar(&mut conexion)?;
         Ok(Registro { conexion })
@@ -471,5 +501,10 @@ fn migrar(conexion: &mut Connection) -> Resultado<()> {
     Ok(())
 }
 
+mod conversaciones;
 #[cfg(test)]
 mod pruebas;
+
+pub use conversaciones::{
+    Autor, Conversacion, MensajeGuardado, MensajeNuevo, TITULO_MAX, titulo_valido,
+};

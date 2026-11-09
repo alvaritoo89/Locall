@@ -1,16 +1,19 @@
-// Inicio: tu equipo y los modelos instalados.
+// Inicio: tu equipo, la última conversación y los modelos instalados.
 
 import { EstadoDelModelo, NombreDelModelo, ReglaDeMemoria } from "./comun";
-import { type EstadoLocall, type Modelo, tamano } from "./locall";
+import { type Conversacion, type EstadoLocall, type Modelo, haceCuanto, tamano } from "./locall";
 
 interface Props {
   estado: EstadoLocall | null;
   error: string | null;
   modelos: Modelo[] | null;
   irABiblioteca: () => void;
+  /** La conversación más reciente, para seguirla. */
+  ultima: Conversacion | null;
+  continuar: (id: number) => void;
 }
 
-export function Inicio({ estado, error, modelos, irABiblioteca }: Props) {
+export function Inicio({ estado, error, modelos, irABiblioteca, ultima, continuar }: Props) {
   return (
     <>
       <h1>Inicio</h1>
@@ -36,6 +39,23 @@ export function Inicio({ estado, error, modelos, irABiblioteca }: Props) {
           {estado.warnings.map((aviso) => (
             <p key={aviso} className="pequeño tono-aviso">Aviso: {aviso}</p>
           ))}
+        </section>
+      )}
+
+      {ultima && (
+        <section className="tarjeta continuar">
+          <div className="titulo-tarjeta">
+            <h2>Continuar</h2>
+            <span className="tenue pequeño">{haceCuanto(ultima.updated_at)}</span>
+          </div>
+          <p className="titulo-continuar">{ultima.title}</p>
+          <p className="pequeño tenue">
+            {ultima.message_count} {ultima.message_count === 1 ? "mensaje" : "mensajes"}
+            {ultima.model && <> · <span className="mono">{ultima.model}</span></>}
+          </p>
+          <button type="button" className="boton" onClick={() => continuar(ultima.id)}>
+            Continuar la conversación →
+          </button>
         </section>
       )}
 

@@ -91,6 +91,28 @@ impl Prueba {
         (estado, serde_json::from_str(&texto).unwrap_or(Value::Null))
     }
 
+    /// Una petición con cuerpo JSON a cualquier ruta; devuelve la respuesta sin leer.
+    fn enviar(&self, ruta: &str, cuerpo: &Value) -> ureq::http::Response<ureq::Body> {
+        agente()
+            .post(&format!("{}{ruta}", self.base))
+            .header("Authorization", &format!("Bearer {}", self.token))
+            .header("Content-Type", "application/json")
+            .send(cuerpo.to_string())
+            .unwrap()
+    }
+
+    fn leer(&self, ruta: &str) -> Value {
+        let texto = agente()
+            .get(&format!("{}{ruta}", self.base))
+            .header("Authorization", &format!("Bearer {}", self.token))
+            .call()
+            .unwrap()
+            .into_body()
+            .read_to_string()
+            .unwrap();
+        serde_json::from_str(&texto).unwrap()
+    }
+
     fn estado(&self) -> Value {
         let texto = agente()
             .get(&format!("{}/api/status", self.base))
@@ -277,4 +299,56 @@ fn si_el_cliente_se_va_se_deja_de_generar() {
         "ready",
         "el modelo sigue cargado para la próxima"
     );
+}
+
+#[test]
+fn una_conversacion_guardada_recuerda_lo_anterior() {
+    let Some(api) = arrancar("guardada", true) else {
+        return;
+    };
+    let texto = api
+        .enviar("/api/conversations", &json!({}))
+        .into_body()
+        .read_to_string()
+        .unwrap();
+    let creada: Value = serde_json::from_str(&texto).unwrap();
+    let ruta = format!("/api/conversations/{}", creada["id"]);
+
+    // Primer mensaje, por trozos: el último evento trae lo guardado.
+    let respuesta = api.enviar(
+        &format!("{ruta}/messages"),
+        &json!({"content": "Me llamo Ana. Responde solo «vale».", "model": "qwen", "temperature": 0,
+                "system": "Responde en español, muy breve."}),
+    );
+    assert_eq!(respuesta.status().as_u16(), 200);
+    let eventos: Vec<Value> = BufReader::new(respuesta.into_body().into_reader())
+        .lines()
+        .map(|l| serde_json::from_str(&l.unwrap()).unwrap())
+        .collect();
+    let fin = eventos.last().unwrap();
+    assert_eq!(fin["type"], "done");
+    assert_eq!(fin["conversation"]["message_count"], 2);
+    assert_eq!(
+        fin["conversation"]["system"],
+        "Responde en español, muy breve."
+    );
+    assert_eq!(fin["message"]["role"], "assistant");
+    assert_eq!(fin["message"]["index"], 1);
+
+    // Segundo, de una vez: el modelo recibe la conversación entera.
+    let respuesta = api.enviar(
+        &format!("{ruta}/messages"),
+        &json!({"content": "¿Cómo me llamo? Responde solo el nombre.", "model": "qwen", "temperature": 0,
+                "system": "Responde en español, muy breve.", "stream": false}),
+    );
+    assert_eq!(respuesta.status().as_u16(), 200);
+    let fin: Value =
+        serde_json::from_str(&respuesta.into_body().read_to_string().unwrap()).unwrap();
+    let nombre = fin["message"]["content"].as_str().unwrap();
+    eprintln!("respuesta: {nombre:?}");
+    assert!(nombre.contains("Ana"), "recuerda el nombre: {nombre:?}");
+
+    let abierta = api.leer(&ruta);
+    assert_eq!(abierta["messages"].as_array().unwrap().len(), 4);
+    assert_eq!(abierta["model"], "qwen");
 }

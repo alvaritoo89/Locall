@@ -4,7 +4,7 @@
 mod comun;
 
 use std::path::PathBuf;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use comun::{CarpetaDePrueba, nucleo};
 use locall_core::ErrorNucleo;
@@ -135,4 +135,128 @@ fn instala_de_hugging_face_de_verdad() {
         "047bf46455a544931cff6fef14d7910154c56afbc23ab1c5e56a72e69912c04b"
     );
     assert_eq!(modelo.arquitectura.as_deref(), Some("llama"));
+}
+
+#[test]
+fn las_conversaciones_se_guardan_y_se_envian_enteras() {
+    let Some(original) = modelo_local() else {
+        return;
+    };
+    let carpeta = CarpetaDePrueba::nueva("conversacion");
+    let nucleo = nucleo(&carpeta, None);
+    nucleo.importar(&original, Some("qwen")).unwrap();
+    let c = nucleo.crear_conversacion("Prueba de memoria").unwrap();
+    let nada = AtomicBool::new(false);
+
+    let primera = nucleo
+        .conversar(
+            c.id,
+            "Me llamo Ana. Responde solo: vale.",
+            "qwen",
+            "Responde en español.",
+            Some(0.0),
+            &nada,
+            |_| {},
+        )
+        .unwrap();
+    assert!(primera.respuesta.is_some());
+    // La segunda pregunta solo se puede contestar si el modelo recibe la conversación guardada.
+    let segunda = nucleo
+        .conversar(
+            c.id,
+            "¿Cómo me llamo? Responde con una palabra.",
+            "qwen",
+            "Responde en español.",
+            Some(0.0),
+            &nada,
+            |_| {},
+        )
+        .unwrap();
+    let texto = segunda.respuesta.as_ref().unwrap().contenido.clone();
+    eprintln!("respuesta: {texto:?}");
+    assert!(texto.contains("Ana"), "{texto}");
+
+    let (conversacion, mensajes) = nucleo.conversacion(c.id).unwrap();
+    assert_eq!(conversacion.mensajes, 4);
+    assert_eq!(conversacion.modelo.as_deref(), Some("qwen"));
+    assert_eq!(conversacion.sistema, "Responde en español.");
+    assert!(mensajes[3].tokens.unwrap() > 0 && mensajes[3].velocidad.unwrap() > 0.0);
+
+    // Un error del modelo (aquí, un modelo que no existe) no deja la pregunta guardada.
+    assert!(
+        nucleo
+            .conversar(c.id, "¿Sigues ahí?", "no-existe", "", None, &nada, |_| {})
+            .is_err()
+    );
+    let (tras_error, _) = nucleo.conversacion(c.id).unwrap();
+    assert_eq!(tras_error.mensajes, 4, "no se guardó la pregunta");
+    assert_eq!(
+        tras_error.modelo.as_deref(),
+        Some("qwen"),
+        "ni el modelo que no existe"
+    );
+
+    nucleo.eliminar_conversacion(c.id).unwrap();
+    assert!(matches!(
+        nucleo.conversacion(c.id),
+        Err(ErrorNucleo::ConversacionNoEncontrada(_))
+    ));
+    assert!(nucleo.conversaciones().unwrap().is_empty());
+}
+
+#[test]
+fn parar_y_enviar_enseguida_no_desordena_los_mensajes() {
+    let Some(original) = modelo_local() else {
+        return;
+    };
+    let carpeta = CarpetaDePrueba::nueva("turno");
+    let nucleo = nucleo(&carpeta, None);
+    nucleo.importar(&original, Some("qwen")).unwrap();
+    let c = nucleo.crear_conversacion("Turnos").unwrap();
+    let parar = AtomicBool::new(false);
+    let nada = AtomicBool::new(false);
+
+    std::thread::scope(|hilos| {
+        // Una respuesta larga, que se para al llegar el primer texto…
+        let larga = hilos.spawn(|| {
+            nucleo.conversar(
+                c.id,
+                "Cuenta del 1 al 200, separados por comas.",
+                "qwen",
+                "",
+                Some(0.0),
+                &parar,
+                |e| {
+                    if matches!(e, Evento::Texto(_)) {
+                        parar.store(true, Ordering::Relaxed);
+                    }
+                },
+            )
+        });
+        // …y, mientras tanto, otra pregunta en la misma conversación: debe esperar su turno.
+        while !parar.load(Ordering::Relaxed) {
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        let corta = nucleo
+            .conversar(c.id, "Di solo: hola.", "qwen", "", Some(0.0), &nada, |_| {})
+            .unwrap();
+        let larga = larga.join().unwrap().unwrap();
+        assert!(larga.respuesta.as_ref().unwrap().cortada);
+        assert!(corta.respuesta.is_some());
+    });
+
+    let (_, mensajes) = nucleo.conversacion(c.id).unwrap();
+    let orden: Vec<_> = mensajes.iter().map(|m| (m.autor, m.cortada)).collect();
+    use locall_core::Autor::{Asistente, Usuario};
+    assert_eq!(
+        orden,
+        [
+            (Usuario, false),
+            (Asistente, true),
+            (Usuario, false),
+            (Asistente, false)
+        ]
+    );
+    assert!(mensajes[0].contenido.starts_with("Cuenta"));
+    assert!(mensajes[2].contenido.starts_with("Di solo"));
 }

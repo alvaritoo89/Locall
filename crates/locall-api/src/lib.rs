@@ -23,7 +23,7 @@ use axum::extract::{Path, Request, State};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{delete, get, post};
+use axum::routing::{delete, get, patch, post};
 use locall_core::{ErrorNucleo, Nucleo};
 use locall_engine::{Causa, ErrorMotor};
 use locall_registry::Modelo;
@@ -32,6 +32,7 @@ use locall_scheduler::Estado;
 use serde_json::{Value, json};
 
 mod chat;
+mod conversaciones;
 mod flujo;
 mod modelos;
 mod openai;
@@ -130,6 +131,20 @@ pub fn rutas_vigiladas(
         .route("/api/models/import", post(modelos::importar))
         .route("/api/hub/{owner}/{name}", get(modelos::hub))
         .route("/api/chat", post(chat::chat))
+        .route(
+            "/api/conversations",
+            get(conversaciones::listar).merge(post(conversaciones::crear)),
+        )
+        .route(
+            "/api/conversations/{id}",
+            get(conversaciones::abrir)
+                .merge(patch(conversaciones::renombrar))
+                .merge(delete(conversaciones::eliminar)),
+        )
+        .route(
+            "/api/conversations/{id}/messages",
+            post(conversaciones::escribir),
+        )
         // Compatibles con OpenAI (ADR 0016).
         .route("/v1/models", get(openai::modelos))
         .route("/v1/chat/completions", post(openai::completar))
@@ -418,6 +433,7 @@ impl From<ErrorNucleo> for ErrorApi {
         use StatusCode as S;
         let (estado, codigo) = match &e {
             ErrorNucleo::NoInstalado(_) => (S::NOT_FOUND, "model_not_found"),
+            ErrorNucleo::ConversacionNoEncontrada(_) => (S::NOT_FOUND, "conversation_not_found"),
             ErrorNucleo::YaInstalado(_) => (S::CONFLICT, "model_exists"),
             ErrorNucleo::YaInstalandose(_) => (S::CONFLICT, "install_in_progress"),
             ErrorNucleo::EnUso(_) => (S::CONFLICT, "model_in_use"),

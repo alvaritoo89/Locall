@@ -119,13 +119,44 @@ export function textoEncaje(encaje: Encaje | null): { texto: string; tono: "norm
 /** Un error de `invoke` como texto. */
 export const textoError = (e: unknown) => (typeof e === "string" ? e : String(e));
 
-// ─── Conversar ────────────────────────────────────────────────────────────────
+// ─── Conversaciones guardadas ─────────────────────────────────────────────────
 
-/** Un mensaje de la conversación. */
-export interface Mensaje {
-  role: "system" | "user" | "assistant";
-  content: string;
+/** Una conversación guardada (sin los mensajes). Las fechas, en segundos desde 1970. */
+export interface Conversacion {
+  id: number;
+  title: string;
+  /** El último modelo usado (puede haberse eliminado después). */
+  model: string | null;
+  system: string;
+  temperature: number | null;
+  created_at: number;
+  updated_at: number;
+  message_count: number;
 }
+
+/** Un mensaje guardado. */
+export interface MensajeGuardado {
+  index: number;
+  role: "user" | "assistant";
+  content: string;
+  reasoning: string;
+  model: string | null;
+  completion_tokens: number | null;
+  generation_per_second: number | null;
+  /** La respuesta se paró antes de terminar. */
+  truncated: boolean;
+  created_at: number;
+}
+
+export const pedirConversaciones = () => invoke<Conversacion[]>("conversaciones");
+export const abrirConversacion = (id: number) =>
+  invoke<Conversacion & { messages: MensajeGuardado[] }>("abrir_conversacion", { id });
+export const crearConversacion = (titulo: string) => invoke<Conversacion>("crear_conversacion", { titulo });
+export const renombrarConversacion = (id: number, titulo: string) =>
+  invoke<Conversacion>("renombrar_conversacion", { id, titulo });
+export const eliminarConversacion = (id: number) => invoke<void>("eliminar_conversacion", { id });
+
+// ─── Conversar ────────────────────────────────────────────────────────────────
 
 /** Lo que llega mientras el modelo responde. */
 export type Trozo =
@@ -138,22 +169,54 @@ export interface FinRespuesta {
   finish: "stop" | "length" | "cancelled";
   usage?: { prompt_tokens: number; cached_tokens: number; completion_tokens: number };
   speed?: { prompt_per_second: number | null; generation_per_second: number | null };
+  /** Lo que Locall guardó (no llega si se paró: Locall lo guarda igualmente). */
+  conversation?: Conversacion;
+  message?: MensajeGuardado | null;
 }
 
-/** Pide una respuesta; `alRecibir` recibe cada trozo. `peticion` identifica la respuesta para poder pararla. */
-export function conversar(
-  peticion: string,
-  modelo: string,
-  mensajes: Mensaje[],
-  temperatura: number | null,
-  alRecibir: (t: Trozo) => void,
-): Promise<FinRespuesta> {
+/** Lo que se envía al conversar. */
+export interface Envio {
+  /** Identifica la respuesta, para poder pararla. */
+  peticion: string;
+  conversacion: number;
+  contenido: string;
+  modelo: string;
+  sistema: string;
+  temperatura: number | null;
+}
+
+/**
+ * Escribe un mensaje en una conversación guardada; `alRecibir` recibe cada trozo de la respuesta. Locall envía al
+ * modelo la conversación entera y guarda la pregunta y la respuesta.
+ */
+export function conversar(envio: Envio, alRecibir: (t: Trozo) => void): Promise<FinRespuesta> {
   const canal = new Channel<Trozo>();
   canal.onmessage = alRecibir;
-  return invoke<FinRespuesta>("conversar", { peticion, modelo, mensajes, temperatura, canal });
+  return invoke<FinRespuesta>("conversar", { ...envio, canal });
 }
 
 export const parar = (peticion: string) => invoke<void>("parar", { peticion });
+
+/** Hoy, Ayer, Esta semana o Anteriores, según la fecha (en segundos). */
+export function grupoDeFecha(segundos: number, ahora = new Date()): string {
+  const dia = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const dias = Math.round((dia(ahora) - dia(new Date(segundos * 1000))) / 86_400_000);
+  if (dias <= 0) return "Hoy";
+  if (dias === 1) return "Ayer";
+  if (dias < 7) return "Esta semana";
+  return "Anteriores";
+}
+
+/** "hace 5 min", "hace 3 h", "ayer", "12 oct". */
+export function haceCuanto(segundos: number, ahora = Date.now()): string {
+  const s = Math.max(0, Math.floor(ahora / 1000 - segundos));
+  if (s < 60) return "ahora mismo";
+  if (s < 3600) return `hace ${Math.floor(s / 60)} min`;
+  const grupo = grupoDeFecha(segundos, new Date(ahora));
+  if (grupo === "Hoy") return `hace ${Math.floor(s / 3600)} h`;
+  if (grupo === "Ayer") return "ayer";
+  return new Date(segundos * 1000).toLocaleDateString("es-ES", { day: "numeric", month: "short" });
+}
 
 /** `12.43` → `12,4` */
 export const decimal = (n: number, decimales = 1) =>

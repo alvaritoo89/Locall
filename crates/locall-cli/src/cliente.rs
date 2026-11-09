@@ -118,6 +118,18 @@ impl Cliente {
         }
     }
 
+    /// `PATCH` con cuerpo JSON que devuelve JSON.
+    pub fn patch(&self, ruta: &str, cuerpo: &Value) -> Result<Value, ErrorCli> {
+        let respuesta = self
+            .agente
+            .patch(&format!("{}{ruta}", self.base))
+            .header("Authorization", &self.autorizacion())
+            .header("Content-Type", "application/json")
+            .send(cuerpo.to_string())
+            .map_err(|e| ErrorCli::Red(e.to_string()))?;
+        leer_json(respuesta)
+    }
+
     /// `DELETE` que devuelve JSON.
     pub fn delete(&self, ruta: &str) -> Result<Value, ErrorCli> {
         let respuesta = self

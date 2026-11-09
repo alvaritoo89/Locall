@@ -582,6 +582,114 @@ p {
   min-height: 40px;
 }
 
+.lista-conversaciones {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.lista-conversaciones ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.grupo-fecha {
+  margin: 0 0 4px;
+  padding: 0 8px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--tenue);
+}
+
+.elemento-conversacion {
+  border-radius: 6px;
+}
+
+.elemento-conversacion.activa {
+  background: var(--acento-suave);
+}
+
+.abrir-conversacion {
+  width: 100%;
+  border: 0;
+  background: none;
+  padding: 7px 8px;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--texto);
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.abrir-conversacion:hover:not(:disabled) {
+  background: var(--acento-suave);
+}
+
+.abrir-conversacion:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.elemento-conversacion.activa .abrir-conversacion {
+  font-weight: 600;
+}
+
+.abrir-conversacion:focus-visible,
+.renombrar:focus-visible {
+  outline: 2px solid var(--acento);
+  outline-offset: -2px;
+}
+
+.acciones-conversacion {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  padding: 0 8px 7px;
+}
+
+.acciones-conversacion .enlace {
+  font-size: 12px;
+}
+
+.enlace:disabled {
+  opacity: 0.5;
+  cursor: default;
+  text-decoration: none;
+}
+
+.enlace.peligro {
+  color: var(--error);
+}
+
+.renombrar {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 13px;
+}
+
+.titulo-continuar {
+  margin: 4px 0 2px;
+  font-weight: 600;
+}
+
+.tarjeta.continuar .boton {
+  margin-top: 10px;
+}
+
 .conversacion {
   flex: 1;
   min-width: 0;

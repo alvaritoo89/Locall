@@ -223,3 +223,192 @@ fn detecta_datos_manipulados() {
         Err(ErrorRegistro::DatoInvalido { .. })
     ));
 }
+
+// ─── Conversaciones (esquema v2) ─────────────────────────────────────────────
+
+fn respuesta(texto: &str) -> MensajeNuevo {
+    MensajeNuevo {
+        autor: Autor::Asistente,
+        contenido: texto.into(),
+        razonamiento: "pensé".into(),
+        modelo: Some("qwen3-4b".into()),
+        tokens: Some(12),
+        velocidad: Some(12.5),
+        cortada: false,
+    }
+}
+
+#[test]
+fn una_base_de_datos_v1_se_actualiza_a_v2_sin_perder_nada() {
+    let db = BaseDeDatosDePrueba::nueva("v1-a-v2");
+    {
+        // Una base de datos como la de la Fase 2: solo la migración 1, con un modelo dentro.
+        let mut c = Connection::open(&db.0).unwrap();
+        let tx = c.transaction().unwrap();
+        tx.execute_batch(MIGRACIONES[0]).unwrap();
+        tx.execute_batch(
+            "INSERT INTO modelos (id, nombre, origen, revision, verificado, instalado)
+                 VALUES ('qwen', 'Qwen', 'local', 'local', 0, 1);
+             INSERT INTO archivos (modelo_id, nombre, huella, bytes, orden)
+                 VALUES ('qwen', 'qwen.gguf', printf('%064d', 0), 10, 0);",
+        )
+        .unwrap();
+        tx.pragma_update(None, "user_version", 1).unwrap();
+        tx.commit().unwrap();
+    }
+    // Al abrirla con esta versión de Locall, se aplica la migración 2.
+    let mut r = Registro::abrir(&db.0).unwrap();
+    assert_eq!(r.version_esquema().unwrap(), 2);
+    assert_eq!(r.listar().unwrap().len(), 1, "el modelo sigue ahí");
+    assert!(r.conversaciones().unwrap().is_empty());
+    r.crear_conversacion("Primera", 5).unwrap();
+    assert_eq!(r.conversaciones().unwrap().len(), 1);
+}
+
+#[test]
+fn guarda_y_lee_conversaciones() {
+    let mut r = Registro::en_memoria().unwrap();
+    assert_eq!(r.version_esquema().unwrap(), 2);
+    let c = r
+        .crear_conversacion("  Plan de\nestudio   de Rust ", 100)
+        .unwrap();
+    assert_eq!(
+        c.titulo, "Plan de estudio de Rust",
+        "una sola línea, sin espacios de más"
+    );
+    assert_eq!((c.mensajes, c.creada, c.actualizada), (0, 100, 100));
+
+    r.ajustar_conversacion(c.id, "qwen3-4b", "Responde en español.", Some(0.7))
+        .unwrap();
+    let pregunta = r
+        .anadir_mensaje(
+            c.id,
+            &MensajeNuevo::del_usuario("¿Qué es el ownership?"),
+            110,
+        )
+        .unwrap();
+    let contestacion = r
+        .anadir_mensaje(c.id, &respuesta("Cada valor tiene un dueño."), 120)
+        .unwrap();
+    assert_eq!((pregunta.orden, contestacion.orden), (0, 1));
+
+    let leida = r.conversacion(c.id).unwrap().unwrap();
+    assert_eq!(leida.mensajes, 2);
+    assert_eq!(leida.actualizada, 120, "se actualiza al añadir mensajes");
+    assert_eq!(leida.modelo.as_deref(), Some("qwen3-4b"));
+    assert_eq!(leida.sistema, "Responde en español.");
+    assert_eq!(leida.temperatura, Some(0.7));
+
+    let mensajes = r.mensajes(c.id).unwrap();
+    assert_eq!(mensajes.len(), 2);
+    assert_eq!(mensajes[0].autor, Autor::Usuario);
+    assert_eq!(mensajes[1], contestacion);
+
+    r.renombrar_conversacion(c.id, "Rust desde cero").unwrap();
+    assert_eq!(
+        r.conversacion(c.id).unwrap().unwrap().titulo,
+        "Rust desde cero"
+    );
+}
+
+#[test]
+fn ordena_por_la_mas_reciente_y_quita_el_ultimo_mensaje() {
+    let mut r = Registro::en_memoria().unwrap();
+    let vieja = r.crear_conversacion("Vieja", 10).unwrap();
+    let nueva = r.crear_conversacion("Nueva", 20).unwrap();
+    let ids: Vec<i64> = r.conversaciones().unwrap().iter().map(|c| c.id).collect();
+    assert_eq!(ids, [nueva.id, vieja.id]);
+
+    // Escribir en la vieja la sube arriba.
+    r.anadir_mensaje(vieja.id, &MensajeNuevo::del_usuario("hola"), 30)
+        .unwrap();
+    assert_eq!(r.conversaciones().unwrap()[0].id, vieja.id);
+
+    r.anadir_mensaje(vieja.id, &MensajeNuevo::del_usuario("otra"), 31)
+        .unwrap();
+    r.quitar_ultimo_mensaje(vieja.id).unwrap();
+    let mensajes = r.mensajes(vieja.id).unwrap();
+    assert_eq!(mensajes.len(), 1);
+    assert_eq!(mensajes[0].contenido, "hola");
+}
+
+#[test]
+fn errores_con_conversaciones_que_no_existen() {
+    let mut r = Registro::en_memoria().unwrap();
+    assert!(r.conversacion(99).unwrap().is_none());
+    assert!(matches!(
+        r.renombrar_conversacion(99, "x"),
+        Err(ErrorRegistro::NoEncontrado(_))
+    ));
+    assert!(matches!(
+        r.anadir_mensaje(99, &MensajeNuevo::del_usuario("x"), 1),
+        Err(ErrorRegistro::NoEncontrado(_))
+    ));
+    assert!(matches!(
+        r.eliminar_conversacion(99),
+        Err(ErrorRegistro::NoEncontrado(_))
+    ));
+}
+
+#[test]
+fn los_titulos_largos_se_recortan() {
+    let largo = "a".repeat(500);
+    let t = titulo_valido(&largo);
+    assert_eq!(t.chars().count(), TITULO_MAX + 1);
+    assert!(t.ends_with('…'));
+}
+
+/// ¿Aparece `texto` en alguno de los archivos de la base de datos (el principal y el registro de cambios)?
+fn esta_en_los_archivos(db: &BaseDeDatosDePrueba, texto: &str) -> bool {
+    ["", "-wal"].iter().any(|sufijo| {
+        let mut ruta = db.0.clone().into_os_string();
+        ruta.push(sufijo);
+        std::fs::read(ruta)
+            .is_ok_and(|bytes| bytes.windows(texto.len()).any(|v| v == texto.as_bytes()))
+    })
+}
+
+#[test]
+fn eliminar_una_conversacion_la_borra_de_verdad_del_disco() {
+    const SECRETO: &str = "ZANAHORIA-SECRETA-777";
+    let db = BaseDeDatosDePrueba::nueva("borrado-real");
+    let mut r = Registro::abrir(&db.0).unwrap();
+    // Otra conversación que se queda, para que la base de datos no quede vacía.
+    let otra = r.crear_conversacion("Se queda", 1).unwrap();
+    r.anadir_mensaje(otra.id, &MensajeNuevo::del_usuario("hola"), 2)
+        .unwrap();
+
+    let c = r
+        .crear_conversacion(&format!("Sobre {SECRETO}"), 3)
+        .unwrap();
+    r.anadir_mensaje(
+        c.id,
+        &MensajeNuevo::del_usuario(format!("Mi clave es {SECRETO}")),
+        4,
+    )
+    .unwrap();
+    r.anadir_mensaje(c.id, &respuesta(&format!("Entendido: {SECRETO}")), 5)
+        .unwrap();
+    assert!(
+        esta_en_los_archivos(&db, SECRETO),
+        "la prueba debe ver el texto antes de borrarlo"
+    );
+
+    r.eliminar_conversacion(c.id).unwrap();
+
+    assert!(
+        !esta_en_los_archivos(&db, SECRETO),
+        "el texto borrado sigue en el disco"
+    );
+    assert!(r.conversacion(c.id).unwrap().is_none());
+    assert_eq!(
+        r.mensajes(c.id).unwrap().len(),
+        0,
+        "los mensajes se borran con la conversación"
+    );
+    assert_eq!(
+        r.mensajes(otra.id).unwrap().len(),
+        1,
+        "las demás no se tocan"
+    );
+}

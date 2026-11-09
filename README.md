@@ -77,7 +77,7 @@ Todavía no hay instalador. Mientras tanto, desde el código fuente (Windows 10/
    ```
 
 Locall se abre solo en segundo plano cuando hace falta y se cierra solo tras un rato sin usarse. Sus datos (modelos,
-ajustes, registros) están en `%LOCALAPPDATA%\Locall`. Otros programas pueden usarlo con la
+ajustes, conversaciones guardadas, registros) están en `%LOCALAPPDATA%\Locall` y no salen de tu equipo. Otros programas pueden usarlo con la
 [API local](docs/adr/0015-nucleo-y-api-local.md), también en formato compatible con OpenAI
 ([ADR 0016](docs/adr/0016-compatibilidad-openai-y-cierre.md)).
 
@@ -98,7 +98,7 @@ Pruebas reales en un portátil normal (Intel Core i5-1334U, gráfica integrada I
 - [x] Fase 2: núcleo (lector GGUF, almacén, descargas verificadas, motor, planificador, configuración y registros privados)
 - [x] Fase 3: API local (núcleo, servidor con token, conversación, descargas, formato compatible con OpenAI, cierre por inactividad)
 - [x] Fase 4: línea de comandos (`locall pull`, `run`, `list`, `show`, `rm`, `import`, `status`, `stop`) · **MVP**
-- [ ] **Fase 5: aplicación de escritorio** · ✓ esqueleto (ventana, estado del equipo y de Locall) · ✓ inicio y biblioteca (¿cabe?, instalar con progreso, eliminar) · ✓ chat · conversaciones guardadas · pulido
+- [ ] **Fase 5: aplicación de escritorio** · ✓ esqueleto (ventana, estado del equipo y de Locall) · ✓ inicio y biblioteca (¿cabe?, instalar con progreso, eliminar) · ✓ chat · ✓ conversaciones guardadas (y borrado real) · pulido
 
 ## Estructura del repositorio
 
@@ -108,12 +108,12 @@ Pruebas reales en un portátil normal (Intel Core i5-1334U, gráfica integrada I
 | [`crates/locall-store`](crates/locall-store) | Almacén de modelos: huellas sha256, snapshots con enlaces duros, espacio y limpieza |
 | [`crates/locall-system`](crates/locall-system) | Información del equipo (memoria, procesador, hilos) y Job Object de Windows |
 | [`crates/locall-compat`](crates/locall-compat) | ¿Cabe este modelo y lo entiende el motor? Estimación de memoria y compatibilidad |
-| [`crates/locall-registry`](crates/locall-registry) | Registro de modelos instalados (SQLite con migraciones) |
+| [`crates/locall-registry`](crates/locall-registry) | Registro de modelos instalados y conversaciones guardadas (SQLite con migraciones y borrado real) |
 | [`crates/locall-download`](crates/locall-download) | Descargas verificadas por sha256, reanudables y con detección de atascos |
 | [`crates/locall-engine`](crates/locall-engine) | Arranca, vigila y para `llama-server` de forma segura y conversa con él por trozos (con cancelación) |
 | [`crates/locall-scheduler`](crates/locall-scheduler) | Planificador: un modelo a la vez, comprobación de memoria antes de cargar, cola por orden de llegada y descarga por inactividad |
 | [`crates/locall-config`](crates/locall-config) | Carpeta de datos, ajustes del usuario (`config.toml`) y registros diarios sin datos de las conversaciones |
-| [`crates/locall-core`](crates/locall-core) | Núcleo: instalar de Hugging Face (fijado al commit y verificado), importar, listar, eliminar y conversar |
+| [`crates/locall-core`](crates/locall-core) | Núcleo: instalar de Hugging Face (fijado al commit y verificado), importar, listar, eliminar, conversar y guardar las conversaciones |
 | [`crates/locall-api`](crates/locall-api) | API local (axum): solo 127.0.0.1, token y protección frente a webs (`Host`, `Origin`) |
 | [`crates/locall-cli`](crates/locall-cli) | Línea de comandos: cliente de la API que abre Locall en segundo plano cuando hace falta |
 | [`crates/locall-app`](crates/locall-app) | Aplicación de escritorio (Tauri 2 + React): un cliente más de la API, con el token fuera de la interfaz |

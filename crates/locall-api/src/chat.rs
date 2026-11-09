@@ -144,7 +144,7 @@ fn leer_peticion(cuerpo: &[u8]) -> Result<(String, PeticionChat, bool), ErrorApi
 }
 
 /// Un evento del motor en JSON (ya traducido por `locall-engine`: sin datos privados).
-fn evento_json(evento: &Evento<'_>) -> Value {
+pub(crate) fn evento_json(evento: &Evento<'_>) -> Value {
     match evento {
         Evento::Leyendo { procesados, total } => {
             json!({"type": "prompt_progress", "processed": procesados, "total": total})
@@ -176,7 +176,7 @@ fn uso_json(r: &Resumen) -> (Value, Value) {
     )
 }
 
-fn fin_json(r: &Resumen) -> Value {
+pub(crate) fn fin_json(r: &Resumen) -> Value {
     let (uso, velocidad) = uso_json(r);
     json!({"type": "done", "finish": fin_texto(r.fin), "usage": uso, "speed": velocidad})
 }
