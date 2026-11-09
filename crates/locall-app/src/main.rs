@@ -223,6 +223,91 @@ async fn instalar(
     resultado
 }
 
+// ─── Órdenes: conversar ───────────────────────────────────────────────────────
+
+/// Respuestas en marcha, con su aviso de parar (clave: el identificador que elige la interfaz).
+#[derive(Default, Clone)]
+struct Respuestas(Arc<Mutex<HashMap<String, Arc<AtomicBool>>>>);
+
+/// Pide una respuesta a `modelo` para la conversación `mensajes` (`[{role, content}]`). Cada trozo (texto,
+/// razonamiento, progreso de lectura) se envía a la interfaz por `canal` en cuanto llega; al terminar devuelve el
+/// resumen (`finish`, `usage`, `speed`). Si se para, devuelve `finish: "cancelled"`: la interfaz ya tiene el texto.
+#[tauri::command]
+#[allow(clippy::too_many_arguments)] // las órdenes de Tauri reciben cada dato de la interfaz como argumento
+async fn conversar(
+    conexion: tauri::State<'_, Conexion>,
+    respuestas: tauri::State<'_, Respuestas>,
+    peticion: String,
+    modelo: String,
+    mensajes: Vec<Value>,
+    temperatura: Option<f64>,
+    canal: Channel<Value>,
+) -> Result<Value, String> {
+    let conexion = conexion.inner().clone();
+    let parar = Arc::new(AtomicBool::new(false));
+    respuestas
+        .0
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .insert(peticion.clone(), Arc::clone(&parar));
+    let lista = respuestas.inner().clone();
+
+    let resultado = en_hilo(move || {
+        let cliente = conexion.cliente()?;
+        let mut cuerpo = json!({"model": modelo, "messages": mensajes, "stream": true});
+        if let Some(t) = temperatura {
+            cuerpo["options"] = json!({"temperature": t});
+        }
+        let respuesta = cliente
+            .post_sin_leer("/api/chat", &cuerpo)
+            .map_err(|e| e.to_string())?;
+        for linea in BufReader::new(respuesta.into_body().into_reader()).lines() {
+            if parar.load(Ordering::Relaxed) {
+                // Al soltar la respuesta se cierra la conexión: el motor deja de generar (Fase 3).
+                return Ok(json!({"finish": "cancelled"}));
+            }
+            let linea = linea.map_err(|e| format!("la respuesta se cortó: {e}"))?;
+            let Ok(evento) = serde_json::from_str::<Value>(&linea) else {
+                continue;
+            };
+            match evento["type"].as_str() {
+                Some("done") => return Ok(evento),
+                Some("error") => {
+                    return Err(evento["error"]["message"]
+                        .as_str()
+                        .unwrap_or("error al responder")
+                        .to_owned());
+                }
+                _ => {
+                    let _ = canal.send(evento);
+                }
+            }
+        }
+        Err("la respuesta se cortó".to_owned())
+    })
+    .await;
+
+    lista
+        .0
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .remove(&peticion);
+    resultado
+}
+
+/// Pide parar una respuesta en marcha.
+#[tauri::command]
+fn parar(respuestas: tauri::State<'_, Respuestas>, peticion: String) {
+    if let Some(aviso) = respuestas
+        .0
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .get(&peticion)
+    {
+        aviso.store(true, Ordering::Relaxed);
+    }
+}
+
 /// Pide cancelar una instalación en marcha.
 #[tauri::command]
 fn cancelar_instalacion(
@@ -244,13 +329,16 @@ fn main() {
     tauri::Builder::default()
         .manage(Conexion::default())
         .manage(Instalaciones::default())
+        .manage(Respuestas::default())
         .invoke_handler(tauri::generate_handler![
             estado,
             modelos,
             eliminar,
             consultar_repo,
             instalar,
-            cancelar_instalacion
+            cancelar_instalacion,
+            conversar,
+            parar
         ])
         .run(tauri::generate_context!())
         .expect("no se pudo abrir la ventana de Locall");

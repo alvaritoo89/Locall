@@ -1,6 +1,7 @@
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 
 import { Biblioteca } from "./Biblioteca";
+import { Chat } from "./Chat";
 import { Icono } from "./comun";
 import { Inicio } from "./Inicio";
 import { type EstadoLocall, type Modelo, minutosSegundos, pedirEstado, pedirModelos, tamano, textoError } from "./locall";
@@ -50,7 +51,12 @@ export function App() {
             <Inicio estado={estado} error={error} modelos={modelos} irABiblioteca={() => setPagina("biblioteca")} />
           )}
           {pagina === "biblioteca" && <Biblioteca estado={estado} modelos={modelos} recargar={recargarModelos} />}
-          {pagina !== "inicio" && pagina !== "biblioteca" && <Proximamente pagina={pagina} />}
+          {/* El chat se monta siempre (oculto si no está a la vista): así no se pierde la conversación al cambiar de
+              pantalla, ni se corta una respuesta a medias. */}
+          <div className="pantalla-chat" hidden={pagina !== "chat"}>
+            <Chat estado={estado} modelos={modelos} irABiblioteca={() => setPagina("biblioteca")} />
+          </div>
+          {(pagina === "explorar" || pagina === "ajustes") && <Proximamente pagina={pagina} />}
         </main>
       </div>
       <BarraDeEstado estado={estado} error={error} />
@@ -112,13 +118,12 @@ function BarraLateral({ pagina, irA }: { pagina: Pagina; irA: (p: Pagina) => voi
 
 // ─── Lo que llega en las próximas partes ──────────────────────────────────────
 
-const PROXIMAS: Record<"chat" | "explorar" | "ajustes", { titulo: string; parte: string }> = {
-  chat: { titulo: "Chat", parte: "5c" },
+const PROXIMAS: Record<"explorar" | "ajustes", { titulo: string; parte: string }> = {
   explorar: { titulo: "Explorar", parte: "5e" },
   ajustes: { titulo: "Ajustes", parte: "5e" },
 };
 
-function Proximamente({ pagina }: { pagina: "chat" | "explorar" | "ajustes" }) {
+function Proximamente({ pagina }: { pagina: "explorar" | "ajustes" }) {
   const { titulo, parte } = PROXIMAS[pagina];
   return (
     <>

@@ -544,3 +544,254 @@ p {
 .ram-barra > .ram-modelo {
   background: var(--acento);
 }
+
+/* ─── Parte 5c: chat ───────────────────────────────────────────────────────── */
+
+/* En el chat, el contenido ocupa toda la altura (sin el relleno de las otras pantallas). */
+.contenido:has(> .pantalla-chat:not([hidden])) {
+  padding: 0;
+  gap: 0;
+  overflow: hidden;
+}
+
+.pantalla-chat {
+  height: 100%;
+}
+
+.pantalla-chat[hidden] {
+  display: none;
+}
+
+.chat {
+  height: 100%;
+  display: flex;
+  min-height: 0;
+}
+
+.conversaciones {
+  flex: 0 0 230px;
+  border-right: 1px solid var(--borde);
+  padding: 16px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.boton.ancho {
+  width: 100%;
+  min-height: 40px;
+}
+
+.conversacion {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.cabecera-chat {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 28px;
+  border-bottom: 1px solid var(--borde);
+}
+
+.titulo-chat {
+  font-size: 16px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.selector {
+  min-height: 34px;
+  padding: 0 8px;
+  border: 1px solid var(--borde-fuerte);
+  border-radius: 6px;
+  background: var(--fondo);
+  color: var(--texto);
+  font: inherit;
+  font-size: 13px;
+}
+
+.mensajes {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 24px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.mensajes > * {
+  max-width: 760px;
+}
+
+.vacio {
+  margin-top: 20vh;
+  text-align: center;
+  align-self: center;
+}
+
+.mensaje {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.autor {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--tenue);
+}
+
+.autor.modelo {
+  color: var(--acento);
+}
+
+.parrafo-respuesta {
+  margin: 0;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.bloque-codigo {
+  margin: 0;
+  padding: 12px 14px;
+  background: var(--fondo-lateral);
+  border: 1px solid var(--borde);
+  border-radius: 6px;
+  font-family: "JetBrains Mono Variable", ui-monospace, monospace;
+  font-size: 12.5px;
+  line-height: 1.55;
+  overflow-x: auto;
+}
+
+.codigo-en-linea {
+  font-family: "JetBrains Mono Variable", ui-monospace, monospace;
+  font-size: 12.5px;
+  background: var(--relleno-regla);
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+.razonamiento {
+  border-left: 2px solid var(--borde-fuerte);
+  padding-left: 12px;
+  color: var(--tenue);
+  font-size: 13px;
+}
+
+.razonamiento summary {
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.cifras {
+  font-size: 11.5px;
+  color: var(--tenue);
+}
+
+.redactar {
+  border-top: 1px solid var(--borde);
+  padding: 14px 28px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.campo-texto {
+  resize: none;
+  padding: 10px 12px;
+  border: 1px solid var(--borde-fuerte);
+  border-radius: 6px;
+  background: var(--fondo);
+  color: var(--texto);
+  font: inherit;
+  font-size: 14px;
+}
+
+.campo-texto:focus-visible,
+.selector:focus-visible {
+  outline: 2px solid var(--acento);
+  outline-offset: 1px;
+}
+
+.fila-botones {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ajustes-chat {
+  flex: 0 0 250px;
+  border-left: 1px solid var(--borde);
+  background: var(--fondo-lateral);
+  padding: 20px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  overflow: auto;
+}
+
+.ajustes-chat h2 {
+  font-size: 14px;
+}
+
+.grupo {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.fila-etiqueta {
+  display: flex;
+  justify-content: space-between;
+}
+
+.grupo input[type="range"] {
+  width: 100%;
+  accent-color: var(--acento);
+}
+
+.segmentado {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border: 1px solid var(--borde-fuerte);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.segmentado button {
+  min-height: 36px;
+  border: 0;
+  background: var(--fondo);
+  color: var(--texto-2);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.segmentado button.activo {
+  background: var(--acento);
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.cli {
+  font-family: "JetBrains Mono Variable", ui-monospace, monospace;
+  font-size: 11.5px;
+  color: var(--texto-2);
+  background: var(--fondo);
+  border: 1px solid var(--borde);
+  border-radius: 6px;
+  padding: 8px 10px;
+  overflow-wrap: anywhere;
+}

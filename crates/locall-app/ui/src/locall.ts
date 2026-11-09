@@ -118,3 +118,43 @@ export function textoEncaje(encaje: Encaje | null): { texto: string; tono: "norm
 
 /** Un error de `invoke` como texto. */
 export const textoError = (e: unknown) => (typeof e === "string" ? e : String(e));
+
+// ─── Conversar ────────────────────────────────────────────────────────────────
+
+/** Un mensaje de la conversación. */
+export interface Mensaje {
+  role: "system" | "user" | "assistant";
+  content: string;
+}
+
+/** Lo que llega mientras el modelo responde. */
+export type Trozo =
+  | { type: "text"; text: string }
+  | { type: "reasoning"; text: string }
+  | { type: "prompt_progress"; processed: number; total: number };
+
+/** El resumen al terminar una respuesta. */
+export interface FinRespuesta {
+  finish: "stop" | "length" | "cancelled";
+  usage?: { prompt_tokens: number; cached_tokens: number; completion_tokens: number };
+  speed?: { prompt_per_second: number | null; generation_per_second: number | null };
+}
+
+/** Pide una respuesta; `alRecibir` recibe cada trozo. `peticion` identifica la respuesta para poder pararla. */
+export function conversar(
+  peticion: string,
+  modelo: string,
+  mensajes: Mensaje[],
+  temperatura: number | null,
+  alRecibir: (t: Trozo) => void,
+): Promise<FinRespuesta> {
+  const canal = new Channel<Trozo>();
+  canal.onmessage = alRecibir;
+  return invoke<FinRespuesta>("conversar", { peticion, modelo, mensajes, temperatura, canal });
+}
+
+export const parar = (peticion: string) => invoke<void>("parar", { peticion });
+
+/** `12.43` → `12,4` */
+export const decimal = (n: number, decimales = 1) =>
+  n.toLocaleString("es-ES", { minimumFractionDigits: decimales, maximumFractionDigits: decimales });
