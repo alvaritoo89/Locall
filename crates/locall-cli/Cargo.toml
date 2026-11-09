@@ -1,0 +1,19 @@
+[package]
+name = "locall-cli"
+description = "Línea de comandos de Locall: un cliente de la API local que arranca el núcleo cuando hace falta."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+# Lee las órdenes (`--opcion=valor`, `-abc`, textos con caracteres raros) sin dependencias; la ayuda y los errores,
+# en español, son nuestros (ADR 0017).
+lexopt = "0.3.2"
+locall-config = { path = "../locall-config" }
+locall-system = { path = "../locall-system" }
+serde_json = "1.0.154"
+# Cliente HTTP para hablar con la API local (127.0.0.1): sin TLS.
+ureq = { version = "3.5.1", default-features = false }

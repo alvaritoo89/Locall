@@ -66,7 +66,7 @@ Pruebas reales en un portátil normal (Intel Core i5-1334U, gráfica integrada I
 - [x] Fase 1: control del motor desde Rust (arranque, streaming, parada, protección ante cierres bruscos)
 - [x] Fase 2: núcleo (lector GGUF, almacén, descargas verificadas, motor, planificador, configuración y registros privados)
 - [x] Fase 3: API local (núcleo, servidor con token, conversación, descargas, formato compatible con OpenAI, cierre por inactividad)
-- [ ] **Fase 4: línea de comandos** (`locall`)
+- [ ] **Fase 4: línea de comandos** (`locall`) · ✓ base (status, list, show, stop) · modelos · chat · pulido
 - [ ] Fase 5: aplicación de escritorio
 
 ## Estructura del repositorio
@@ -84,7 +84,8 @@ Pruebas reales en un portátil normal (Intel Core i5-1334U, gráfica integrada I
 | [`crates/locall-config`](crates/locall-config) | Carpeta de datos, ajustes del usuario (`config.toml`) y registros diarios sin datos de las conversaciones |
 | [`crates/locall-core`](crates/locall-core) | Núcleo: instalar de Hugging Face (fijado al commit y verificado), importar, listar, eliminar y conversar |
 | [`crates/locall-api`](crates/locall-api) | API local (axum): solo 127.0.0.1, token y protección frente a webs (`Host`, `Origin`) |
-| [`crates/locall`](crates/locall) | El programa `locall` (`locall serve`; la línea de comandos llegará en la Fase 4) |
+| [`crates/locall-cli`](crates/locall-cli) | Línea de comandos: cliente de la API que abre Locall en segundo plano cuando hace falta |
+| [`crates/locall`](crates/locall) | El programa `locall`: `locall serve` y las órdenes de la línea de comandos |
 | [`docs/adr`](docs/adr) | Decisiones de arquitectura y sus motivos |
 
 ## Desarrollo

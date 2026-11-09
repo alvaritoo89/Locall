@@ -1,57 +1,54 @@
-//! `locall`: el programa.
+//! `locall`: el programa. Un solo ejecutable para el núcleo y la línea de comandos (ADR 0015):
 //!
-//! Por ahora solo tiene `locall serve` (arrancar el núcleo y la API local). En la Fase 4 se añadirán las órdenes
-//! de la línea de comandos (`locall pull`, `locall run`…) en este mismo ejecutable (un solo programa para núcleo y
-//! CLI, ADR 0015).
+//! - `locall serve` abre el núcleo y la API local (lo atiende este archivo, que tiene el servidor);
+//! - el resto de órdenes son la CLI (`locall-cli`), un cliente de esa API que la abre en segundo plano cuando hace
+//!   falta (ADR 0017).
 
 use std::path::PathBuf;
 use std::process::ExitCode;
 use std::sync::Arc;
 use std::time::Duration;
 
+use locall_cli::{ErrorCli, Orden};
 use locall_config::{Config, Rutas, registros};
 use locall_core::{Nucleo, OpcionesNucleo};
 
-const AYUDA: &str = "\
-Locall: modelos de IA en tu propio ordenador.
-
-Uso:
-  locall serve      Arranca Locall y su API local (Ctrl+C para parar)
-  locall version    Muestra la versión
-  locall help       Muestra esta ayuda
-
-Variables de entorno:
-  LOCALL_DATOS      Carpeta de datos (por defecto %LOCALAPPDATA%\\Locall)
-  LOCALL_MOTOR      Ruta de llama-server.exe (por defecto, motor\\llama-server.exe junto a locall.exe)
-";
-
 fn main() -> ExitCode {
-    let argumentos: Vec<String> = std::env::args().skip(1).collect();
-    let resultado = match argumentos.first().map(String::as_str) {
-        Some("serve") => servir(),
-        Some("version" | "--version" | "-V") => {
-            println!(
-                "locall {} ({})",
-                env!("CARGO_PKG_VERSION"),
-                locall_api::VERSION_MOTOR
-            );
-            Ok(())
-        }
-        None | Some("help" | "--help" | "-h") => {
-            print!("{AYUDA}");
-            Ok(())
-        }
-        Some(otra) => {
-            eprintln!("Orden desconocida: «{otra}»\n");
-            eprint!("{AYUDA}");
+    let orden = match locall_cli::interpretar(std::env::args_os().skip(1)) {
+        Ok(orden) => orden,
+        Err(error) => {
+            eprintln!("Error: {error}");
             return ExitCode::from(2);
         }
     };
+    if orden == Orden::Servir {
+        return match servir() {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(mensaje) => {
+                eprintln!("Error: {mensaje}");
+                log::error!("{mensaje}");
+                ExitCode::FAILURE
+            }
+        };
+    }
+    let resultado = Rutas::por_defecto()
+        .map_err(|e| ErrorCli::Config(e.to_string()))
+        .and_then(|rutas| {
+            let ejecutable = std::env::current_exe()
+                .map_err(|e| ErrorCli::Config(format!("no se encuentra locall.exe: {e}")))?;
+            locall_cli::ejecutar(&orden, &rutas, &ejecutable)
+        });
     match resultado {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(mensaje) => {
-            eprintln!("Error: {mensaje}");
-            log::error!("{mensaje}");
+        Ok(texto) => {
+            print!("{texto}");
+            ExitCode::SUCCESS
+        }
+        Err(error @ ErrorCli::Uso(_)) => {
+            eprintln!("Error: {error}");
+            ExitCode::from(2)
+        }
+        Err(error) => {
+            eprintln!("Error: {error}");
             ExitCode::FAILURE
         }
     }
@@ -125,10 +122,10 @@ fn servir() -> Result<(), String> {
         }
         log::info!("API escuchando en 127.0.0.1:{puerto}");
 
-        let (rutas_api, actividad) = locall_api::rutas_vigiladas(Arc::clone(&nucleo), token, puerto);
-
-        // Se para con Ctrl+C o tras un rato sin uso, lo que llegue antes.
+        // Se para con Ctrl+C, con `locall stop` (POST /api/shutdown) o tras un rato sin uso: lo que llegue antes.
         let parar = Arc::new(tokio::sync::Notify::new());
+        let (rutas_api, actividad) =
+            locall_api::rutas_vigiladas(Arc::clone(&nucleo), token, puerto, Arc::clone(&parar));
         let aviso = Arc::clone(&parar);
         tokio::spawn(async move {
             let _ = tokio::signal::ctrl_c().await;

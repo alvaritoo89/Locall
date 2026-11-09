@@ -121,6 +121,19 @@ pub fn memoria_de_proceso(pid: u32) -> io::Result<u64> {
     }
 }
 
+// ─── Procesos en segundo plano ────────────────────────────────────────────────
+
+/// Hace que los procesos que lancemos a partir de ahora **no hereden** nuestra entrada y salida estándar.
+///
+/// En Windows, un proceso hijo hereda los "tubos" de la consola del padre. Si la CLI lanza el núcleo en segundo
+/// plano y este hereda el tubo de salida, la terminal (o un programa que lea la salida de la CLI) se queda
+/// esperando a que el núcleo lo cierre, es decir, hasta que el núcleo termine. Pasaba en la Fase 4: `locall list`
+/// tardaba 90 s en "acabar".
+pub fn no_heredar_entrada_salida() {
+    #[cfg(windows)]
+    windows::no_heredar_entrada_salida();
+}
+
 // ─── Fecha y hora ─────────────────────────────────────────────────────────────
 
 /// Una fecha y hora local (para los registros).

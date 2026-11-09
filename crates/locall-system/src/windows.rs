@@ -4,7 +4,13 @@ use std::io;
 use std::os::windows::io::AsRawHandle;
 use std::process::Child;
 
-use windows_sys::Win32::Foundation::{CloseHandle, HANDLE, SYSTEMTIME};
+use windows_sys::Win32::Foundation::{
+    CloseHandle, HANDLE, HANDLE_FLAG_INHERIT, INVALID_HANDLE_VALUE, SYSTEMTIME,
+    SetHandleInformation,
+};
+use windows_sys::Win32::System::Console::{
+    GetStdHandle, STD_ERROR_HANDLE, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE,
+};
 use windows_sys::Win32::System::JobObjects::{
     AssignProcessToJobObject, CreateJobObjectW, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
     JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JobObjectExtendedLimitInformation,
@@ -160,5 +166,19 @@ pub fn fecha_hora_local() -> FechaHora {
         minuto: t.wMinute as u8,
         segundo: t.wSecond as u8,
         milisegundo: t.wMilliseconds,
+    }
+}
+
+/// Marca la entrada y salida estándar de este proceso como **no heredables**.
+pub fn no_heredar_entrada_salida() {
+    for cual in [STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, STD_ERROR_HANDLE] {
+        // SAFETY: GetStdHandle solo consulta qué asa tiene el proceso para ese canal (puede ser nula o no válida,
+        // y entonces no se toca). SetHandleInformation solo cambia el indicador "heredable" de un asa nuestra.
+        unsafe {
+            let asa = GetStdHandle(cual);
+            if !asa.is_null() && asa != INVALID_HANDLE_VALUE {
+                SetHandleInformation(asa, HANDLE_FLAG_INHERIT, 0);
+            }
+        }
     }
 }

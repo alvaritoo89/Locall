@@ -49,6 +49,8 @@ struct Compartido {
     token: Arc<str>,
     puerto: u16,
     actividad: Actividad,
+    /// Avisa al programa de que hay que cerrarse (`POST /api/shutdown`, la orden `locall stop`).
+    parar: Arc<tokio::sync::Notify>,
 }
 
 /// Cuándo se usó Locall por última vez (para el cierre por inactividad).
@@ -95,21 +97,29 @@ pub async fn esperar_inactividad(
 
 /// Construye las rutas de la API con su seguridad. `puerto` es en el que se escucha (para validar `Host`).
 pub fn rutas(nucleo: Arc<Nucleo>, token: String, puerto: u16) -> Router {
-    rutas_vigiladas(nucleo, token, puerto).0
+    rutas_vigiladas(nucleo, token, puerto, Arc::new(tokio::sync::Notify::new())).0
 }
 
-/// Como [`rutas`], devolviendo además la [`Actividad`] para el cierre por inactividad.
-pub fn rutas_vigiladas(nucleo: Arc<Nucleo>, token: String, puerto: u16) -> (Router, Actividad) {
+/// Como [`rutas`], devolviendo además la [`Actividad`] para el cierre por inactividad. `parar` recibe el aviso de
+/// `POST /api/shutdown`.
+pub fn rutas_vigiladas(
+    nucleo: Arc<Nucleo>,
+    token: String,
+    puerto: u16,
+    parar: Arc<tokio::sync::Notify>,
+) -> (Router, Actividad) {
     let actividad = Actividad::nueva();
     let compartido = Compartido {
         nucleo,
         token: token.into(),
         puerto,
         actividad: actividad.clone(),
+        parar,
     };
     let rutas = Router::new()
         .route("/api/version", get(version))
         .route("/api/status", get(estado))
+        .route("/api/shutdown", post(apagar))
         .route("/api/models", get(modelos))
         .route(
             "/api/models/{id}",
@@ -202,6 +212,13 @@ async fn version() -> Json<Value> {
         "version": env!("CARGO_PKG_VERSION"),
         "engine": VERSION_MOTOR,
     }))
+}
+
+/// Pide al programa que se cierre (de forma ordenada: termina las respuestas en curso y para el motor).
+async fn apagar(State(c): State<Compartido>) -> (StatusCode, Json<Value>) {
+    log::info!("cierre pedido por la API");
+    c.parar.notify_one();
+    (StatusCode::ACCEPTED, Json(json!({"stopping": true})))
 }
 
 async fn estado(State(c): State<Compartido>) -> Json<Value> {
