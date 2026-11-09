@@ -98,7 +98,7 @@ Pruebas reales en un portátil normal (Intel Core i5-1334U, gráfica integrada I
 - [x] Fase 2: núcleo (lector GGUF, almacén, descargas verificadas, motor, planificador, configuración y registros privados)
 - [x] Fase 3: API local (núcleo, servidor con token, conversación, descargas, formato compatible con OpenAI, cierre por inactividad)
 - [x] Fase 4: línea de comandos (`locall pull`, `run`, `list`, `show`, `rm`, `import`, `status`, `stop`) · **MVP**
-- [ ] **Fase 5: aplicación de escritorio**
+- [ ] **Fase 5: aplicación de escritorio** · ✓ esqueleto (ventana, estado del equipo y de Locall) · inicio y biblioteca · chat · conversaciones guardadas · pulido
 
 ## Estructura del repositorio
 
@@ -116,6 +116,7 @@ Pruebas reales en un portátil normal (Intel Core i5-1334U, gráfica integrada I
 | [`crates/locall-core`](crates/locall-core) | Núcleo: instalar de Hugging Face (fijado al commit y verificado), importar, listar, eliminar y conversar |
 | [`crates/locall-api`](crates/locall-api) | API local (axum): solo 127.0.0.1, token y protección frente a webs (`Host`, `Origin`) |
 | [`crates/locall-cli`](crates/locall-cli) | Línea de comandos: cliente de la API que abre Locall en segundo plano cuando hace falta |
+| [`crates/locall-app`](crates/locall-app) | Aplicación de escritorio (Tauri 2 + React): un cliente más de la API, con el token fuera de la interfaz |
 | [`crates/locall`](crates/locall) | El programa `locall`: `locall serve` y las órdenes de la línea de comandos |
 | [`docs/adr`](docs/adr) | Decisiones de arquitectura y sus motivos |
 
@@ -127,6 +128,8 @@ encuentran (rutas por defecto en `C:\Locall-poc`); las que descargan de internet
 ```bash
 cargo test
 ```
+
+La aplicación de escritorio (`crates/locall-app`) necesita además [Node.js](https://nodejs.org/) y se abre en modo desarrollo con `npm install` y `npm run tauri dev` dentro de esa carpeta.
 
 ## Licencia
 

@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Permisos de la ventana principal: solo lo básico de Tauri. Las órdenes propias de Locall están en src/main.rs.",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

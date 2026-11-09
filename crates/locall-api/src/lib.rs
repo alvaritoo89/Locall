@@ -118,6 +118,7 @@ pub fn rutas_vigiladas(
     };
     let rutas = Router::new()
         .route("/api/version", get(version))
+        .route("/api/system", get(sistema))
         .route("/api/status", get(estado))
         .route("/api/shutdown", post(apagar))
         .route("/api/models", get(modelos))
@@ -205,6 +206,28 @@ fn host_permitido(cabeceras: &HeaderMap, puerto: u16) -> bool {
 }
 
 // ─── Rutas ────────────────────────────────────────────────────────────────────
+
+/// Datos del equipo (para la regla de memoria de la app). Nada sale del equipo: solo lo pide quien tiene el token.
+async fn sistema() -> Result<Json<Value>, ErrorApi> {
+    let datos =
+        tokio::task::spawn_blocking(|| (locall_system::procesador(), locall_system::memoria()))
+            .await
+            .map_err(|_| crate::flujo::error_interno())?;
+    let (procesador, memoria) = datos;
+    let memoria = memoria.map_err(|e| {
+        ErrorApi::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "internal_error",
+            format!("no se pudo consultar la memoria: {e}"),
+        )
+    })?;
+    Ok(Json(json!({
+        "cpu": procesador.nombre,
+        "threads": procesador.hilos_logicos,
+        "memory_total_bytes": memoria.total,
+        "memory_available_bytes": memoria.disponible,
+    })))
+}
 
 async fn version() -> Json<Value> {
     Json(json!({

@@ -178,6 +178,14 @@ fn version_y_estado() {
     assert_eq!(json["name"], "locall");
     assert_eq!(json["engine"], locall_api::VERSION_MOTOR);
 
+    let (estado, json) = api.get("/api/system");
+    assert_eq!(estado, 200);
+    assert!(json["threads"].as_u64().unwrap() >= 1);
+    assert!(
+        json["memory_total_bytes"].as_u64().unwrap()
+            > json["memory_available_bytes"].as_u64().unwrap()
+    );
+
     let (estado, json) = api.get("/api/status");
     assert_eq!(estado, 200);
     assert_eq!(json["state"], "idle");

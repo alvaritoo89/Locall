@@ -4,6 +4,23 @@
 [workspace]
 resolver = "3"
 members = ["crates/*"]
+# Lo que compilan y prueban `cargo build` y `cargo test` sin indicar paquete: todo menos la app de escritorio
+# (Tauri son más de 200 crates y necesita la interfaz ya construida). La app: `cargo build -p locall-app`.
+default-members = [
+    "crates/locall",
+    "crates/locall-api",
+    "crates/locall-cli",
+    "crates/locall-compat",
+    "crates/locall-config",
+    "crates/locall-core",
+    "crates/locall-download",
+    "crates/locall-engine",
+    "crates/locall-gguf",
+    "crates/locall-registry",
+    "crates/locall-scheduler",
+    "crates/locall-store",
+    "crates/locall-system",
+]
 
 [workspace.package]
 version = "0.0.1"

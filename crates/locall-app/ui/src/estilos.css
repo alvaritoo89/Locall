@@ -1,0 +1,316 @@
+/* Estilos de Locall: los de las maquetas de la investigación (blanco y negro, acento verde salvia). */
+
+:root {
+  --fondo: #ffffff;
+  --fondo-lateral: #fafafa;
+  --texto: #111111;
+  --texto-2: #3a3a3a;
+  --tenue: #6b6b6b;
+  --borde: #e6e6e6;
+  --borde-fuerte: #dadada;
+  --relleno-regla: #f2f2f2;
+  --usado: #a3a3a3;
+  --acento: #5b7464; /* verde salvia */
+  --acento-suave: rgba(91, 116, 100, 0.1);
+  --aviso: #8a5a00;
+  --error: #b42318;
+  --listo: #2e7d4f;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fondo: #131313;
+    --fondo-lateral: #1a1a1a;
+    --texto: #ededed;
+    --texto-2: #c9c9c9;
+    --tenue: #9a9a9a;
+    --borde: #2b2b2b;
+    --borde-fuerte: #3a3a3a;
+    --relleno-regla: #232323;
+    --usado: #6b6b6b;
+    --acento: #8fa597; /* verde salvia para fondo oscuro */
+    --acento-suave: rgba(143, 165, 151, 0.14);
+    --aviso: #e0a84a;
+    --error: #f97066;
+    --listo: #5cc08a;
+    color-scheme: dark;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#raiz {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--fondo);
+  color: var(--texto);
+  font-family: "Inter Variable", system-ui, sans-serif;
+  font-size: 14px;
+}
+
+h1 {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.3px;
+}
+
+h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+p {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.mono {
+  font-family: "JetBrains Mono Variable", ui-monospace, monospace;
+}
+
+.tenue {
+  color: var(--tenue);
+}
+
+.pequeño {
+  font-size: 12px;
+}
+
+.hueco {
+  flex: 1;
+}
+
+/* ─── Estructura ───────────────────────────────────────────────────────────── */
+
+.app {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.cuerpo {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.contenido {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+  padding: 32px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* ─── Barra lateral ────────────────────────────────────────────────────────── */
+
+.lateral {
+  flex: 0 0 220px;
+  border-right: 1px solid var(--borde);
+  background: var(--fondo-lateral);
+  padding: 20px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.logo img {
+  display: block;
+  height: 30px;
+  margin: 4px 12px 20px;
+}
+
+.entrada {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--texto-2);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.entrada:hover {
+  background: var(--acento-suave);
+}
+
+.entrada.activa {
+  background: var(--acento-suave);
+  color: var(--acento);
+  font-weight: 600;
+}
+
+.entrada.secundaria {
+  color: var(--tenue);
+}
+
+.entrada:focus-visible {
+  outline: 2px solid var(--acento);
+  outline-offset: 1px;
+}
+
+/* ─── Tarjetas ─────────────────────────────────────────────────────────────── */
+
+.tarjeta {
+  border: 1px solid var(--borde);
+  border-radius: 6px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 640px;
+}
+
+.tarjeta.aviso {
+  border-color: var(--error);
+}
+
+.titulo-tarjeta {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.datos {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.dato {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.valor {
+  font-weight: 500;
+}
+
+.aviso-texto {
+  color: var(--aviso);
+}
+
+/* ─── Regla de memoria ─────────────────────────────────────────────────────── */
+
+.regla {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.regla-barra {
+  height: 14px;
+  border: 1px solid var(--borde-fuerte);
+  border-radius: 3px;
+  background: var(--relleno-regla);
+  display: flex;
+  overflow: hidden;
+}
+
+.regla-usado {
+  background: var(--usado);
+}
+
+.leyenda {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  color: var(--texto-2);
+}
+
+.leyenda > span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.muestra {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+.muestra.usado {
+  background: var(--usado);
+}
+
+.muestra.libre {
+  background: var(--relleno-regla);
+  border: 1px solid var(--borde-fuerte);
+}
+
+/* ─── Barra de estado ──────────────────────────────────────────────────────── */
+
+.estado {
+  flex: 0 0 34px;
+  border-top: 1px solid var(--borde);
+  background: var(--fondo-lateral);
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 0 16px;
+  font-size: 12px;
+  color: var(--texto-2);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.con-punto,
+.ram {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.punto {
+  width: 8px;
+  height: 8px;
+  border-radius: 4px;
+}
+
+.punto.listo {
+  background: var(--listo);
+}
+
+.punto.ocupado {
+  background: var(--acento);
+}
+
+.punto.apagado {
+  background: var(--usado);
+}
+
+.punto.error {
+  background: var(--error);
+}
+
+.ram-barra {
+  width: 80px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--borde);
+  display: flex;
+  overflow: hidden;
+}
+
+.ram-barra > span {
+  background: var(--usado);
+}

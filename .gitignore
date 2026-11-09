@@ -1,6 +1,11 @@
 # Resultados de compilación de Rust
 /target/
 
+# App de escritorio: paquetes de npm y la interfaz construida
+node_modules/
+/crates/locall-app/dist/
+/crates/locall-app/gen/
+
 # Modelos y motores: nunca van al repositorio (pesan gigas y tienen sus propias licencias)
 *.gguf
 /engines/bin/
