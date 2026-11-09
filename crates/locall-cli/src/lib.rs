@@ -11,6 +11,7 @@ use locall_config::Rutas;
 use serde_json::Value;
 
 pub mod arranque;
+pub mod chat;
 pub mod cliente;
 pub mod formato;
 pub mod modelos;
@@ -49,6 +50,11 @@ pub fn ejecutar(orden: &Orden, rutas: &Rutas, ejecutable: &Path) -> Result<Strin
             &arranque::conectar_o_arrancar(rutas, ejecutable)?,
             ruta,
             id.as_deref(),
+        ),
+        Orden::Conversar { id, pregunta } => chat::ejecutar(
+            &arranque::conectar_o_arrancar(rutas, ejecutable)?,
+            id,
+            pregunta.as_deref(),
         ),
         Orden::Eliminar { id, sin_preguntar } => modelos::eliminar(
             &arranque::conectar_o_arrancar(rutas, ejecutable)?,

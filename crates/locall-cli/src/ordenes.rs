@@ -36,6 +36,11 @@ pub enum Orden {
         id: String,
         sin_preguntar: bool,
     },
+    /// `locall run <id> [pregunta…]`
+    Conversar {
+        id: String,
+        pregunta: Option<String>,
+    },
 }
 
 pub const AYUDA: &str = "\
@@ -48,6 +53,7 @@ Modelos:
        --revision <r>            Rama, etiqueta o commit (por defecto, main)
        --id <nombre>             Nombre para el modelo en Locall
   import <ruta.gguf> [--id <n>]  Incorpora un modelo que ya tienes en el disco
+  run <modelo> [pregunta]        Conversa con un modelo (sin pregunta: chat; Ctrl+C corta la respuesta)
   list                           Modelos instalados
   show <modelo>                  Detalles de un modelo
   rm <modelo> [--yes]            Elimina un modelo (--yes: sin preguntar)
@@ -62,8 +68,10 @@ Locall:
 Locall se abre solo, en segundo plano, cuando una orden lo necesita, y se cierra solo
 cuando lleva un rato sin usarse.
 
-Ejemplo:
-  locall pull ggml-org/tiny-llamas stories260K.gguf
+Ejemplos:
+  locall pull Qwen/Qwen3-4B-GGUF Qwen3-4B-Q4_K_M.gguf
+  locall run qwen3-4b-q4_k_m
+  locall run qwen3-4b-q4_k_m \"¿Qué es Rust?\"
 
 Variables de entorno:
   LOCALL_DATOS          Carpeta de datos (por defecto %LOCALAPPDATA%\\Locall)
@@ -154,6 +162,20 @@ pub fn interpretar(argumentos: impl IntoIterator<Item = OsString>) -> Result<Ord
             id: uno("el modelo: locall rm <modelo>")?,
             sin_preguntar,
         }),
+        "run" => match resto.as_slice() {
+            [] => Err(ErrorCli::Uso(
+                "falta el modelo: locall run <modelo> [pregunta]".into(),
+            )),
+            [id] => Ok(Orden::Conversar {
+                id: id.clone(),
+                pregunta: None,
+            }),
+            // La pregunta puede ir entre comillas o no: las palabras se juntan.
+            [id, palabras @ ..] => Ok(Orden::Conversar {
+                id: id.clone(),
+                pregunta: Some(palabras.join(" ")),
+            }),
+        },
         "import" => Ok(Orden::Importar {
             ruta: uno("la ruta del archivo: locall import <ruta.gguf>")?,
             id,
@@ -252,6 +274,30 @@ mod pruebas {
                 id: "qwen".into(),
                 sin_preguntar: false
             }
+        );
+    }
+
+    #[test]
+    fn conversar() {
+        assert_eq!(
+            de("run qwen").unwrap(),
+            Orden::Conversar {
+                id: "qwen".into(),
+                pregunta: None
+            }
+        );
+        assert_eq!(
+            de("run qwen qué es Rust").unwrap(),
+            Orden::Conversar {
+                id: "qwen".into(),
+                pregunta: Some("qué es Rust".into())
+            }
+        );
+        assert!(
+            de("run")
+                .unwrap_err()
+                .to_string()
+                .contains("falta el modelo")
         );
     }
 

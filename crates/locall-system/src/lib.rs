@@ -134,6 +134,29 @@ pub fn no_heredar_entrada_salida() {
     windows::no_heredar_entrada_salida();
 }
 
+// ─── Ctrl+C ───────────────────────────────────────────────────────────────────
+
+/// Se pone a `true` al pulsar Ctrl+C, si se ha llamado a [`capturar_ctrl_c`].
+pub(crate) static CTRL_C: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// A partir de ahora, Ctrl+C **no cierra el programa**: solo levanta un aviso que se consulta con
+/// [`ctrl_c_pulsado`]. Lo usa `locall run` para cortar una respuesta sin salir del chat.
+pub fn capturar_ctrl_c() -> io::Result<()> {
+    #[cfg(windows)]
+    {
+        windows::capturar_ctrl_c()
+    }
+    #[cfg(not(windows))]
+    {
+        Err(no_soportado())
+    }
+}
+
+/// ¿Se ha pulsado Ctrl+C desde la última vez que se preguntó? (Al preguntar, el aviso se baja.)
+pub fn ctrl_c_pulsado() -> bool {
+    CTRL_C.swap(false, std::sync::atomic::Ordering::SeqCst)
+}
+
 // ─── Fecha y hora ─────────────────────────────────────────────────────────────
 
 /// Una fecha y hora local (para los registros).

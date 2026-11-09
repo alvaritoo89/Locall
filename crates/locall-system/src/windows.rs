@@ -9,7 +9,8 @@ use windows_sys::Win32::Foundation::{
     SetHandleInformation,
 };
 use windows_sys::Win32::System::Console::{
-    GetStdHandle, STD_ERROR_HANDLE, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE,
+    CTRL_BREAK_EVENT, CTRL_C_EVENT, GetStdHandle, STD_ERROR_HANDLE, STD_INPUT_HANDLE,
+    STD_OUTPUT_HANDLE, SetConsoleCtrlHandler,
 };
 use windows_sys::Win32::System::JobObjects::{
     AssignProcessToJobObject, CreateJobObjectW, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
@@ -180,5 +181,27 @@ pub fn no_heredar_entrada_salida() {
                 SetHandleInformation(asa, HANDLE_FLAG_INHERIT, 0);
             }
         }
+    }
+}
+
+/// Lo llama Windows (en un hilo suyo) cuando se pulsa Ctrl+C o Ctrl+Pausa en la consola.
+unsafe extern "system" fn al_pulsar_ctrl_c(tipo: u32) -> windows_sys::core::BOOL {
+    if tipo == CTRL_C_EVENT || tipo == CTRL_BREAK_EVENT {
+        crate::CTRL_C.store(true, std::sync::atomic::Ordering::SeqCst);
+        1 // atendido: no cerrar el programa
+    } else {
+        0 // cerrar la ventana, apagar el equipo…: lo de siempre
+    }
+}
+
+/// Registra el manejador de Ctrl+C.
+pub fn capturar_ctrl_c() -> io::Result<()> {
+    // SAFETY: `al_pulsar_ctrl_c` es una función `extern "system"` que vive todo el programa y solo toca un
+    // `AtomicBool` (seguro desde cualquier hilo, como exige Windows).
+    let ok = unsafe { SetConsoleCtrlHandler(Some(al_pulsar_ctrl_c), 1) };
+    if ok == 0 {
+        Err(io::Error::last_os_error())
+    } else {
+        Ok(())
     }
 }

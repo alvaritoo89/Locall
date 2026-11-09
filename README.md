@@ -66,7 +66,7 @@ Pruebas reales en un portátil normal (Intel Core i5-1334U, gráfica integrada I
 - [x] Fase 1: control del motor desde Rust (arranque, streaming, parada, protección ante cierres bruscos)
 - [x] Fase 2: núcleo (lector GGUF, almacén, descargas verificadas, motor, planificador, configuración y registros privados)
 - [x] Fase 3: API local (núcleo, servidor con token, conversación, descargas, formato compatible con OpenAI, cierre por inactividad)
-- [ ] **Fase 4: línea de comandos** (`locall`) · ✓ base (status, list, show, stop) · ✓ modelos (pull, import, rm) · chat · pulido
+- [ ] **Fase 4: línea de comandos** (`locall`) · ✓ base (status, list, show, stop) · ✓ modelos (pull, import, rm) · ✓ chat (run) · pulido
 - [ ] Fase 5: aplicación de escritorio
 
 ## Estructura del repositorio

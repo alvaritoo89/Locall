@@ -94,7 +94,7 @@ pub fn instalar(
                 let m = &evento["model"];
                 let id = m["id"].as_str().unwrap_or("?");
                 return Ok(format!(
-                    "Instalado «{id}» ({}, verificado con sha256).\nDetalles: locall show {id}\n",
+                    "Instalado «{id}» ({}, verificado con sha256).\nPruébalo: locall run {id}\n",
                     formato::tamano(m["size_bytes"].as_u64().unwrap_or(0)),
                 ));
             }
@@ -133,7 +133,7 @@ pub fn importar(cliente: &Cliente, ruta: &str, id: Option<&str>) -> Result<Strin
     let id = m["id"].as_str().unwrap_or("?");
     Ok(format!(
         "Importado «{id}» ({}). Si estaba en el mismo disco que Locall, no se ha copiado: no ocupa el doble.\n\
-         Detalles: locall show {id}\n",
+         Pruébalo: locall run {id}\n",
         formato::tamano(m["size_bytes"].as_u64().unwrap_or(0)),
     ))
 }
