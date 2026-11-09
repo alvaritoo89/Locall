@@ -1877,6 +1877,7 @@ dependencies = [
  "axum",
  "futures-util",
  "getrandom 0.4.3",
+ "locall-compat",
  "locall-config",
  "locall-core",
  "locall-engine",

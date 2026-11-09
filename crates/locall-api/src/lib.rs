@@ -250,19 +250,53 @@ async fn estado(State(c): State<Compartido>) -> Json<Value> {
         Estado::Cargando { modelo } => ("loading", Some(modelo), 0),
         Estado::Listo { modelo, en_uso } => ("ready", Some(modelo), en_uso),
     };
+    // Memoria del modelo y cuenta atrás: rápidas (una consulta al sistema y un candado), sin hilo aparte.
+    let memoria = c.nucleo.memoria_del_modelo();
+    let se_descarga_en = c.nucleo.se_descarga_en().map(|d| d.as_secs());
     Json(json!({
         "state": estado,
         "model": modelo,
         "in_use": en_uso,
+        "model_memory_bytes": memoria,
+        "unload_in_seconds": se_descarga_en,
         "warnings": c.nucleo.avisos(),
     }))
 }
 
 async fn modelos(State(c): State<Compartido>) -> Result<Json<Value>, ErrorApi> {
-    let modelos = en_hilo(move || c.nucleo.modelos()).await?;
-    Ok(Json(
-        json!({ "models": modelos.iter().map(modelo_json).collect::<Vec<_>>() }),
-    ))
+    let modelos = en_hilo(move || {
+        let modelos = c.nucleo.modelos()?;
+        Ok(modelos
+            .iter()
+            .map(|m| con_evaluacion(modelo_json(m), &c.nucleo, &m.id.to_string()))
+            .collect::<Vec<_>>())
+    })
+    .await?;
+    Ok(Json(json!({ "models": modelos })))
+}
+
+/// Añade a un modelo si cabe en el equipo (`fit`), la memoria estimada y si el motor puede usarlo. Si no se puede
+/// evaluar (por ejemplo, el archivo se ha movido), esos campos van a `null` y la lista sigue.
+fn con_evaluacion(mut json: Value, nucleo: &Nucleo, id: &str) -> Value {
+    match nucleo.evaluar(id) {
+        Ok(e) => {
+            json["fit"] = json!(match e.encaje {
+                locall_compat::Encaje::Holgado => "comfortable",
+                locall_compat::Encaje::Cabe => "fits",
+                locall_compat::Encaje::Justo => "tight",
+                locall_compat::Encaje::NoCabe => "too_big",
+            });
+            json["memory_estimate_bytes"] = json!(e.estimacion.total);
+            json["compatible"] = json!(e.comprobacion.es_compatible());
+        }
+        Err(error) => {
+            log::warn!("no se pudo evaluar «{id}»: {error}");
+            json["fit"] = Value::Null;
+            json["memory_estimate_bytes"] = Value::Null;
+            json["compatible"] = Value::Null;
+        }
+    }
+    json
 }
 
 async fn modelo(
@@ -270,10 +304,15 @@ async fn modelo(
     Path(id): Path<String>,
 ) -> Result<Json<Value>, ErrorApi> {
     let buscado = id.clone();
-    match en_hilo(move || c.nucleo.modelo(&buscado)).await? {
-        Some(m) => Ok(Json(modelo_json(&m))),
-        None => Err(ErrorNucleo::NoInstalado(id).into()),
-    }
+    let encontrado = en_hilo(move || {
+        Ok(c.nucleo
+            .modelo(&buscado)?
+            .map(|m| con_evaluacion(modelo_json(&m), &c.nucleo, &buscado)))
+    })
+    .await?;
+    encontrado
+        .map(Json)
+        .ok_or_else(|| ErrorNucleo::NoInstalado(id).into())
 }
 
 async fn no_existe() -> ErrorApi {

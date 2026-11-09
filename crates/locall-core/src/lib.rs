@@ -17,7 +17,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
-use locall_compat::Problema;
+use locall_compat::{Evaluacion, Problema};
 use locall_config::{Config, ErrorConfig, Rutas};
 use locall_download::{Descargador, ErrorDescarga, Opciones as OpcionesDescarga, Pedido};
 use locall_engine::{ConfigMotor, ErrorMotor, Evento, PeticionChat, Resumen};
@@ -175,6 +175,39 @@ impl Nucleo {
                 Estado::Listo { en_uso, .. } => en_uso > 0,
                 Estado::Vacio => false,
             }
+    }
+
+    /// Memoria que ocupa ahora el motor con el modelo cargado (`None` si no hay ninguno).
+    pub fn memoria_del_modelo(&self) -> Option<u64> {
+        let pid = self.planificador.con_motor(|motor| motor.pid())?;
+        locall_system::memoria_de_proceso(pid).ok()
+    }
+
+    /// Cuánto falta para que el modelo cargado se descargue por inactividad (ver el planificador).
+    pub fn se_descarga_en(&self) -> Option<std::time::Duration> {
+        self.planificador.se_descarga_en()
+    }
+
+    /// ¿Cabe este modelo en el equipo, con el contexto de la configuración? (`locall-compat`)
+    ///
+    /// Cargar un modelo **sustituye** al que haya cargado, así que la memoria de ese cuenta como disponible: si no, la
+    /// app diría «no cabe» de modelos que sí caben.
+    pub fn evaluar(&self, id: &str) -> Result<Evaluacion, ErrorNucleo> {
+        let modelo = self
+            .modelo(id)?
+            .ok_or_else(|| ErrorNucleo::NoInstalado(id.to_owned()))?;
+        let ruta = self.carga(id)?.config.modelo;
+        let cabecera = locall_gguf::leer_archivo(&ruta).map_err(ErrorNucleo::Cabecera)?;
+        let disponible = locall_system::memoria()
+            .map(|m| m.disponible)
+            .unwrap_or(0)
+            .saturating_add(self.memoria_del_modelo().unwrap_or(0));
+        Ok(locall_compat::evaluar(
+            &cabecera,
+            modelo.bytes_totales(),
+            u64::from(self.config.contexto),
+            disponible,
+        ))
     }
 
     /// Qué está haciendo el planificador (qué modelo está cargado).

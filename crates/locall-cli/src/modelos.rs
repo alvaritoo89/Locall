@@ -177,7 +177,7 @@ pub fn es_si(respuesta: &str) -> bool {
 }
 
 /// Lo justo para meter un texto en una ruta de la API (los identificadores válidos no necesitan nada).
-pub(crate) fn codificar(texto: &str) -> String {
+pub fn codificar(texto: &str) -> String {
     let mut salida = String::new();
     for byte in texto.bytes() {
         if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.') {

@@ -37,6 +37,22 @@ fn importa_conversa_y_elimina_sin_tocar_el_original() {
     assert_eq!(modelo.cuantizacion.as_deref(), Some("Q4_K_M"));
     assert_eq!(modelo.bytes_totales(), tamano_original);
 
+    // La evaluación «¿cabe?» del 1,5B (≈1,2 GB) en un equipo de 16 GB: holgado o cabe, nunca «no cabe».
+    let evaluacion = nucleo.evaluar("qwen-1.5b").unwrap();
+    assert!(evaluacion.comprobacion.es_compatible());
+    assert!(
+        matches!(
+            evaluacion.encaje,
+            locall_compat::Encaje::Holgado | locall_compat::Encaje::Cabe
+        ),
+        "{:?}",
+        evaluacion.encaje
+    );
+    assert!(
+        nucleo.memoria_del_modelo().is_none(),
+        "todavía no hay modelo cargado"
+    );
+
     // 2) Conversar a través del núcleo (carga el motor con los ajustes del usuario).
     let mut texto = String::new();
     let resumen = nucleo
@@ -62,6 +78,9 @@ fn importa_conversa_y_elimina_sin_tocar_el_original() {
     eprintln!("respuesta: {texto:?}");
     assert!(texto.contains("Par"), "{texto}");
     assert!(resumen.tokens_generados > 0);
+    // Ya cargado: se mide su memoria real (con -lm none, ≈ el tamaño del archivo).
+    let memoria = nucleo.memoria_del_modelo().unwrap();
+    assert!(memoria > tamano_original / 2, "{memoria}");
     assert!(
         nucleo
             .modelo("qwen-1.5b")

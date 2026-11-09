@@ -442,3 +442,47 @@ fn cancelar_al_primero_deja_pasar_al_siguiente() {
     });
     assert_eq!(cargas(&reg), ["a", "c"]);
 }
+
+// ─── Consultas para la app (parte 5b) ────────────────────────────────────────
+
+#[test]
+fn dice_cuanto_falta_para_descargarse() {
+    let (plan, _reg) = planificador(0, Some(Duration::from_secs(60)));
+    assert_eq!(
+        plan.se_descarga_en(),
+        None,
+        "sin modelo, nada que descargar"
+    );
+    let prestamo = plan.usar(&carga("a")).unwrap();
+    assert_eq!(plan.se_descarga_en(), None, "en uso, no cuenta");
+    drop(prestamo);
+    let falta = plan.se_descarga_en().unwrap();
+    assert!(
+        falta <= Duration::from_secs(60) && falta > Duration::from_secs(58),
+        "{falta:?}"
+    );
+
+    let (sin_limite, _) = planificador(0, None);
+    drop(sin_limite.usar(&carga("a")).unwrap());
+    assert_eq!(
+        sin_limite.se_descarga_en(),
+        None,
+        "sin descarga por inactividad"
+    );
+}
+
+#[test]
+fn consulta_el_motor_sin_contarlo_como_uso() {
+    let (plan, _reg) = planificador(0, None);
+    assert_eq!(plan.con_motor(|m| m.modelo.clone()), None);
+    drop(plan.usar(&carga("a")).unwrap());
+    assert_eq!(plan.con_motor(|m| m.modelo.clone()).as_deref(), Some("a"));
+    assert_eq!(
+        plan.estado(),
+        Estado::Listo {
+            modelo: "a".into(),
+            en_uso: 0
+        },
+        "consultar no es prestar"
+    );
+}

@@ -1,6 +1,9 @@
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useState } from "react";
 
-import { type EstadoLocall, gb, pedirEstado } from "./locall";
+import { Biblioteca } from "./Biblioteca";
+import { Icono } from "./comun";
+import { Inicio } from "./Inicio";
+import { type EstadoLocall, type Modelo, minutosSegundos, pedirEstado, pedirModelos, tamano, textoError } from "./locall";
 import logoClaro from "./assets/logo-claro.png";
 import logoOscuro from "./assets/logo-oscuro.png";
 
@@ -13,6 +16,7 @@ export function App() {
   const [pagina, setPagina] = useState<Pagina>("inicio");
   const [estado, setEstado] = useState<EstadoLocall | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [modelos, setModelos] = useState<Modelo[] | null>(null);
 
   // Preguntar el estado al empezar y cada 2 s. (La primera vez puede tardar: si Locall no está abierto, se abre.)
   useEffect(() => {
@@ -20,7 +24,7 @@ export function App() {
     const preguntar = () =>
       pedirEstado()
         .then((e) => vivo && (setEstado(e), setError(null)))
-        .catch((e) => vivo && setError(String(e)));
+        .catch((e) => vivo && setError(textoError(e)));
     preguntar();
     const temporizador = setInterval(preguntar, INTERVALO_ESTADO_MS);
     return () => {
@@ -29,16 +33,24 @@ export function App() {
     };
   }, []);
 
+  // La lista de modelos: al empezar, al cambiar de pantalla y cuando se instala o elimina uno.
+  const recargarModelos = useCallback(() => {
+    pedirModelos()
+      .then(setModelos)
+      .catch(() => setModelos((actual) => actual ?? []));
+  }, []);
+  useEffect(recargarModelos, [pagina, recargarModelos]);
+
   return (
     <div className="app">
       <div className="cuerpo">
         <BarraLateral pagina={pagina} irA={setPagina} />
         <main className="contenido">
-          {pagina === "inicio" ? (
-            <Inicio estado={estado} error={error} />
-          ) : (
-            <Proximamente pagina={pagina} />
+          {pagina === "inicio" && (
+            <Inicio estado={estado} error={error} modelos={modelos} irABiblioteca={() => setPagina("biblioteca")} />
           )}
+          {pagina === "biblioteca" && <Biblioteca estado={estado} modelos={modelos} recargar={recargarModelos} />}
+          {pagina !== "inicio" && pagina !== "biblioteca" && <Proximamente pagina={pagina} />}
         </main>
       </div>
       <BarraDeEstado estado={estado} error={error} />
@@ -63,15 +75,6 @@ const ENTRADAS: { id: Pagina; nombre: string; icono: ReactNode }[] = [
     ),
   },
 ];
-
-function Icono({ children }: { children: ReactNode }) {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"
-      strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      {children}
-    </svg>
-  );
-}
 
 function BarraLateral({ pagina, irA }: { pagina: Pagina; irA: (p: Pagina) => void }) {
   const boton = (id: Pagina, nombre: string, icono: ReactNode, secundario = false) => (
@@ -107,77 +110,15 @@ function BarraLateral({ pagina, irA }: { pagina: Pagina; irA: (p: Pagina) => voi
   );
 }
 
-// ─── Inicio ───────────────────────────────────────────────────────────────────
-
-function Inicio({ estado, error }: { estado: EstadoLocall | null; error: string | null }) {
-  return (
-    <>
-      <h1>Inicio</h1>
-      {error && !estado && (
-        <section className="tarjeta aviso" role="alert">
-          <h2>No se puede conectar con Locall</h2>
-          <p>{error}</p>
-        </section>
-      )}
-      {!estado && !error && <p className="tenue">Abriendo Locall…</p>}
-      {estado && (
-        <section className="tarjeta">
-          <div className="titulo-tarjeta">
-            <h2>Tu equipo</h2>
-            <span className="tenue pequeño">Detectado ahora</span>
-          </div>
-          <div className="datos">
-            <Dato nombre="Procesador" valor={estado.cpu ?? "Desconocido"} />
-            <Dato nombre="Hilos" valor={String(estado.threads)} />
-            <Dato nombre="Memoria" valor={gb(estado.memoryTotal)} />
-          </div>
-          <ReglaDeMemoria total={estado.memoryTotal} libre={estado.memoryAvailable} />
-          {estado.warnings.map((aviso) => (
-            <p key={aviso} className="pequeño aviso-texto">Aviso: {aviso}</p>
-          ))}
-        </section>
-      )}
-    </>
-  );
-}
-
-function Dato({ nombre, valor }: { nombre: string; valor: string }) {
-  return (
-    <div className="dato">
-      <span className="tenue pequeño">{nombre}</span>
-      <span className="valor">{valor}</span>
-    </div>
-  );
-}
-
-/** La regla de memoria de la maqueta: lo usado y lo libre. (El trozo del modelo cargado llegará en la parte 5b.) */
-function ReglaDeMemoria({ total, libre }: { total: number; libre: number }) {
-  const usado = total - libre;
-  const porcentaje = total > 0 ? (usado / total) * 100 : 0;
-  return (
-    <div className="regla">
-      <div className="regla-barra" role="img"
-        aria-label={`Memoria: ${gb(usado)} en uso, ${gb(libre)} libres de ${gb(total)}`}>
-        <div className="regla-usado" style={{ width: `${porcentaje}%` }} />
-      </div>
-      <div className="leyenda pequeño">
-        <span><span className="muestra usado" />En uso {gb(usado)}</span>
-        <span><span className="muestra libre" />Libre {gb(libre)}</span>
-      </div>
-    </div>
-  );
-}
-
 // ─── Lo que llega en las próximas partes ──────────────────────────────────────
 
-const PROXIMAS: Record<Exclude<Pagina, "inicio">, { titulo: string; parte: string }> = {
+const PROXIMAS: Record<"chat" | "explorar" | "ajustes", { titulo: string; parte: string }> = {
   chat: { titulo: "Chat", parte: "5c" },
-  biblioteca: { titulo: "Biblioteca", parte: "5b" },
   explorar: { titulo: "Explorar", parte: "5e" },
   ajustes: { titulo: "Ajustes", parte: "5e" },
 };
 
-function Proximamente({ pagina }: { pagina: Exclude<Pagina, "inicio"> }) {
+function Proximamente({ pagina }: { pagina: "chat" | "explorar" | "ajustes" }) {
   const { titulo, parte } = PROXIMAS[pagina];
   return (
     <>
@@ -203,11 +144,13 @@ function BarraDeEstado({ estado, error }: { estado: EstadoLocall | null; error: 
       punto = estado.inUse > 0 ? "ocupado" : "listo";
       texto = estado.inUse > 0 ? "Generando" : "Motor listo";
     } else {
-      punto = "apagado";
       texto = "Ningún modelo cargado";
     }
   }
-  const usado = estado ? estado.memoryTotal - estado.memoryAvailable : 0;
+  const total = estado?.memoryTotal ?? 0;
+  const modelo = estado?.modelMemory ?? 0;
+  const usado = estado ? total - estado.memoryAvailable : 0;
+  const pct = (b: number) => (total > 0 ? (b / total) * 100 : 0);
   return (
     <footer className="estado" aria-live="polite">
       <span className="con-punto"><span className={`punto ${punto}`} />{texto}</span>
@@ -216,11 +159,13 @@ function BarraDeEstado({ estado, error }: { estado: EstadoLocall | null; error: 
         <span className="ram">
           RAM
           <span className="ram-barra" aria-hidden="true">
-            <span style={{ width: `${(usado / estado.memoryTotal) * 100}%` }} />
+            <span className="ram-sistema" style={{ width: `${pct(usado - modelo)}%` }} />
+            {modelo > 0 && <span className="ram-modelo" style={{ width: `${pct(modelo)}%` }} />}
           </span>
-          <span className="mono">{gb(usado)} / {gb(estado.memoryTotal)}</span>
+          <span className="mono">{tamano(usado)} / {tamano(total)}</span>
         </span>
       )}
+      {estado?.unloadIn != null && <span>Se libera en {minutosSegundos(estado.unloadIn)}</span>}
       <span className="hueco" />
       {estado && <span className="mono tenue">Locall {estado.version} · {estado.engine}</span>}
     </footer>

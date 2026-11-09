@@ -14,6 +14,7 @@ axum = { version = "0.8.9", default-features = false, features = ["http1", "json
 # Para enviar la respuesta por trozos (ya estaba en el proyecto: la trae axum).
 futures-util = { version = "0.3.34", default-features = false }
 getrandom = "0.4.3"
+locall-compat = { path = "../locall-compat" }
 locall-config = { path = "../locall-config" }
 locall-core = { path = "../locall-core" }
 locall-engine = { path = "../locall-engine" }

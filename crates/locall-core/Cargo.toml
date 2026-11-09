@@ -17,10 +17,10 @@ locall-gguf = { path = "../locall-gguf" }
 locall-registry = { path = "../locall-registry" }
 locall-scheduler = { path = "../locall-scheduler" }
 locall-store = { path = "../locall-store" }
+# Memoria del equipo y del motor, para evaluar si un modelo cabe.
+locall-system = { path = "../locall-system" }
 log = "0.4.35"
 serde_json = "1.0.154"
 # Consultas a la API de Hugging Face, con el HTTPS de Windows (ADR 0010).
 ureq = { version = "3.5.1", default-features = false, features = ["native-tls-no-default"] }
 
-[dev-dependencies]
-locall-system = { path = "../locall-system" }

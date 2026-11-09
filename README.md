@@ -98,7 +98,7 @@ Pruebas reales en un portátil normal (Intel Core i5-1334U, gráfica integrada I
 - [x] Fase 2: núcleo (lector GGUF, almacén, descargas verificadas, motor, planificador, configuración y registros privados)
 - [x] Fase 3: API local (núcleo, servidor con token, conversación, descargas, formato compatible con OpenAI, cierre por inactividad)
 - [x] Fase 4: línea de comandos (`locall pull`, `run`, `list`, `show`, `rm`, `import`, `status`, `stop`) · **MVP**
-- [ ] **Fase 5: aplicación de escritorio** · ✓ esqueleto (ventana, estado del equipo y de Locall) · inicio y biblioteca · chat · conversaciones guardadas · pulido
+- [ ] **Fase 5: aplicación de escritorio** · ✓ esqueleto (ventana, estado del equipo y de Locall) · ✓ inicio y biblioteca (¿cabe?, instalar con progreso, eliminar) · chat · conversaciones guardadas · pulido
 
 ## Estructura del repositorio
 

@@ -314,3 +314,233 @@ p {
 .ram-barra > span {
   background: var(--usado);
 }
+
+/* ─── Parte 5b: tablas, botones, formulario, progreso ─────────────────────── */
+
+.solo-lectores {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.tarjeta.ancha {
+  max-width: 960px;
+}
+
+.tarjeta.sin-relleno {
+  padding: 0;
+  gap: 0;
+}
+
+.relleno {
+  padding: 12px 20px;
+}
+
+.cabecera-tabla {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--borde);
+}
+
+.tabla {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.tabla th {
+  text-align: left;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--tenue);
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--borde);
+}
+
+.tabla td {
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--borde);
+  vertical-align: middle;
+}
+
+.tabla tr:last-child td {
+  border-bottom: 0;
+}
+
+.nombre-modelo {
+  font-weight: 600;
+}
+
+.acciones {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.confirmar {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cargado {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 500;
+  color: var(--acento);
+}
+
+.tono-aviso {
+  color: var(--aviso);
+}
+
+.tono-error {
+  color: var(--error);
+}
+
+.enlace {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--acento);
+  cursor: pointer;
+}
+
+.enlace:hover {
+  text-decoration: underline;
+}
+
+.boton {
+  min-height: 36px;
+  padding: 0 14px;
+  border-radius: 6px;
+  border: 1px solid var(--borde-fuerte);
+  background: var(--fondo);
+  color: var(--texto);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.boton:hover:not(:disabled) {
+  border-color: var(--texto);
+}
+
+.boton:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.boton.primario {
+  background: var(--texto);
+  border-color: var(--texto);
+  color: var(--fondo);
+}
+
+.boton.peligro {
+  border-color: var(--error);
+  color: var(--error);
+}
+
+.boton:focus-visible,
+.enlace:focus-visible,
+.campo:focus-visible {
+  outline: 2px solid var(--acento);
+  outline-offset: 1px;
+}
+
+.buscador {
+  display: flex;
+  gap: 10px;
+}
+
+.campo {
+  flex: 1;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--borde-fuerte);
+  border-radius: 6px;
+  background: var(--fondo);
+  color: var(--texto);
+  font-size: 13px;
+}
+
+.repo {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.archivos {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--borde);
+  border-radius: 6px;
+}
+
+.archivo {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--borde);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.archivo:last-child {
+  border-bottom: 0;
+}
+
+.archivo-fila {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+}
+
+.progreso {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.progreso-barra {
+  flex: 1;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--relleno-regla);
+  overflow: hidden;
+}
+
+.progreso-barra > div {
+  height: 100%;
+  background: var(--acento);
+  transition: width 0.2s;
+}
+
+/* La regla de memoria con el modelo cargado (rayado, como en la maqueta) y sus marcas. */
+.regla-modelo,
+.muestra.modelo {
+  background: repeating-linear-gradient(45deg, var(--acento) 0 4px, var(--acento-suave) 4px 8px);
+}
+
+.regla-marcas {
+  display: flex;
+  justify-content: space-between;
+}
+
+.ram-barra > .ram-sistema {
+  background: var(--usado);
+}
+
+.ram-barra > .ram-modelo {
+  background: var(--acento);
+}

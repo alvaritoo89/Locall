@@ -349,6 +349,24 @@ impl<A: Arrancador> Planificador<A> {
         }
     }
 
+    /// Cuánto falta para que el modelo cargado se descargue por inactividad. `None` si no hay modelo, si se está
+    /// usando o cargando, o si la descarga por inactividad está desactivada.
+    pub fn se_descarga_en(&self) -> Option<Duration> {
+        let limite = self.compartido.opciones.inactividad?;
+        let estado = self.compartido.bloquear();
+        if estado.actual.is_none() || estado.prestamos > 0 || estado.cargando.is_some() {
+            return None;
+        }
+        Some(limite.saturating_sub(estado.ultimo_uso.elapsed()))
+    }
+
+    /// Consulta algo del motor cargado (por ejemplo, su proceso para medir su memoria), sin prestarlo: no cuenta como
+    /// uso. `None` si no hay modelo cargado.
+    pub fn con_motor<T>(&self, consulta: impl FnOnce(&A::Motor) -> T) -> Option<T> {
+        let estado = self.compartido.bloquear();
+        estado.actual.as_ref().map(|actual| consulta(&actual.motor))
+    }
+
     /// Descarga el modelo ahora mismo, si nadie lo está usando. Devuelve si se ha descargado.
     pub fn descargar(&self) -> bool {
         let c = &self.compartido;

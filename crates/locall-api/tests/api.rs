@@ -190,6 +190,12 @@ fn version_y_estado() {
     assert_eq!(estado, 200);
     assert_eq!(json["state"], "idle");
     assert_eq!(json["model"], Value::Null);
+    assert_eq!(
+        json["model_memory_bytes"],
+        Value::Null,
+        "sin modelo cargado"
+    );
+    assert_eq!(json["unload_in_seconds"], Value::Null);
 }
 
 #[test]
@@ -206,6 +212,10 @@ fn lista_los_modelos_sin_rutas_del_disco() {
     assert_eq!(m["architecture"], "llama");
     assert_eq!(m["source"], "local");
     assert_eq!(m["files"][0]["sha256"].as_str().unwrap().len(), 64);
+    // Un GGUF casi vacío cabe de sobra; el motor reconoce «llama».
+    assert_eq!(m["fit"], "comfortable");
+    assert_eq!(m["compatible"], true);
+    assert!(m["memory_estimate_bytes"].as_u64().is_some());
     let texto = json.to_string();
     assert!(
         !texto.contains(":\\\\") && !texto.contains("locall-api-"),
