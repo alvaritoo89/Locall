@@ -61,7 +61,7 @@ fn ayuda_version_y_errores_de_uso() {
     let e = Entorno::nuevo("ayuda");
     let (codigo, salida, _) = e.locall(&["help"]);
     assert_eq!(codigo, 0);
-    assert!(salida.contains("Órdenes:") && salida.contains("locall <orden>"));
+    assert!(salida.contains("Modelos:") && salida.contains("locall <orden>"));
     let (codigo, salida, _) = e.locall(&["--version"]);
     assert_eq!(
         (codigo, salida.trim()),

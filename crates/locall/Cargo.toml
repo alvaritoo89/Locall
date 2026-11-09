@@ -22,4 +22,6 @@ log = "0.4.35"
 tokio = { version = "1.54.1", default-features = false, features = ["rt-multi-thread", "net", "signal", "sync", "time"] }
 
 [dev-dependencies]
+# El Hugging Face falso de las pruebas (compartido con locall-api) calcula huellas con el almacén.
+locall-store = { path = "../locall-store" }
 serde_json = "1.0.154"

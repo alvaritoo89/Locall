@@ -87,8 +87,12 @@ fn servir() -> Result<(), String> {
             motor.display()
         );
     }
-    let nucleo =
-        Nucleo::abrir(OpcionesNucleo::nuevas(rutas.clone(), motor)).map_err(|e| e.to_string())?;
+    let mut opciones = OpcionesNucleo::nuevas(rutas.clone(), motor);
+    // Un espejo de Hugging Face (o, en las pruebas, uno falso). Por defecto, el de verdad.
+    if let Some(hf) = std::env::var_os("LOCALL_HUGGING_FACE").filter(|v| !v.is_empty()) {
+        opciones.hugging_face = hf.to_string_lossy().into_owned();
+    }
+    let nucleo = Nucleo::abrir(opciones).map_err(|e| e.to_string())?;
     for aviso in nucleo.avisos() {
         eprintln!("Aviso: {aviso}");
     }

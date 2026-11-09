@@ -382,6 +382,7 @@ dependencies = [
  "locall-cli",
  "locall-config",
  "locall-core",
+ "locall-store",
  "log",
  "serde_json",
  "tokio",

@@ -19,6 +19,23 @@ pub enum Orden {
     Mostrar(String),
     /// `locall stop`
     Parar,
+    /// `locall pull <repo> [archivo] [--revision R] [--id ID]`. Sin archivo, lista los GGUF del repositorio.
+    Instalar {
+        repo: String,
+        archivo: Option<String>,
+        revision: Option<String>,
+        id: Option<String>,
+    },
+    /// `locall import <ruta> [--id ID]`
+    Importar {
+        ruta: String,
+        id: Option<String>,
+    },
+    /// `locall rm <id> [--yes]`
+    Eliminar {
+        id: String,
+        sin_preguntar: bool,
+    },
 }
 
 pub const AYUDA: &str = "\
@@ -26,21 +43,32 @@ Locall: modelos de IA en tu propio ordenador.
 
 Uso: locall <orden> [argumentos]
 
-Órdenes:
-  list              Modelos instalados
-  show <modelo>     Detalles de un modelo
-  status            Si Locall está abierto y qué modelo tiene cargado
-  serve             Abre Locall y su API local en esta ventana (Ctrl+C para parar)
-  stop              Cierra Locall
-  version           Versión
-  help              Esta ayuda
+Modelos:
+  pull <repositorio> [archivo]   Instala un modelo de Hugging Face (sin archivo: lista los que tiene)
+       --revision <r>            Rama, etiqueta o commit (por defecto, main)
+       --id <nombre>             Nombre para el modelo en Locall
+  import <ruta.gguf> [--id <n>]  Incorpora un modelo que ya tienes en el disco
+  list                           Modelos instalados
+  show <modelo>                  Detalles de un modelo
+  rm <modelo> [--yes]            Elimina un modelo (--yes: sin preguntar)
+
+Locall:
+  status                         Si Locall está abierto y qué modelo tiene cargado
+  serve                          Abre Locall y su API local en esta ventana (Ctrl+C para parar)
+  stop                           Cierra Locall
+  version                        Versión
+  help                           Esta ayuda
 
 Locall se abre solo, en segundo plano, cuando una orden lo necesita, y se cierra solo
 cuando lleva un rato sin usarse.
 
+Ejemplo:
+  locall pull ggml-org/tiny-llamas stories260K.gguf
+
 Variables de entorno:
-  LOCALL_DATOS      Carpeta de datos (por defecto %LOCALAPPDATA%\\Locall)
-  LOCALL_MOTOR      Ruta de llama-server.exe (por defecto, motor\\llama-server.exe junto a locall.exe)
+  LOCALL_DATOS          Carpeta de datos (por defecto %LOCALAPPDATA%\\Locall)
+  LOCALL_MOTOR          Ruta de llama-server.exe (por defecto, motor\\llama-server.exe junto a locall.exe)
+  LOCALL_HUGGING_FACE   Dirección de Hugging Face (por defecto https://huggingface.co; para espejos)
 ";
 
 /// Interpreta los argumentos (sin el nombre del programa).
@@ -50,14 +78,23 @@ pub fn interpretar(argumentos: impl IntoIterator<Item = OsString>) -> Result<Ord
     let mut lector = lexopt::Parser::from_args(argumentos);
     let mut orden: Option<String> = None;
     let mut resto: Vec<String> = Vec::new();
+    let mut revision: Option<String> = None;
+    let mut id: Option<String> = None;
+    let mut sin_preguntar = false;
+    let texto = |valor: OsString| {
+        valor
+            .into_string()
+            .map_err(|_| ErrorCli::Uso("hay un argumento con caracteres no válidos".into()))
+    };
     while let Some(argumento) = lector.next().map_err(traducir)? {
         match argumento {
             Short('h') | Long("help") => return Ok(Orden::Ayuda),
             Short('V') | Long("version") => return Ok(Orden::Version),
+            Long("revision") => revision = Some(texto(lector.value().map_err(traducir)?)?),
+            Long("id") => id = Some(texto(lector.value().map_err(traducir)?)?),
+            Short('y') | Long("yes") => sin_preguntar = true,
             Value(valor) => {
-                let valor = valor.into_string().map_err(|_| {
-                    ErrorCli::Uso("hay un argumento con caracteres no válidos".into())
-                })?;
+                let valor = texto(valor)?;
                 if orden.is_none() {
                     orden = Some(valor);
                 } else {
@@ -72,6 +109,23 @@ pub fn interpretar(argumentos: impl IntoIterator<Item = OsString>) -> Result<Ord
     let Some(orden) = orden else {
         return Ok(Orden::Ayuda);
     };
+    // Cada opción solo vale para algunas órdenes.
+    let permitidas: &[&str] = match orden.as_str() {
+        "pull" => &["--revision", "--id"],
+        "import" => &["--id"],
+        "rm" => &["--yes"],
+        _ => &[],
+    };
+    for (puesta, nombre) in [
+        (revision.is_some(), "--revision"),
+        (id.is_some(), "--id"),
+        (sin_preguntar, "--yes"),
+    ] {
+        if puesta && !permitidas.contains(&nombre) {
+            return Err(ErrorCli::Uso(format!("«{orden}» no admite «{nombre}»")));
+        }
+    }
+
     let sin_argumentos = |o: Orden| {
         if resto.is_empty() {
             Ok(o)
@@ -82,6 +136,12 @@ pub fn interpretar(argumentos: impl IntoIterator<Item = OsString>) -> Result<Ord
             )))
         }
     };
+    // Exactamente un argumento (el modelo, la ruta…).
+    let uno = |falta: &str| match resto.as_slice() {
+        [x] => Ok(x.clone()),
+        [] => Err(ErrorCli::Uso(format!("falta {falta}"))),
+        [_, sobra, ..] => Err(ErrorCli::Uso(format!("sobra «{sobra}»"))),
+    };
     match orden.as_str() {
         "help" | "ayuda" => sin_argumentos(Orden::Ayuda),
         "version" => sin_argumentos(Orden::Version),
@@ -89,14 +149,32 @@ pub fn interpretar(argumentos: impl IntoIterator<Item = OsString>) -> Result<Ord
         "status" => sin_argumentos(Orden::Estado),
         "list" | "ls" => sin_argumentos(Orden::Lista),
         "stop" => sin_argumentos(Orden::Parar),
-        "show" => match resto.as_slice() {
-            [id] => Ok(Orden::Mostrar(id.clone())),
+        "show" => Ok(Orden::Mostrar(uno("el modelo: locall show <modelo>")?)),
+        "rm" => Ok(Orden::Eliminar {
+            id: uno("el modelo: locall rm <modelo>")?,
+            sin_preguntar,
+        }),
+        "import" => Ok(Orden::Importar {
+            ruta: uno("la ruta del archivo: locall import <ruta.gguf>")?,
+            id,
+        }),
+        "pull" => match resto.as_slice() {
+            [repo] => Ok(Orden::Instalar {
+                repo: repo.clone(),
+                archivo: None,
+                revision,
+                id,
+            }),
+            [repo, archivo] => Ok(Orden::Instalar {
+                repo: repo.clone(),
+                archivo: Some(archivo.clone()),
+                revision,
+                id,
+            }),
             [] => Err(ErrorCli::Uso(
-                "falta el modelo: locall show <modelo>".into(),
+                "falta el repositorio: locall pull <repositorio> [archivo]".into(),
             )),
-            [_, sobra, ..] => Err(ErrorCli::Uso(format!(
-                "«show» lleva un solo modelo (sobra «{sobra}»)"
-            ))),
+            [_, _, sobra, ..] => Err(ErrorCli::Uso(format!("sobra «{sobra}»"))),
         },
         otra => Err(ErrorCli::Uso(format!("orden desconocida «{otra}»"))),
     }
@@ -137,6 +215,47 @@ mod pruebas {
     }
 
     #[test]
+    fn ordenes_de_modelos() {
+        let instalar =
+            |archivo: Option<&str>, revision: Option<&str>, id: Option<&str>| Orden::Instalar {
+                repo: "dueno/repo".into(),
+                archivo: archivo.map(Into::into),
+                revision: revision.map(Into::into),
+                id: id.map(Into::into),
+            };
+        assert_eq!(de("pull dueno/repo").unwrap(), instalar(None, None, None));
+        assert_eq!(
+            de("pull dueno/repo m.gguf --revision v2 --id mio").unwrap(),
+            instalar(Some("m.gguf"), Some("v2"), Some("mio"))
+        );
+        assert_eq!(
+            de("pull dueno/repo m.gguf --revision=v2").unwrap(),
+            instalar(Some("m.gguf"), Some("v2"), None)
+        );
+        assert_eq!(
+            de(r"import D:\m.gguf --id mio").unwrap(),
+            Orden::Importar {
+                ruta: r"D:\m.gguf".into(),
+                id: Some("mio".into())
+            }
+        );
+        assert_eq!(
+            de("rm qwen -y").unwrap(),
+            Orden::Eliminar {
+                id: "qwen".into(),
+                sin_preguntar: true
+            }
+        );
+        assert_eq!(
+            de("rm qwen").unwrap(),
+            Orden::Eliminar {
+                id: "qwen".into(),
+                sin_preguntar: false
+            }
+        );
+    }
+
+    #[test]
     fn explica_los_errores_en_espanol() {
         let casos = [
             ("lanzar", "orden desconocida «lanzar»"),
@@ -145,6 +264,12 @@ mod pruebas {
             ("show a b", "sobra «b»"),
             ("--rapido", "opción desconocida «--rapido»"),
             ("list -x", "opción desconocida «-x»"),
+            ("pull", "falta el repositorio"),
+            ("pull a/b c d", "sobra «d»"),
+            ("pull a/b --revision", "le falta su valor"),
+            ("list --id x", "«list» no admite «--id»"),
+            ("import x.gguf --yes", "«import» no admite «--yes»"),
+            ("rm", "falta el modelo"),
         ];
         for (texto, esperado) in casos {
             let error = de(texto).unwrap_err().to_string();

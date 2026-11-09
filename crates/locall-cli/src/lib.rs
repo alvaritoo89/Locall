@@ -13,7 +13,9 @@ use serde_json::Value;
 pub mod arranque;
 pub mod cliente;
 pub mod formato;
+pub mod modelos;
 pub mod ordenes;
+pub mod progreso;
 
 pub use cliente::{Cliente, ErrorCli};
 pub use ordenes::{AYUDA, Orden, interpretar};
@@ -29,6 +31,30 @@ pub fn ejecutar(orden: &Orden, rutas: &Rutas, ejecutable: &Path) -> Result<Strin
         Orden::Parar => parar(rutas),
         Orden::Lista => lista(&arranque::conectar_o_arrancar(rutas, ejecutable)?),
         Orden::Mostrar(id) => mostrar(&arranque::conectar_o_arrancar(rutas, ejecutable)?, id),
+        Orden::Instalar {
+            repo,
+            archivo,
+            revision,
+            id,
+        } => {
+            let cliente = arranque::conectar_o_arrancar(rutas, ejecutable)?;
+            match archivo {
+                None => modelos::listar_repo(&cliente, repo, revision.as_deref()),
+                Some(archivo) => {
+                    modelos::instalar(&cliente, repo, archivo, revision.as_deref(), id.as_deref())
+                }
+            }
+        }
+        Orden::Importar { ruta, id } => modelos::importar(
+            &arranque::conectar_o_arrancar(rutas, ejecutable)?,
+            ruta,
+            id.as_deref(),
+        ),
+        Orden::Eliminar { id, sin_preguntar } => modelos::eliminar(
+            &arranque::conectar_o_arrancar(rutas, ejecutable)?,
+            id,
+            *sin_preguntar,
+        ),
     }
 }
 
@@ -109,7 +135,7 @@ fn lista(cliente: &Cliente) -> Result<String, ErrorCli> {
 
 /// `locall show <id>`
 fn mostrar(cliente: &Cliente, id: &str) -> Result<String, ErrorCli> {
-    let m = cliente.get(&format!("/api/models/{}", codificar(id)))?;
+    let m = cliente.get(&format!("/api/models/{}", modelos::codificar(id)))?;
     let ahora = formato::ahora();
     let mut texto_salida = String::new();
     let mut linea = |nombre: &str, valor: String| {
@@ -157,17 +183,4 @@ fn mostrar(cliente: &Cliente, id: &str) -> Result<String, ErrorCli> {
 /// Un texto del JSON, o «—» si no hay.
 fn texto(valor: &Value) -> String {
     valor.as_str().map_or_else(|| "—".to_owned(), str::to_owned)
-}
-
-/// Lo justo para meter un identificador en una ruta (los válidos solo llevan letras, números, `-`, `_` y `.`).
-fn codificar(id: &str) -> String {
-    id.chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.') {
-                c.to_string()
-            } else {
-                format!("%{:02X}", c as u32 & 0xFF)
-            }
-        })
-        .collect()
 }
