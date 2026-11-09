@@ -28,6 +28,16 @@ pub fn conectar_o_arrancar(rutas: &Rutas, ejecutable: &Path) -> Result<Cliente, 
     if let Some(cliente) = conectar(rutas)? {
         return Ok(cliente);
     }
+    // Avisar (por la salida de errores, para no ensuciar la salida normal): así el usuario sabe que Locall queda
+    // abierto un rato y en qué carpeta. (Sin este aviso, en la Fase 4 abrimos uno en otra carpeta sin darnos cuenta.)
+    {
+        use std::io::Write;
+        let _ = writeln!(
+            std::io::stderr(),
+            "(Abriendo Locall en segundo plano, con los datos de {}…)",
+            rutas.datos().display()
+        );
+    }
     let mut hijo = lanzar_en_segundo_plano(ejecutable, rutas)?;
     let inicio = Instant::now();
     loop {

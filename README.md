@@ -22,7 +22,8 @@ inteligencia artificial **en tu propio equipo**. Sin cuentas, sin suscripciones 
 ningún sitio.
 
 > [!NOTE]
-> Locall está en **desarrollo temprano** (Fase 4: la línea de comandos). Todavía no hay nada que instalar.
+> Locall está en **desarrollo temprano**. Ya se puede usar desde la línea de comandos compilándolo desde el código
+> (ver [Probarlo](#probarlo)); el instalador llegará con la aplicación de escritorio.
 
 ## Principios
 
@@ -50,6 +51,36 @@ Un núcleo en Rust gestiona los modelos y controla el motor de inferencia
 [llama.cpp](https://github.com/ggml-org/llama.cpp) como un proceso aparte. La línea de comandos, la aplicación de
 escritorio y la API local son clientes de ese núcleo.
 
+## Probarlo
+
+Todavía no hay instalador. Mientras tanto, desde el código fuente (Windows 10/11):
+
+1. Instala [Rust](https://www.rust-lang.org/) 1.99 o superior y Visual Studio Build Tools (C++).
+2. Compila Locall:
+
+   ```bash
+   cargo build --release
+   ```
+
+3. Descarga el motor: `llama-b12189-bin-win-cpu-x64.zip` de la
+   [versión b12189 de llama.cpp](https://github.com/ggml-org/llama.cpp/releases/tag/b12189)
+   (sha256 `f912ea5e3e397c63405c81e732131ab0fa6e72411c80546bb5ad643f7dd82aac`). Descomprímelo en
+   `target\release\motor\`, de forma que quede `target\release\motor\llama-server.exe`.
+4. Úsalo desde `target\release` (en PowerShell, los programas de la carpeta actual se escriben con `.\` delante):
+
+   ```text
+   .\locall pull Qwen/Qwen3-4B-GGUF                         ¿qué versiones tiene?
+   .\locall pull Qwen/Qwen3-4B-GGUF Qwen3-4B-Q4_K_M.gguf    instalarlo (2,5 GB)
+   .\locall run qwen3-4b-q4_k_m                             conversar (Ctrl+C corta la respuesta)
+   .\locall list                                            tus modelos
+   .\locall help                                            todas las órdenes
+   ```
+
+Locall se abre solo en segundo plano cuando hace falta y se cierra solo tras un rato sin usarse. Sus datos (modelos,
+ajustes, registros) están en `%LOCALAPPDATA%\Locall`. Otros programas pueden usarlo con la
+[API local](docs/adr/0015-nucleo-y-api-local.md), también en formato compatible con OpenAI
+([ADR 0016](docs/adr/0016-compatibilidad-openai-y-cierre.md)).
+
 ## Medido, no prometido
 
 Pruebas reales en un portátil normal (Intel Core i5-1334U, gráfica integrada Iris Xe, 16 GB de RAM):
@@ -66,8 +97,8 @@ Pruebas reales en un portátil normal (Intel Core i5-1334U, gráfica integrada I
 - [x] Fase 1: control del motor desde Rust (arranque, streaming, parada, protección ante cierres bruscos)
 - [x] Fase 2: núcleo (lector GGUF, almacén, descargas verificadas, motor, planificador, configuración y registros privados)
 - [x] Fase 3: API local (núcleo, servidor con token, conversación, descargas, formato compatible con OpenAI, cierre por inactividad)
-- [ ] **Fase 4: línea de comandos** (`locall`) · ✓ base (status, list, show, stop) · ✓ modelos (pull, import, rm) · ✓ chat (run) · pulido
-- [ ] Fase 5: aplicación de escritorio
+- [x] Fase 4: línea de comandos (`locall pull`, `run`, `list`, `show`, `rm`, `import`, `status`, `stop`) · **MVP**
+- [ ] **Fase 5: aplicación de escritorio**
 
 ## Estructura del repositorio
 
@@ -90,7 +121,8 @@ Pruebas reales en un portátil normal (Intel Core i5-1334U, gráfica integrada I
 
 ## Desarrollo
 
-Requisitos: Windows 10/11, [Rust](https://www.rust-lang.org/) 1.99 o superior y Visual Studio Build Tools (C++).
+Requisitos: los de [Probarlo](#probarlo). Algunas pruebas usan el motor y modelos reales y se saltan solas si no los
+encuentran (rutas por defecto en `C:\Locall-poc`); las que descargan de internet están marcadas `#[ignore]`.
 
 ```bash
 cargo test
@@ -98,4 +130,5 @@ cargo test
 
 ## Licencia
 
-[Apache-2.0](LICENSE). Los modelos de IA tienen sus propias licencias, que Locall muestra antes de descargarlos.
+[Apache-2.0](LICENSE). Los modelos de IA tienen sus propias licencias: Locall las muestra al consultar un repositorio
+(`locall pull <repositorio>`) y en los detalles de cada modelo (`locall show`).

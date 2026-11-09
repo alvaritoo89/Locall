@@ -87,6 +87,20 @@ fn abre_locall_cuando_hace_falta_y_lo_cierra_con_stop() {
     let (codigo, salida, errores) = e.locall(&["list"]);
     assert_eq!(codigo, 0, "{errores}");
     assert!(salida.contains("No hay modelos instalados"), "{salida}");
+    // Avisa de que lo abre, y con qué carpeta (por stderr: la salida normal queda limpia).
+    assert!(
+        errores.contains("Abriendo Locall en segundo plano"),
+        "{errores}"
+    );
+    assert!(
+        errores.contains(&e.datos.display().to_string()),
+        "{errores}"
+    );
+    let (_, _, errores) = e.locall(&["list"]);
+    assert!(
+        !errores.contains("Abriendo"),
+        "ya estaba abierto: {errores}"
+    );
 
     // 3) Ahora status lo ve abierto, en nuestro puerto.
     let (_, salida, _) = e.locall(&["status"]);
