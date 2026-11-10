@@ -9,6 +9,7 @@ import {
   type Progreso,
   type Repositorio,
   cancelarInstalacion,
+  instalarDelCatalogo,
   instalarModelo,
   tamano,
   textoError,
@@ -26,16 +27,18 @@ export interface Instalaciones {
   estado: Record<string, Instalando>;
   instalar: (repo: string, archivo: string) => void;
   cancelar: (repo: string, archivo: string) => void;
+  /** Instala un modelo del catálogo (su progreso va en `estado[clave("catalogo", nombre)]`). */
+  instalarDelCatalogo: (nombre: string) => void;
 }
 
-const clave = (repo: string, archivo: string) => `${repo}/${archivo}`;
+export const clave = (repo: string, archivo: string) => `${repo}/${archivo}`;
 
 export function useInstalaciones(alInstalar: () => void): Instalaciones {
   const [estado, setEstado] = useState<Record<string, Instalando>>({});
 
-  const instalar = useCallback(
-    async (repo: string, archivo: string) => {
-      const k = clave(repo, archivo);
+  /** Lleva el estado de una instalación (`k`) mientras `trabajo` la hace. */
+  const seguir = useCallback(
+    async (k: string, trabajo: (alProgresar: (p: Progreso) => void) => Promise<{ id: string; size_bytes: number }>) => {
       const poner = (cambio: Partial<Instalando>) =>
         setEstado((actual) => ({
           ...actual,
@@ -43,7 +46,7 @@ export function useInstalaciones(alInstalar: () => void): Instalaciones {
         }));
       poner({ progreso: null, error: null, hecho: null });
       try {
-        const modelo = await instalarModelo(repo, archivo, (p) => poner({ progreso: p }));
+        const modelo = await trabajo((p) => poner({ progreso: p }));
         poner({ hecho: `Instalado «${modelo.id}» (${tamano(modelo.size_bytes)}, verificado con sha256).` });
         alInstalar();
       } catch (e) {
@@ -53,11 +56,21 @@ export function useInstalaciones(alInstalar: () => void): Instalaciones {
     [alInstalar],
   );
 
+  const instalar = useCallback(
+    (repo: string, archivo: string) => seguir(clave(repo, archivo), (p) => instalarModelo(repo, archivo, p)),
+    [seguir],
+  );
+
+  const instalarCatalogo = useCallback(
+    (nombre: string) => seguir(clave("catalogo", nombre), (p) => instalarDelCatalogo(nombre, p)),
+    [seguir],
+  );
+
   const cancelar = useCallback((repo: string, archivo: string) => {
     cancelarInstalacion(repo, archivo);
   }, []);
 
-  return { estado, instalar, cancelar };
+  return { estado, instalar, cancelar, instalarDelCatalogo: instalarCatalogo };
 }
 
 /** Los GGUF de un repositorio, cada uno con su botón de instalar y su progreso. */

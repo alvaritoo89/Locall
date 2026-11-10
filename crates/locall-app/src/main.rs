@@ -294,20 +294,81 @@ async fn instalar(
     archivo: String,
     canal: Channel<Value>,
 ) -> Result<Value, String> {
-    let conexion = conexion.inner().clone();
     let clave = format!("{repo}/{archivo}");
+    let cuerpo = json!({"repo": repo, "file": archivo});
+    instalar_con(
+        conexion.inner(),
+        instalaciones.inner(),
+        clave,
+        cuerpo,
+        canal,
+    )
+    .await
+}
+
+/// Instala un modelo del catálogo por su nombre (`qwen3-4b`). Locall comprueba antes de descargar que lo que ofrece
+/// Hugging Face coincide con lo firmado en el catálogo. Para cancelarla: `cancelar_instalacion("catalogo", nombre)`.
+#[tauri::command]
+async fn instalar_catalogo(
+    conexion: tauri::State<'_, Conexion>,
+    instalaciones: tauri::State<'_, Instalaciones>,
+    nombre: String,
+    canal: Channel<Value>,
+) -> Result<Value, String> {
+    let clave = format!("catalogo/{nombre}");
+    let cuerpo = json!({"name": nombre});
+    instalar_con(
+        conexion.inner(),
+        instalaciones.inner(),
+        clave,
+        cuerpo,
+        canal,
+    )
+    .await
+}
+
+/// El catálogo de modelos compatibles. Antes mira si hay uno nuevo en GitHub (Locall lo hace como mucho una vez al
+/// día); si no se puede (sin internet…), devuelve el que hay con un aviso en `warning`.
+#[tauri::command]
+async fn catalogo(conexion: tauri::State<'_, Conexion>) -> Result<Value, String> {
+    let conexion = conexion.inner().clone();
+    en_hilo(move || {
+        conexion.con_cliente(|c| match c.post("/api/catalog/update", &json!({})) {
+            Ok(mut r) => Ok(r["catalog"].take()),
+            Err(ErrorCli::Api { mensaje, .. }) => {
+                let mut actual = c.get("/api/catalog")?;
+                actual["warning"] = json!(format!(
+                    "No se pudo buscar un catálogo más nuevo: {mensaje}"
+                ));
+                Ok(actual)
+            }
+            Err(e) => Err(e),
+        })
+    })
+    .await
+}
+
+/// Lo común a instalar de Hugging Face o del catálogo: progreso por `canal`, cancelación por `clave`.
+async fn instalar_con(
+    conexion: &Conexion,
+    instalaciones: &Instalaciones,
+    clave: String,
+    cuerpo: Value,
+    canal: Channel<Value>,
+) -> Result<Value, String> {
+    let conexion = conexion.clone();
     let cancelar = Arc::new(AtomicBool::new(false));
     instalaciones
         .0
         .lock()
         .unwrap_or_else(PoisonError::into_inner)
         .insert(clave.clone(), Arc::clone(&cancelar));
-    let lista = instalaciones.inner().clone();
+    let lista = instalaciones.clone();
 
     let resultado = en_hilo(move || {
         let cliente = conexion.cliente()?;
         let respuesta = cliente
-            .post_sin_leer("/api/models/pull", &json!({"repo": repo, "file": archivo}))
+            .post_sin_leer("/api/models/pull", &cuerpo)
             .map_err(|e| e.to_string())?;
         for linea in BufReader::new(respuesta.into_body().into_reader()).lines() {
             if cancelar.load(Ordering::Relaxed) {
@@ -552,6 +613,8 @@ fn main() {
             eliminar,
             consultar_repo,
             buscar_modelos,
+            catalogo,
+            instalar_catalogo,
             importar_gguf,
             ajustes,
             guardar_ajustes,

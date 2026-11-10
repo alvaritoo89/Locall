@@ -3,10 +3,22 @@
 // Solo se envía a Hugging Face el texto que escribes (ni cuenta ni datos del equipo). Locall no tiene un catálogo
 // propio todavía (llegará en la Fase 6): aquí se ve lo que hay en Hugging Face, ordenado por descargas.
 
-import { type FormEvent, useRef, useState } from "react";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 
-import { ArchivosDelRepo, type Instalaciones } from "./Instalar";
-import { type Encontrado, type Repositorio, buscarModelos, cifraCorta, consultarRepo, textoError } from "./locall";
+import { ArchivosDelRepo, type Instalaciones, clave } from "./Instalar";
+import {
+  type Catalogo,
+  type Encontrado,
+  type Repositorio,
+  buscarModelos,
+  cancelarInstalacion,
+  cifraCorta,
+  consultarRepo,
+  pedirCatalogo,
+  tamano,
+  textoEncaje,
+  textoError,
+} from "./locall";
 
 /** Para qué sirve un modelo, en palabras. (Solo las tareas más habituales; las demás se muestran tal cual.) */
 const TAREAS: Record<string, string> = {
@@ -16,7 +28,121 @@ const TAREAS: Record<string, string> = {
   "sentence-similarity": "incrustaciones (no conversa)",
 };
 
-export function Explorar({ instalaciones }: { instalaciones: Instalaciones }) {
+interface Props {
+  instalaciones: Instalaciones;
+  /** Si la pantalla está a la vista (el catálogo se pide la primera vez que se ve, no al abrir la app). */
+  visible: boolean;
+  /** Cambia cuando cambian los modelos instalados (para marcar «Instalado»). */
+  modelosInstalados: number;
+}
+
+export function Explorar({ instalaciones, visible, modelosInstalados }: Props) {
+  return (
+    <>
+      <h1>Explorar</h1>
+      <Recomendados instalaciones={instalaciones} visible={visible} modelosInstalados={modelosInstalados} />
+      <BuscarEnHuggingFace instalaciones={instalaciones} />
+    </>
+  );
+}
+
+// ─── Recomendados por Locall (el catálogo) ────────────────────────────────────
+
+function Recomendados({ instalaciones, visible, modelosInstalados }: Props) {
+  const [catalogo, setCatalogo] = useState<Catalogo | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const pedido = useRef(false);
+
+  useEffect(() => {
+    if (!visible) return;
+    if (pedido.current && catalogo) {
+      // Ya lo tenemos: solo refrescar «Instalado» (sin volver a mirar en GitHub: Locall lo hace una vez al día).
+      pedirCatalogo().then(setCatalogo).catch(() => {});
+      return;
+    }
+    pedido.current = true;
+    pedirCatalogo()
+      .then((c) => (setCatalogo(c), setError(null)))
+      .catch((e) => setError(textoError(e)));
+  }, [visible, modelosInstalados]);
+
+  return (
+    <section className="tarjeta ancha" aria-labelledby="titulo-recomendados">
+      <div className="titulo-tarjeta">
+        <h2 id="titulo-recomendados">Recomendados por Locall</h2>
+        {catalogo && <span className="pequeño tenue">{catalogo.models.length} modelos</span>}
+      </div>
+      <p className="pequeño tenue">
+        Todos son <strong>compatibles</strong>: el motor de Locall reconoce su formato. No se han probado uno a uno.
+        «¿Cabe?» es aproximado, con la memoria libre ahora (cerrar otros programas deja más).
+      </p>
+      {error && <p className="pequeño tono-error" role="alert">{error}</p>}
+      {catalogo?.warning && <p className="pequeño tono-aviso">{catalogo.warning}</p>}
+      {!catalogo && !error && <p className="pequeño tenue">Cargando el catálogo…</p>}
+      {catalogo && (
+        <ul className="catalogo">
+          {catalogo.models.map((m) => {
+            const i = instalaciones.estado[clave("catalogo", m.name)];
+            const enCurso = i && !i.error && !i.hecho;
+            const pct =
+              i?.progreso && i.progreso.total_bytes > 0
+                ? Math.floor((i.progreso.downloaded_bytes / i.progreso.total_bytes) * 100)
+                : 0;
+            const encaje = textoEncaje(m.fit_estimate);
+            const instalado = m.installed || !!i?.hecho;
+            return (
+              <li key={m.name} className="ficha">
+                <div className="ficha-cabecera">
+                  <h3 className="ficha-titulo">{m.title}</h3>
+                  <span className="etiqueta-compatible" title="El motor reconoce su formato">compatible</span>
+                </div>
+                <p className="pequeño tenue">
+                  {m.publisher} · {tamano(m.size_bytes)} · licencia {m.license}
+                </p>
+                <p className="pequeño">{m.description}</p>
+                <p className={`pequeño tono-${encaje.tono}`}>¿Cabe? {encaje.texto} (aprox.)</p>
+                <div className="ficha-pie">
+                  <code className="cli">locall pull {m.name}</code>
+                  <span className="hueco" />
+                  {instalado ? (
+                    <span className="cargado">Instalado</span>
+                  ) : enCurso ? (
+                    <button type="button" className="boton" onClick={() => cancelarInstalacion("catalogo", m.name)}>
+                      Cancelar
+                    </button>
+                  ) : (
+                    <button type="button" className="boton" onClick={() => instalaciones.instalarDelCatalogo(m.name)}
+                      aria-label={`Instalar ${m.title}`}>
+                      {i?.error ? "Reintentar" : "Instalar"}
+                    </button>
+                  )}
+                </div>
+                {enCurso && (
+                  <div className="progreso">
+                    <div className="progreso-barra" role="progressbar" aria-valuemin={0} aria-valuemax={100}
+                      aria-valuenow={pct} aria-label={`Descargando ${m.title}`}>
+                      <div style={{ width: `${pct}%` }} />
+                    </div>
+                    <span className="mono pequeño">
+                      {i?.progreso
+                        ? `${pct} % · ${tamano(i.progreso.downloaded_bytes)} de ${tamano(i.progreso.total_bytes)}`
+                        : "Comprobando contra el catálogo firmado…"}
+                    </span>
+                  </div>
+                )}
+                {i?.error && <p className="pequeño tono-error" role="alert">{i.error}</p>}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+// ─── Buscar en Hugging Face ───────────────────────────────────────────────────
+
+function BuscarEnHuggingFace({ instalaciones }: { instalaciones: Instalaciones }) {
   const [texto, setTexto] = useState("");
   const [buscando, setBuscando] = useState(false);
   const [resultados, setResultados] = useState<Encontrado[] | null>(null);
@@ -63,7 +189,6 @@ export function Explorar({ instalaciones }: { instalaciones: Instalaciones }) {
 
   return (
     <>
-      <h1>Explorar</h1>
       <section className="tarjeta ancha" aria-labelledby="titulo-buscar">
         <h2 id="titulo-buscar">Buscar en Hugging Face</h2>
         <p className="pequeño tenue">

@@ -243,8 +243,9 @@ export function Ajustes({ ocupado }: Props) {
       <section className="tarjeta ancha" aria-labelledby="titulo-privacidad">
         <h2 id="titulo-privacidad">Privacidad</h2>
         <p className="pequeño">
-          Locall funciona en tu equipo. Solo se conecta a internet para buscar y descargar modelos de Hugging Face. No
-          envía estadísticas ni tus conversaciones a ningún sitio, y no hay nada que desactivar.
+          Locall funciona en tu equipo. Solo se conecta a internet para buscar y descargar modelos de Hugging Face y,
+          como mucho una vez al día, para mirar en GitHub si hay un catálogo de modelos nuevo. No envía estadísticas ni
+          tus conversaciones a ningún sitio, y no hay nada que desactivar.
         </p>
       </section>
     </>

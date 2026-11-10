@@ -1943,6 +1943,7 @@ dependencies = [
 name = "locall-core"
 version = "0.0.1"
 dependencies = [
+ "locall-catalogo",
  "locall-compat",
  "locall-config",
  "locall-download",

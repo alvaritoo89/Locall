@@ -32,6 +32,7 @@ use locall_scheduler::Estado;
 use serde_json::{Value, json};
 
 mod ajustes;
+mod catalogo;
 mod chat;
 mod conversaciones;
 mod flujo;
@@ -134,6 +135,8 @@ pub fn rutas_vigiladas(
         )
         .route("/api/models/pull", post(modelos::instalar))
         .route("/api/models/import", post(modelos::importar))
+        .route("/api/catalog", get(catalogo::ver))
+        .route("/api/catalog/update", post(catalogo::actualizar))
         .route("/api/hub/search", post(modelos::buscar))
         .route("/api/hub/{owner}/{name}", get(modelos::hub))
         .route("/api/chat", post(chat::chat))
@@ -296,17 +299,22 @@ async fn modelos(State(c): State<Compartido>) -> Result<Json<Value>, ErrorApi> {
     Ok(Json(json!({ "models": modelos })))
 }
 
+/// `comfortable`, `fits`, `tight` o `too_big`.
+pub(crate) fn encaje_texto(encaje: locall_compat::Encaje) -> &'static str {
+    match encaje {
+        locall_compat::Encaje::Holgado => "comfortable",
+        locall_compat::Encaje::Cabe => "fits",
+        locall_compat::Encaje::Justo => "tight",
+        locall_compat::Encaje::NoCabe => "too_big",
+    }
+}
+
 /// Añade a un modelo si cabe en el equipo (`fit`), la memoria estimada y si el motor puede usarlo. Si no se puede
 /// evaluar (por ejemplo, el archivo se ha movido), esos campos van a `null` y la lista sigue.
 fn con_evaluacion(mut json: Value, nucleo: &Nucleo, id: &str) -> Value {
     match nucleo.evaluar(id) {
         Ok(e) => {
-            json["fit"] = json!(match e.encaje {
-                locall_compat::Encaje::Holgado => "comfortable",
-                locall_compat::Encaje::Cabe => "fits",
-                locall_compat::Encaje::Justo => "tight",
-                locall_compat::Encaje::NoCabe => "too_big",
-            });
+            json["fit"] = json!(encaje_texto(e.encaje));
             json["memory_estimate_bytes"] = json!(e.estimacion.total);
             json["compatible"] = json!(e.comprobacion.es_compatible());
         }
@@ -448,6 +456,10 @@ impl From<ErrorNucleo> for ErrorApi {
             | ErrorNucleo::IdInvalido(_)
             | ErrorNucleo::BusquedaInvalida(_)
             | ErrorNucleo::AjusteInvalido(_) => (S::BAD_REQUEST, "invalid_request"),
+            ErrorNucleo::NoEnCatalogo(_) => (S::NOT_FOUND, "not_in_catalog"),
+            ErrorNucleo::CatalogoNoCoincide(_) => (S::CONFLICT, "catalog_mismatch"),
+            ErrorNucleo::Catalogo(_) => (S::BAD_GATEWAY, "catalog_invalid"),
+            ErrorNucleo::CatalogoNoDisponible(_) => (S::BAD_GATEWAY, "catalog_unavailable"),
             ErrorNucleo::RepoNoEncontrado(_) | ErrorNucleo::ArchivoNoEncontrado { .. } => {
                 (S::NOT_FOUND, "not_found_on_hub")
             }

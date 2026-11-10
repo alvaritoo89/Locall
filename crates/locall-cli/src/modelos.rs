@@ -75,7 +75,80 @@ pub fn instalar(
         cuerpo["id"] = json!(i);
     }
     let _ = writeln!(std::io::stderr(), "Comprobando {archivo} en {repo}…");
-    let respuesta = cliente.post_sin_leer("/api/models/pull", &cuerpo)?;
+    instalar_con(cliente, &cuerpo)
+}
+
+/// `locall pull <nombre>`: un modelo del catálogo.
+pub fn instalar_del_catalogo(cliente: &Cliente, nombre: &str) -> Result<String, ErrorCli> {
+    let _ = writeln!(
+        std::io::stderr(),
+        "Comprobando «{nombre}» contra el catálogo firmado…"
+    );
+    instalar_con(cliente, &json!({"name": nombre}))
+}
+
+/// `locall catalog`: los modelos del catálogo. Antes mira si hay uno nuevo (como mucho una vez al día); si no se puede
+/// (sin internet), enseña el que hay.
+pub fn catalogo(cliente: &Cliente) -> Result<String, ErrorCli> {
+    let (catalogo, aviso) = match cliente.post("/api/catalog/update", &json!({})) {
+        Ok(r) => (r["catalog"].clone(), None),
+        Err(ErrorCli::Api { mensaje, .. }) => (
+            cliente.get("/api/catalog")?,
+            Some(format!(
+                "No se pudo buscar un catálogo más nuevo: {mensaje}.\n"
+            )),
+        ),
+        Err(e) => return Err(e),
+    };
+    let filas: Vec<Vec<String>> = catalogo["models"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default()
+        .iter()
+        .map(|m| {
+            vec![
+                m["name"].as_str().unwrap_or("?").to_owned(),
+                m["title"].as_str().unwrap_or("").to_owned(),
+                formato::tamano(m["size_bytes"].as_u64().unwrap_or(0)),
+                m["license"].as_str().unwrap_or("—").to_owned(),
+                match m["fit_estimate"].as_str() {
+                    Some("comfortable") => "de sobra",
+                    Some("fits") => "sí",
+                    Some("tight") => "justo",
+                    Some("too_big") => "no",
+                    _ => "—",
+                }
+                .to_owned(),
+                if m["installed"].as_bool() == Some(true) {
+                    "instalado".to_owned()
+                } else {
+                    String::new()
+                },
+            ]
+        })
+        .collect();
+    let mut texto = aviso.unwrap_or_default();
+    texto.push_str(&formato::tabla(
+        &[
+            "NOMBRE",
+            "MODELO",
+            "TAMAÑO",
+            "LICENCIA",
+            "¿CABE? (APROX.)",
+            "",
+        ],
+        &filas,
+    ));
+    texto.push_str(
+        "\nTodos son compatibles: el motor de Locall reconoce su formato. No se han probado uno a uno.\n\
+         Para instalar uno: locall pull <nombre>\n",
+    );
+    Ok(texto)
+}
+
+/// Pide la instalación y enseña la barra de progreso hasta que termina.
+fn instalar_con(cliente: &Cliente, cuerpo: &Value) -> Result<String, ErrorCli> {
+    let respuesta = cliente.post_sin_leer("/api/models/pull", cuerpo)?;
     let mut barra = Barra::nueva();
     for linea in BufReader::new(respuesta.into_body().into_reader()).lines() {
         let linea = linea.map_err(|e| ErrorCli::Red(format!("la descarga se cortó: {e}")))?;

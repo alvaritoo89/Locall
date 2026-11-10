@@ -1,0 +1,87 @@
+{
+ "format": 1,
+ "published": 1900000100,
+ "models": [
+  {
+   "name": "prueba-1b",
+   "title": "prueba-1b",
+   "publisher": "Locall (pruebas)",
+   "description": "Modelo de prueba.",
+   "tags": [
+    "conversar"
+   ],
+   "license": "mit",
+   "context_length": 4096,
+   "variants": [
+    {
+     "name": "q4_0",
+     "default": true,
+     "repo": "prueba/uno",
+     "commit": "0123456789abcdef0123456789abcdef01234567",
+     "checked_engine": "b12189",
+     "files": [
+      {
+       "path": "uno-Q4_0.gguf",
+       "size": 300119,
+       "sha256": "cee3b96de4bd0cc037b55c9a3b78efd903ade1fc76c1057bcaac8027449a861d"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "falso-1b",
+   "title": "falso-1b",
+   "publisher": "Locall (pruebas)",
+   "description": "Modelo de prueba.",
+   "tags": [
+    "conversar"
+   ],
+   "license": "mit",
+   "context_length": 4096,
+   "variants": [
+    {
+     "name": "q4_0",
+     "default": true,
+     "repo": "prueba/falso",
+     "commit": "0123456789abcdef0123456789abcdef01234567",
+     "checked_engine": "b12189",
+     "files": [
+      {
+       "path": "falso-Q4_0.gguf",
+       "size": 300119,
+       "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "prueba-2b",
+   "title": "prueba-2b",
+   "publisher": "Locall (pruebas)",
+   "description": "Modelo de prueba.",
+   "tags": [
+    "conversar"
+   ],
+   "license": "mit",
+   "context_length": 4096,
+   "variants": [
+    {
+     "name": "q4_0",
+     "default": true,
+     "repo": "prueba/dos",
+     "commit": "0123456789abcdef0123456789abcdef01234567",
+     "checked_engine": "b12189",
+     "files": [
+      {
+       "path": "dos-Q4_0.gguf",
+       "size": 300119,
+       "sha256": "cee3b96de4bd0cc037b55c9a3b78efd903ade1fc76c1057bcaac8027449a861d"
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

@@ -26,6 +26,10 @@ pub enum Orden {
         revision: Option<String>,
         id: Option<String>,
     },
+    /// `locall pull <nombre>`: un modelo del catálogo (`qwen3-4b`, `qwen3-4b:q8_0`).
+    InstalarCatalogo(String),
+    /// `locall catalog`
+    Catalogo,
     /// `locall import <ruta> [--id ID]`
     Importar {
         ruta: String,
@@ -49,6 +53,8 @@ Locall: modelos de IA en tu propio ordenador.
 Uso: locall <orden> [argumentos]
 
 Modelos:
+  catalog                        Modelos compatibles recomendados por Locall
+  pull <nombre>                  Instala un modelo del catálogo (por ejemplo, qwen3-4b)
   pull <repositorio> [archivo]   Instala un modelo de Hugging Face (sin archivo: lista los que tiene)
        --revision <r>            Rama, etiqueta o commit (por defecto, main)
        --id <nombre>             Nombre para el modelo en Locall
@@ -69,9 +75,11 @@ Locall se abre solo, en segundo plano, cuando una orden lo necesita, y se cierra
 cuando lleva un rato sin usarse.
 
 Ejemplos:
+  locall catalog
+  locall pull qwen3-4b
+  locall run qwen3-4b
+  locall run qwen3-4b \"¿Qué es Rust?\"
   locall pull Qwen/Qwen3-4B-GGUF Qwen3-4B-Q4_K_M.gguf
-  locall run qwen3-4b-q4_k_m
-  locall run qwen3-4b-q4_k_m \"¿Qué es Rust?\"
 
 Variables de entorno:
   LOCALL_DATOS          Carpeta de datos (por defecto %LOCALAPPDATA%\\Locall)
@@ -156,6 +164,7 @@ pub fn interpretar(argumentos: impl IntoIterator<Item = OsString>) -> Result<Ord
         "serve" => sin_argumentos(Orden::Servir),
         "status" => sin_argumentos(Orden::Estado),
         "list" | "ls" => sin_argumentos(Orden::Lista),
+        "catalog" | "catalogo" => sin_argumentos(Orden::Catalogo),
         "stop" => sin_argumentos(Orden::Parar),
         "show" => Ok(Orden::Mostrar(uno("el modelo: locall show <modelo>")?)),
         "rm" => Ok(Orden::Eliminar {
@@ -181,6 +190,16 @@ pub fn interpretar(argumentos: impl IntoIterator<Item = OsString>) -> Result<Ord
             id,
         }),
         "pull" => match resto.as_slice() {
+            // Sin «/»: un nombre del catálogo.
+            [nombre] if !nombre.contains('/') => {
+                if revision.is_some() || id.is_some() {
+                    return Err(ErrorCli::Uso(format!(
+                        "«{nombre}» es un modelo del catálogo: no admite «--revision» ni «--id» (el catálogo ya fija \
+                         la versión exacta)"
+                    )));
+                }
+                Ok(Orden::InstalarCatalogo(nombre.clone()))
+            }
             [repo] => Ok(Orden::Instalar {
                 repo: repo.clone(),
                 archivo: None,
@@ -194,7 +213,9 @@ pub fn interpretar(argumentos: impl IntoIterator<Item = OsString>) -> Result<Ord
                 id,
             }),
             [] => Err(ErrorCli::Uso(
-                "falta el repositorio: locall pull <repositorio> [archivo]".into(),
+                "falta el modelo: locall pull <nombre> (míralos con «locall catalog») o locall pull \
+                 <repositorio> [archivo]"
+                    .into(),
             )),
             [_, _, sobra, ..] => Err(ErrorCli::Uso(format!("sobra «{sobra}»"))),
         },
@@ -246,6 +267,15 @@ mod pruebas {
                 id: id.map(Into::into),
             };
         assert_eq!(de("pull dueno/repo").unwrap(), instalar(None, None, None));
+        assert_eq!(
+            de("pull qwen3-4b").unwrap(),
+            Orden::InstalarCatalogo("qwen3-4b".into())
+        );
+        assert_eq!(
+            de("pull qwen3-4b:q8_0").unwrap(),
+            Orden::InstalarCatalogo("qwen3-4b:q8_0".into())
+        );
+        assert_eq!(de("catalog").unwrap(), Orden::Catalogo);
         assert_eq!(
             de("pull dueno/repo m.gguf --revision v2 --id mio").unwrap(),
             instalar(Some("m.gguf"), Some("v2"), Some("mio"))
@@ -310,7 +340,9 @@ mod pruebas {
             ("show a b", "sobra «b»"),
             ("--rapido", "opción desconocida «--rapido»"),
             ("list -x", "opción desconocida «-x»"),
-            ("pull", "falta el repositorio"),
+            ("pull", "falta el modelo"),
+            ("pull qwen3-4b --id mio", "no admite"),
+            ("catalog sobra", "no lleva argumentos"),
             ("pull a/b c d", "sobra «d»"),
             ("pull a/b --revision", "le falta su valor"),
             ("list --id x", "«list» no admite «--id»"),

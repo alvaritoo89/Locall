@@ -36,6 +36,9 @@ pub struct Repo {
 pub struct HfFalso {
     pub base: String,
     pub pedidas: Arc<Mutex<Vec<String>>>,
+    /// Archivos sueltos que sirve además (ruta exacta → contenido), por ejemplo un catálogo y su firma. Se pueden
+    /// cambiar durante la prueba.
+    pub extra: Arc<Mutex<BTreeMap<String, Vec<u8>>>>,
 }
 
 pub fn hf_falso(repos: Vec<Repo>) -> HfFalso {
@@ -45,18 +48,30 @@ pub fn hf_falso(repos: Vec<Repo>) -> HfFalso {
     let registro = Arc::clone(&pedidas);
     let repos: Arc<BTreeMap<String, Repo>> =
         Arc::new(repos.into_iter().map(|r| (r.nombre.clone(), r)).collect());
+    let extra: Arc<Mutex<BTreeMap<String, Vec<u8>>>> = Arc::default();
+    let extra_servidor = Arc::clone(&extra);
     thread::spawn(move || {
         for conexion in escucha.incoming() {
             let Ok(conexion) = conexion else { continue };
             let repos = Arc::clone(&repos);
             let registro = Arc::clone(&registro);
-            thread::spawn(move || atender(conexion, &repos, &registro));
+            let extra = Arc::clone(&extra_servidor);
+            thread::spawn(move || atender(conexion, &repos, &registro, &extra));
         }
     });
-    HfFalso { base, pedidas }
+    HfFalso {
+        base,
+        pedidas,
+        extra,
+    }
 }
 
-fn atender(mut c: TcpStream, repos: &BTreeMap<String, Repo>, pedidas: &Mutex<Vec<String>>) {
+fn atender(
+    mut c: TcpStream,
+    repos: &BTreeMap<String, Repo>,
+    pedidas: &Mutex<Vec<String>>,
+    extra: &Mutex<BTreeMap<String, Vec<u8>>>,
+) {
     let (ruta, desde) = {
         let mut lector = BufReader::new(&c);
         let mut primera = String::new();
@@ -75,6 +90,16 @@ fn atender(mut c: TcpStream, repos: &BTreeMap<String, Repo>, pedidas: &Mutex<Vec
         (ruta, desde)
     };
     pedidas.lock().unwrap().push(ruta.clone());
+    let suelto = extra.lock().unwrap().get(&ruta).cloned();
+    if let Some(datos) = suelto {
+        let cabecera = format!(
+            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+            datos.len()
+        );
+        let _ = c.write_all(cabecera.as_bytes());
+        let _ = c.write_all(&datos);
+        return;
+    }
 
     let responder = |c: &mut TcpStream, estado: &str, cuerpo: &[u8], extra: &str| {
         let cabecera = format!(
@@ -207,6 +232,35 @@ impl Drop for CarpetaDePrueba {
     fn drop(&mut self) {
         let _ = std::fs::remove_dir_all(&self.0);
     }
+}
+
+/// La clave pública de prueba con la que están firmados los catálogos de `tests/datos/`.
+pub fn clave_de_prueba() -> String {
+    include_str!("../datos/prueba.pub")
+        .lines()
+        .nth(1)
+        .unwrap()
+        .trim()
+        .to_owned()
+}
+
+/// Abre un núcleo que busca el catálogo en `hf` (en `/catalogo/catalogo.json`) y lo comprueba con la clave de prueba.
+pub fn nucleo_con_catalogo(carpeta: &CarpetaDePrueba, hf: &HfFalso) -> Nucleo {
+    let mut opciones = OpcionesNucleo::nuevas(
+        Rutas::en(carpeta.0.clone()),
+        r"C:\Locall-poc\motor\cpu\llama-server.exe",
+    );
+    opciones.hugging_face = hf.base.clone();
+    opciones.catalogo = format!("{}/catalogo/catalogo.json", hf.base);
+    opciones.clave_catalogo = clave_de_prueba();
+    Nucleo::abrir(opciones).unwrap()
+}
+
+/// Sirve en `hf` este catálogo y su firma (archivos de `tests/datos/`).
+pub fn servir_catalogo(hf: &HfFalso, catalogo: &[u8], firma: &[u8]) {
+    let mut extra = hf.extra.lock().unwrap();
+    extra.insert("/catalogo/catalogo.json".into(), catalogo.to_vec());
+    extra.insert("/catalogo/catalogo.json.minisig".into(), firma.to_vec());
 }
 
 /// Abre un núcleo en `carpeta`, apuntando a `hf` (o al Hugging Face de verdad si es `None`).

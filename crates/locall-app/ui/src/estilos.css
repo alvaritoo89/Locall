@@ -743,6 +743,57 @@ kbd {
   flex-wrap: wrap;
 }
 
+.catalogo {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+.ficha {
+  border: 1px solid var(--borde);
+  border-radius: 6px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ficha-cabecera {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ficha-titulo {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.etiqueta-compatible {
+  font-size: 11px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--acento);
+  color: var(--acento-texto);
+  white-space: nowrap;
+}
+
+.ficha-pie {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: auto;
+}
+
+.ficha-pie .cli {
+  font-size: 11px;
+}
+
 .resultados {
   list-style: none;
   margin: 0;

@@ -88,6 +88,22 @@ pub(crate) fn codificar(texto: &str) -> String {
     resultado
 }
 
+/// Un cliente HTTPS con el TLS de Windows (ADR 0010), sin convertir los errores HTTP en errores (se miran a mano).
+pub(crate) fn agente_https() -> ureq::Agent {
+    let tls = TlsConfig::builder()
+        .provider(TlsProvider::NativeTls)
+        .root_certs(RootCerts::PlatformVerifier)
+        .build();
+    let config = ureq::Agent::config_builder()
+        .tls_config(tls)
+        .http_status_as_error(false)
+        .timeout_connect(Some(Duration::from_secs(30)))
+        .timeout_per_read(Some(Duration::from_secs(60)))
+        .user_agent(format!("locall/{}", env!("CARGO_PKG_VERSION")))
+        .build();
+    ureq::Agent::new_with_config(config)
+}
+
 /// Cliente de la API de Hugging Face.
 pub(crate) struct HuggingFace {
     agente: ureq::Agent,
@@ -96,19 +112,8 @@ pub(crate) struct HuggingFace {
 
 impl HuggingFace {
     pub(crate) fn nuevo(base: &str) -> HuggingFace {
-        let tls = TlsConfig::builder()
-            .provider(TlsProvider::NativeTls)
-            .root_certs(RootCerts::PlatformVerifier)
-            .build();
-        let config = ureq::Agent::config_builder()
-            .tls_config(tls)
-            .http_status_as_error(false)
-            .timeout_connect(Some(Duration::from_secs(30)))
-            .timeout_per_read(Some(Duration::from_secs(60)))
-            .user_agent(format!("locall/{}", env!("CARGO_PKG_VERSION")))
-            .build();
         HuggingFace {
-            agente: ureq::Agent::new_with_config(config),
+            agente: agente_https(),
             base: base.trim_end_matches('/').to_owned(),
         }
     }

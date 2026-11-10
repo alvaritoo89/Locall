@@ -30,6 +30,8 @@ pub fn arrancar(nombre: &str, hf: &hf::HfFalso) -> Api {
     let rutas = Rutas::en(carpeta.clone());
     let mut opciones = OpcionesNucleo::nuevas(rutas.clone(), "no-hay-motor.exe");
     opciones.hugging_face = hf.base.clone();
+    // El catálogo también al servidor falso: las pruebas no salen nunca a internet.
+    opciones.catalogo = format!("{}/catalogo/catalogo.json", hf.base);
     let nucleo = Nucleo::abrir(opciones).unwrap();
     let token = locall_api::token::leer_o_crear(&rutas.token()).unwrap();
     let escucha = std::net::TcpListener::bind("127.0.0.1:0").unwrap();

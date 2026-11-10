@@ -271,3 +271,20 @@ fn busca_en_hugging_face_de_verdad() {
     assert!(encontrados.iter().any(|r| r.repo == "ggml-org/tiny-llamas"));
     assert!(encontrados.len() <= 5);
 }
+
+#[test]
+#[ignore = "usa internet (GitHub)"]
+fn el_catalogo_oficial_de_github_tiene_firma_buena() {
+    let carpeta = CarpetaDePrueba::nueva("cat-github");
+    let nucleo = nucleo(&carpeta, None);
+    // El de GitHub es el mismo que lleva Locall (o uno más nuevo): firma buena, sin errores.
+    let resultado = nucleo.actualizar_catalogo(true).unwrap();
+    eprintln!(
+        "{resultado:?}, {} modelos",
+        nucleo.catalogo().catalogo.modelos.len()
+    );
+    assert!(matches!(
+        resultado,
+        locall_core::Actualizacion::SinNovedades | locall_core::Actualizacion::Actualizado
+    ));
+}

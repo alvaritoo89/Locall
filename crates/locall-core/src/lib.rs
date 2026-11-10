@@ -30,8 +30,15 @@ use locall_scheduler::{
 };
 use locall_store::{Almacen, ErrorAlmacen, Huella, NombreArchivo, Segmento};
 
+mod catalogo;
 mod huggingface;
 mod nombres;
+
+pub use catalogo::{
+    Actualizacion, EstadoCatalogo, INTERVALO_COMPROBACION, OrigenCatalogo, URL_CATALOGO,
+};
+/// Los tipos del catálogo (para los clientes del núcleo).
+pub use locall_catalogo::{ArchivoCatalogo, Catalogo, ErrorCatalogo, ModeloCatalogo, Variante};
 
 /// Resultados como mucho en una búsqueda en Hugging Face.
 pub const BUSQUEDA_MAX: u32 = 50;
@@ -53,6 +60,11 @@ pub struct OpcionesNucleo {
     pub motor: PathBuf,
     /// Dirección de Hugging Face ([`HUGGING_FACE`]; otra solo en pruebas).
     pub hugging_face: String,
+    /// Dirección del catálogo ([`URL_CATALOGO`]; otra solo en pruebas). La firma está al lado (`.minisig`).
+    pub catalogo: String,
+    /// Clave pública con la que se comprueba un catálogo descargado ([`locall_catalogo::CLAVE_PUBLICA`]; otra solo en
+    /// pruebas). El catálogo que va dentro de Locall se comprueba siempre con la oficial.
+    pub clave_catalogo: String,
 }
 
 impl OpcionesNucleo {
@@ -61,6 +73,8 @@ impl OpcionesNucleo {
             rutas,
             motor: motor.into(),
             hugging_face: HUGGING_FACE.to_owned(),
+            catalogo: URL_CATALOGO.to_owned(),
+            clave_catalogo: locall_catalogo::CLAVE_PUBLICA.to_owned(),
         }
     }
 }
@@ -147,12 +161,18 @@ pub struct Nucleo {
     conversando: (Mutex<BTreeSet<i64>>, Condvar),
     /// Para que dos cambios de ajustes a la vez no se pisen al escribir `config.toml`.
     guardando_ajustes: Mutex<()>,
+    /// El catálogo en uso (ver `catalogo.rs`).
+    catalogo: Mutex<EstadoCatalogo>,
+    url_catalogo: String,
+    clave_catalogo: String,
+    agente_catalogo: ureq::Agent,
 }
 
 impl Nucleo {
     /// Lee la configuración y abre todo. Crea las carpetas que falten.
     pub fn abrir(opciones: OpcionesNucleo) -> Result<Nucleo, ErrorNucleo> {
         let rutas = opciones.rutas;
+        let rutas_catalogo = rutas.catalogo();
         let (config, avisos_config) = Config::leer(&rutas.config())?;
         let mut avisos: Vec<String> = avisos_config.iter().map(ToString::to_string).collect();
 
@@ -198,6 +218,10 @@ impl Nucleo {
             instalando: Mutex::new(BTreeSet::new()),
             conversando: (Mutex::new(BTreeSet::new()), Condvar::new()),
             guardando_ajustes: Mutex::new(()),
+            catalogo: Mutex::new(catalogo::cargar(&rutas_catalogo, &opciones.clave_catalogo)),
+            url_catalogo: opciones.catalogo,
+            clave_catalogo: opciones.clave_catalogo,
+            agente_catalogo: huggingface::agente_https(),
         })
     }
 
@@ -901,6 +925,14 @@ pub enum ErrorNucleo {
     Config(ErrorConfig),
     /// Un ajuste que se quiso cambiar no es válido (o no se puede cambiar así).
     AjusteInvalido(String),
+    /// Ese nombre no está en el catálogo.
+    NoEnCatalogo(String),
+    /// Lo que hay en Hugging Face no coincide con lo firmado en el catálogo.
+    CatalogoNoCoincide(String),
+    /// El catálogo descargado no sirve (firma, formato…).
+    Catalogo(ErrorCatalogo),
+    /// GitHub no ha dado el catálogo (código HTTP).
+    CatalogoNoDisponible(u16),
     Almacen(ErrorAlmacen),
     Registro(ErrorRegistro),
     /// `owner/nombre` no válido.
@@ -955,6 +987,21 @@ impl fmt::Display for ErrorNucleo {
         match self {
             ErrorNucleo::Config(e) => write!(f, "{e}"),
             ErrorNucleo::AjusteInvalido(m) => write!(f, "{m}"),
+            ErrorNucleo::NoEnCatalogo(n) => write!(
+                f,
+                "«{n}» no está en el catálogo de Locall; búscalo en Hugging Face con propietario/nombre"
+            ),
+            ErrorNucleo::CatalogoNoCoincide(m) => write!(
+                f,
+                "lo que ofrece Hugging Face no coincide con el catálogo firmado ({m}); no se descarga nada"
+            ),
+            ErrorNucleo::Catalogo(e) => write!(f, "{e}"),
+            ErrorNucleo::CatalogoNoDisponible(estado) => {
+                write!(
+                    f,
+                    "no se pudo descargar el catálogo (GitHub respondió {estado})"
+                )
+            }
             ErrorNucleo::Almacen(e) => write!(f, "{e}"),
             ErrorNucleo::Registro(e) => write!(f, "{e}"),
             ErrorNucleo::RepoInvalido(r) => {

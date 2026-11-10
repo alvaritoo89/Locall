@@ -9,6 +9,7 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
+locall-catalogo = { path = "../locall-catalogo" }
 locall-compat = { path = "../locall-compat" }
 locall-config = { path = "../locall-config" }
 locall-download = { path = "../locall-download" }

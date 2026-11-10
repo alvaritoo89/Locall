@@ -118,16 +118,34 @@ pub(crate) async fn buscar(
 
 // ─── Instalar ─────────────────────────────────────────────────────────────────
 
+/// Qué se pide instalar.
+enum QueInstalar {
+    Repo(PeticionInstalar),
+    /// Un nombre del catálogo (`qwen3-4b` o `qwen3-4b:q8_0`).
+    Catalogo(String),
+}
+
 pub(crate) async fn instalar(
     State(c): State<Compartido>,
     cuerpo: Bytes,
 ) -> Result<Response, ErrorApi> {
     let json = leer_json(&cuerpo)?;
-    let peticion = PeticionInstalar {
-        repo: texto_obligatorio(&json, "repo")?,
-        revision: texto_opcional(&json, "revision")?.unwrap_or_else(|| "main".to_owned()),
-        archivo: texto_obligatorio(&json, "file")?,
-        id: texto_opcional(&json, "id")?,
+    // Del catálogo (`{"name": "qwen3-4b"}`) o de Hugging Face (`{"repo": …, "file": …}`).
+    let que = match texto_opcional(&json, "name")? {
+        Some(nombre) => {
+            if json.get("repo").is_some() || json.get("file").is_some() {
+                return Err(invalida(
+                    "usa «name» (del catálogo) o «repo» y «file» (de Hugging Face), no los dos",
+                ));
+            }
+            QueInstalar::Catalogo(nombre)
+        }
+        None => QueInstalar::Repo(PeticionInstalar {
+            repo: texto_obligatorio(&json, "repo")?,
+            revision: texto_opcional(&json, "revision")?.unwrap_or_else(|| "main".to_owned()),
+            archivo: texto_obligatorio(&json, "file")?,
+            id: texto_opcional(&json, "id")?,
+        }),
     };
     let en_trozos = match &json["stream"] {
         Value::Null => true,
@@ -140,7 +158,7 @@ pub(crate) async fn instalar(
     tokio::task::spawn_blocking(move || {
         let cancelar = Arc::clone(&emisor.cancelar);
         let mut ultimo: Option<Instant> = None;
-        let resultado = nucleo.instalar(&peticion, &cancelar, |p: ProgresoInstalacion| {
+        let progreso = |p: ProgresoInstalacion| {
             // Como mucho cada 250 ms, pero siempre el primero y el último de cada parte.
             let toca = ultimo.is_none_or(|t| t.elapsed() >= INTERVALO_PROGRESO)
                 || p.descargados == p.total;
@@ -154,7 +172,13 @@ pub(crate) async fn instalar(
                     "total_bytes": p.total,
                 }));
             }
-        });
+        };
+        let resultado = match &que {
+            QueInstalar::Repo(peticion) => nucleo.instalar(peticion, &cancelar, progreso),
+            QueInstalar::Catalogo(nombre) => {
+                nucleo.instalar_del_catalogo(nombre, &cancelar, progreso)
+            }
+        };
         emisor.fin(resultado);
     });
 

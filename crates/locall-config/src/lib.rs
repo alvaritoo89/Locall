@@ -72,6 +72,11 @@ impl Rutas {
         self.datos.join("registros")
     }
 
+    /// Carpeta del catálogo de modelos descargado (con su firma).
+    pub fn catalogo(&self) -> PathBuf {
+        self.datos.join("catalogo")
+    }
+
     /// Carpeta del almacén de modelos si el usuario no elige otra.
     pub fn modelos_por_defecto(&self) -> PathBuf {
         self.datos.join("modelos")

@@ -46,6 +46,11 @@ pub fn ejecutar(orden: &Orden, rutas: &Rutas, ejecutable: &Path) -> Result<Strin
                 }
             }
         }
+        Orden::InstalarCatalogo(nombre) => modelos::instalar_del_catalogo(
+            &arranque::conectar_o_arrancar(rutas, ejecutable)?,
+            nombre,
+        ),
+        Orden::Catalogo => modelos::catalogo(&arranque::conectar_o_arrancar(rutas, ejecutable)?),
         Orden::Importar { ruta, id } => modelos::importar(
             &arranque::conectar_o_arrancar(rutas, ejecutable)?,
             ruta,

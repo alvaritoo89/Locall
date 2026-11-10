@@ -63,6 +63,45 @@ export const pedirEstado = () => invoke<EstadoLocall>("estado");
 export const pedirModelos = () => invoke<Modelo[]>("modelos");
 export const eliminarModelo = (id: string) => invoke<number>("eliminar", { id });
 export const consultarRepo = (repo: string) => invoke<Repositorio>("consultar_repo", { repo });
+/** Un modelo del catálogo de Locall. */
+export interface ModeloCatalogo {
+  name: string;
+  title: string;
+  publisher: string;
+  description: string;
+  tags: string[];
+  license: string;
+  context_length: number;
+  /** Siempre «compatible»: el motor reconoce su formato (no se ha probado uno a uno). */
+  status: "compatible";
+  repo: string;
+  size_bytes: number;
+  installed: boolean;
+  /** Aproximado: con el tamaño del archivo y la memoria libre ahora. */
+  fit_estimate: Encaje;
+  memory_estimate_bytes: number;
+}
+
+/** El catálogo de Locall. */
+export interface Catalogo {
+  published: number;
+  /** «builtin»: el que lleva la app; «downloaded»: uno más nuevo de GitHub. */
+  source: "builtin" | "downloaded";
+  checked_at: number | null;
+  models: ModeloCatalogo[];
+  /** Si no se pudo mirar si había uno más nuevo. */
+  warning?: string;
+}
+
+export const pedirCatalogo = () => invoke<Catalogo>("catalogo");
+
+/** Instala un modelo del catálogo por su nombre. */
+export function instalarDelCatalogo(nombre: string, alProgresar: (p: Progreso) => void): Promise<Modelo> {
+  const canal = new Channel<Progreso>();
+  canal.onmessage = alProgresar;
+  return invoke<Modelo>("instalar_catalogo", { nombre, canal });
+}
+
 /** Un repositorio encontrado al buscar en Hugging Face. */
 export interface Encontrado {
   repo: string;

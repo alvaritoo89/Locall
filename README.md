@@ -69,6 +69,8 @@ Todavía no hay instalador. Mientras tanto, desde el código fuente (Windows 10/
 4. Úsalo desde `target\release` (en PowerShell, los programas de la carpeta actual se escriben con `.\` delante):
 
    ```text
+   .\locall catalog                                         modelos recomendados (compatibles)
+   .\locall pull qwen3-4b                                   instalar uno del catálogo
    .\locall pull Qwen/Qwen3-4B-GGUF                         ¿qué versiones tiene?
    .\locall pull Qwen/Qwen3-4B-GGUF Qwen3-4B-Q4_K_M.gguf    instalarlo (2,5 GB)
    .\locall run qwen3-4b-q4_k_m                             conversar (Ctrl+C corta la respuesta)

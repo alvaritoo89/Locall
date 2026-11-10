@@ -121,7 +121,8 @@ export function App() {
           )}
           {/* Explorar también se monta siempre, para no perder la búsqueda al cambiar de pantalla. */}
           <div hidden={pagina !== "explorar"}>
-            <Explorar instalaciones={instalaciones} />
+            <Explorar instalaciones={instalaciones} visible={pagina === "explorar"}
+              modelosInstalados={modelos?.length ?? 0} />
           </div>
           {/* El chat se monta siempre (oculto si no está a la vista): así no se pierde la conversación al cambiar de
               pantalla, ni se corta una respuesta a medias. */}
