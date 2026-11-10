@@ -117,6 +117,7 @@ las cifras serán distintas:
 | [`crates/locall-engine`](crates/locall-engine) | Arranca, vigila y para `llama-server` de forma segura y conversa con él por trozos (con cancelación) |
 | [`crates/locall-scheduler`](crates/locall-scheduler) | Planificador: un modelo a la vez, comprobación de memoria antes de cargar, cola por orden de llegada y descarga por inactividad |
 | [`crates/locall-config`](crates/locall-config) | Carpeta de datos, ajustes del usuario (`config.toml`) y registros diarios sin datos de las conversaciones |
+| [`crates/locall-catalogo`](crates/locall-catalogo) | Catálogo de modelos probados: formato, validación y firma minisign |
 | [`crates/locall-core`](crates/locall-core) | Núcleo: instalar de Hugging Face (fijado al commit y verificado), importar, listar, eliminar, conversar y guardar las conversaciones |
 | [`crates/locall-api`](crates/locall-api) | API local (axum): solo 127.0.0.1, token y protección frente a webs (`Host`, `Origin`) |
 | [`crates/locall-cli`](crates/locall-cli) | Línea de comandos: cliente de la API que abre Locall en segundo plano cuando hace falta |

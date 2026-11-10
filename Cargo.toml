@@ -9,6 +9,7 @@ members = ["crates/*"]
 default-members = [
     "crates/locall",
     "crates/locall-api",
+    "crates/locall-catalogo",
     "crates/locall-cli",
     "crates/locall-compat",
     "crates/locall-config",

@@ -5,3 +5,8 @@
 *.png binary
 *.ico binary
 *.gguf binary
+
+# Archivos firmados (catálogo y sus firmas): se guardan byte a byte, sin convertir finales de línea. Si Git los
+# tocara, la firma dejaría de valer.
+catalogo/** -text
+crates/locall-catalogo/tests/datos/** -text
