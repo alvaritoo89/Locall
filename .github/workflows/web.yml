@@ -1,0 +1,64 @@
+# Publica la web de Locall en GitHub Pages (ADR 0024).
+#
+# Se ejecuta al subir cambios del catálogo, de la web o del generador. Antes de publicar: pasa las pruebas del catálogo
+# y del generador, y el generador se niega a crear la web si el catálogo no tiene la firma oficial buena.
+#
+# Seguridad: cada acción está fijada a un commit exacto (no a una etiqueta, que su autor podría mover); el trabajo que
+# compila solo puede leer el repositorio; solo el que publica tiene permiso para publicar.
+
+name: Web
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "catalogo/**"
+      - "web/**"
+      - "crates/locall-web/**"
+      - "crates/locall-catalogo/**"
+      - ".github/workflows/web.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Una publicación cada vez; si llega otra, espera (no se cancela una a medias).
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  generar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Rust 1.99.1 (la misma versión que en desarrollo)
+        run: |
+          rustup toolchain install 1.99.1 --profile minimal
+          rustup default 1.99.1
+
+      - name: Pruebas del catálogo y del generador
+        run: cargo test --locked -p locall-catalogo -p locall-web
+
+      - name: Generar la web (se niega si el catálogo no tiene firma buena)
+        run: cargo run --locked -p locall-web -- _site
+
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: _site
+
+  publicar:
+    needs: generar
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.despliegue.outputs.page_url }}
+    steps:
+      - id: despliegue
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

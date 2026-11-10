@@ -124,7 +124,10 @@ las cifras serán distintas:
 | [`crates/locall-api`](crates/locall-api) | API local (axum): solo 127.0.0.1, token y protección frente a webs (`Host`, `Origin`) |
 | [`crates/locall-cli`](crates/locall-cli) | Línea de comandos: cliente de la API que abre Locall en segundo plano cuando hace falta |
 | [`crates/locall-app`](crates/locall-app) | Aplicación de escritorio (Tauri 2 + React): un cliente más de la API, con el token fuera de la interfaz |
+| [`crates/locall-web`](crates/locall-web) | Genera la web (páginas estáticas) desde el catálogo firmado; se publica sola en GitHub Pages |
 | [`crates/locall`](crates/locall) | El programa `locall`: `locall serve` y las órdenes de la línea de comandos |
+| [`catalogo`](catalogo) | El catálogo de modelos compatibles, firmado |
+| [`web`](web) | Estilo, fuentes, logos y script de la web |
 | [`docs/adr`](docs/adr) | Decisiones de arquitectura y sus motivos |
 
 ## Desarrollo

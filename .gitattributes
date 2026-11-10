@@ -11,3 +11,6 @@
 catalogo/** -text
 crates/locall-catalogo/tests/datos/** -text
 crates/locall-core/tests/datos/** -text
+
+# Fuentes de la web
+*.woff2 binary

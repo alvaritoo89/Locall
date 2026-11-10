@@ -20,3 +20,6 @@ desktop.ini
 # Secretos locales (por si acaso)
 *.key
 .env
+
+# La web generada (en local se genera en target/web; en GitHub Actions, en _site)
+/_site/

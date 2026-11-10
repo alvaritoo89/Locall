@@ -1,0 +1,12 @@
+[package]
+name = "locall-web"
+description = "Genera la web de Locall (páginas estáticas) a partir del catálogo firmado."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+locall-catalogo = { path = "../locall-catalogo" }

@@ -21,6 +21,7 @@ default-members = [
     "crates/locall-scheduler",
     "crates/locall-store",
     "crates/locall-system",
+    "crates/locall-web",
 ]
 
 [workspace.package]
