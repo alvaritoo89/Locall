@@ -5,6 +5,8 @@
 //! - `GET /api/models/{repo}/tree/{commit}?recursive=true` → los archivos, con su tamaño y, en los grandes (LFS), su
 //!   **sha256** (`lfs.oid`): la misma huella que verifica el descargador.
 //! - `GET /{repo}/resolve/{commit}/{ruta}` → el archivo (Hugging Face redirige a su red de distribución).
+//! - `GET /api/models?search=…&filter=gguf&sort=downloads&direction=-1&limit=…` → **buscar** repositorios con GGUF
+//!   por nombre, los más descargados primero. Solo se envía el texto buscado.
 //!
 //! La dirección base se puede cambiar para las pruebas (un servidor falso local).
 
@@ -48,6 +50,44 @@ impl ArchivoHf {
     }
 }
 
+/// Un repositorio encontrado al buscar.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RepoEncontrado {
+    /// `propietario/nombre`.
+    pub repo: String,
+    pub descargas: u64,
+    pub me_gusta: u64,
+    /// Licencia declarada (`apache-2.0`…), si la hay.
+    pub licencia: Option<String>,
+    /// Para qué sirve según Hugging Face (`text-generation`, `image-text-to-text`…), si lo indica.
+    pub tarea: Option<String>,
+}
+
+/// La licencia de una lista de etiquetas de Hugging Face (`license:mit` → `mit`).
+fn licencia_de(etiquetas: &Value) -> Option<String> {
+    etiquetas.as_array().and_then(|etiquetas| {
+        etiquetas
+            .iter()
+            .filter_map(Value::as_str)
+            .find_map(|e| e.strip_prefix("license:"))
+            .map(str::to_owned)
+    })
+}
+
+/// Codifica un texto para ponerlo en una dirección (`qwen 3` → `qwen%203`): todo lo que no sea letra o número ASCII,
+/// `-`, `_`, `.` o `~` se escribe como `%XX` (cada byte de su UTF-8).
+pub(crate) fn codificar(texto: &str) -> String {
+    let mut resultado = String::with_capacity(texto.len());
+    for byte in texto.bytes() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~') {
+            resultado.push(char::from(byte));
+        } else {
+            resultado.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    resultado
+}
+
 /// Cliente de la API de Hugging Face.
 pub(crate) struct HuggingFace {
     agente: ureq::Agent,
@@ -86,13 +126,7 @@ impl HuggingFace {
             .filter(|s| s.len() == 40 && s.chars().all(|c| c.is_ascii_hexdigit()))
             .ok_or_else(|| ErrorNucleo::RespuestaHf("la revisión no trae un commit válido".into()))?
             .to_ascii_lowercase();
-        let licencia = valor["tags"].as_array().and_then(|etiquetas| {
-            etiquetas
-                .iter()
-                .filter_map(Value::as_str)
-                .find_map(|e| e.strip_prefix("license:"))
-                .map(str::to_owned)
-        });
+        let licencia = licencia_de(&valor["tags"]);
         // `gated` es `false` o el tipo de protección ("auto", "manual").
         let protegido = !matches!(valor["gated"], Value::Bool(false) | Value::Null);
         Ok(InfoRevision {
@@ -131,6 +165,36 @@ impl HuggingFace {
             });
         }
         Ok(archivos)
+    }
+
+    /// Busca repositorios con GGUF por nombre, los más descargados primero.
+    pub(crate) fn buscar(
+        &self,
+        texto: &str,
+        limite: u32,
+    ) -> Result<Vec<RepoEncontrado>, ErrorNucleo> {
+        let url = format!(
+            "{}/api/models?search={}&filter=gguf&sort=downloads&direction=-1&limit={limite}",
+            self.base,
+            codificar(texto)
+        );
+        let valor = self.json(&url, texto)?;
+        let lista = valor
+            .as_array()
+            .ok_or_else(|| ErrorNucleo::RespuestaHf("la búsqueda no devuelve una lista".into()))?;
+        Ok(lista
+            .iter()
+            .filter(|r| r["private"].as_bool() != Some(true))
+            .filter_map(|r| {
+                Some(RepoEncontrado {
+                    repo: r["id"].as_str()?.to_owned(),
+                    descargas: r["downloads"].as_u64().unwrap_or(0),
+                    me_gusta: r["likes"].as_u64().unwrap_or(0),
+                    licencia: licencia_de(&r["tags"]),
+                    tarea: r["pipeline_tag"].as_str().map(str::to_owned),
+                })
+            })
+            .collect())
     }
 
     /// Dirección de descarga de un archivo, fijada al commit.
@@ -179,5 +243,18 @@ impl HuggingFace {
             .read_to_string()
             .map_err(|e| ErrorNucleo::Red(e.to_string()))?;
         serde_json::from_str(&texto).map_err(|e| ErrorNucleo::RespuestaHf(e.to_string()))
+    }
+}
+
+#[cfg(test)]
+mod pruebas {
+    use super::codificar;
+
+    #[test]
+    fn codifica_lo_que_no_es_seguro_en_una_direccion() {
+        assert_eq!(codificar("Qwen3-4B_v1.0~x"), "Qwen3-4B_v1.0~x");
+        assert_eq!(codificar("qwen 3"), "qwen%203");
+        assert_eq!(codificar("a&b=c?d/e#f"), "a%26b%3Dc%3Fd%2Fe%23f");
+        assert_eq!(codificar("español"), "espa%C3%B1ol");
     }
 }

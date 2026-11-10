@@ -3,7 +3,10 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
-use locall_config::{ARCHIVO_POR_DEFECTO, Aviso, Config, ErrorConfig, Hilos, Rutas};
+use locall_config::lector::Valor;
+use locall_config::{
+    ARCHIVO_POR_DEFECTO, Aviso, Config, ErrorConfig, Hilos, Rutas, texto_con_cambios,
+};
 
 struct CarpetaDePrueba(PathBuf);
 
@@ -185,4 +188,81 @@ fn un_archivo_que_no_es_texto_se_explica() {
     let error = Config::leer(&ruta).unwrap_err();
     assert!(matches!(error, ErrorConfig::Sintaxis { .. }), "{error:?}");
     assert!(error.to_string().contains("UTF-8"));
+}
+
+// ─── Guardar cambios ──────────────────────────────────────────────────────────
+
+#[test]
+fn guardar_cambia_solo_esas_lineas_y_respeta_los_comentarios() {
+    let texto = "# mis notas\r\ncontexto = 2048 # pequeño\r\n\r\n# otra nota\r\npuerto = 11999\r\n";
+    let nuevo = texto_con_cambios(
+        texto,
+        &[
+            ("contexto", Valor::Entero(8192)),
+            ("hilos", Valor::Texto("auto".into())),
+        ],
+    )
+    .unwrap();
+    assert_eq!(
+        nuevo,
+        "# mis notas\r\ncontexto = 8192\r\n\r\n# otra nota\r\npuerto = 11999\r\nhilos = \"auto\"\r\n",
+        "mismos saltos de línea (\\r\\n), comentarios intactos y lo que faltaba, al final"
+    );
+    let (config, _) = Config::desde_texto(&nuevo).unwrap();
+    assert_eq!(config.contexto, 8192);
+    assert_eq!(config.puerto, 11999);
+}
+
+#[test]
+fn guardar_solo_admite_los_ajustes_editables() {
+    for clave in ["puerto", "carpeta_modelos", "paralelo", "inventado"] {
+        let error = texto_con_cambios("", &[(clave, Valor::Entero(1))]).unwrap_err();
+        assert!(
+            matches!(error, ErrorConfig::NoEditable(_)),
+            "{clave}: {error}"
+        );
+    }
+}
+
+#[test]
+fn guardar_valida_antes_de_escribir() {
+    let carpeta = CarpetaDePrueba::nueva("guardar-validar");
+    let rutas = Rutas::en(&carpeta.0);
+    Config::crear_si_no_existe(&rutas).unwrap();
+    let antes = std::fs::read_to_string(rutas.config()).unwrap();
+
+    let error = Config::guardar_cambios(&rutas, &[("contexto", Valor::Entero(10))]).unwrap_err();
+    assert!(error.to_string().contains("contexto"), "{error}");
+    assert_eq!(
+        std::fs::read_to_string(rutas.config()).unwrap(),
+        antes,
+        "el archivo no se tocó"
+    );
+
+    let guardada =
+        Config::guardar_cambios(&rutas, &[("inactividad_minutos", Valor::Entero(12))]).unwrap();
+    assert_eq!(guardada.inactividad_minutos, 12);
+    let (leida, _) = Config::leer(&rutas.config()).unwrap();
+    assert_eq!(leida, guardada);
+    assert!(
+        !rutas.config().with_extension("toml.nuevo").exists(),
+        "no queda el temporal"
+    );
+    let despues = std::fs::read_to_string(rutas.config()).unwrap();
+    assert!(
+        despues.contains("# Contexto por defecto"),
+        "los comentarios siguen ahí"
+    );
+}
+
+#[test]
+fn guardar_sin_archivo_lo_crea_desde_el_de_por_defecto() {
+    let carpeta = CarpetaDePrueba::nueva("guardar-nuevo");
+    let rutas = Rutas::en(&carpeta.0);
+    let guardada =
+        Config::guardar_cambios(&rutas, &[("registros_dias", Valor::Entero(30))]).unwrap();
+    assert_eq!(guardada.registros_dias, 30);
+    let texto = std::fs::read_to_string(rutas.config()).unwrap();
+    assert!(texto.starts_with("# Ajustes de Locall."));
+    assert!(texto.contains("registros_dias = 30"));
 }

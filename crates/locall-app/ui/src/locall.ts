@@ -63,8 +63,65 @@ export const pedirEstado = () => invoke<EstadoLocall>("estado");
 export const pedirModelos = () => invoke<Modelo[]>("modelos");
 export const eliminarModelo = (id: string) => invoke<number>("eliminar", { id });
 export const consultarRepo = (repo: string) => invoke<Repositorio>("consultar_repo", { repo });
+/** Un repositorio encontrado al buscar en Hugging Face. */
+export interface Encontrado {
+  repo: string;
+  downloads: number;
+  likes: number;
+  license: string | null;
+  /** Para qué sirve según Hugging Face (`text-generation`…). */
+  task: string | null;
+}
+
+export const buscarModelos = (texto: string) => invoke<Encontrado[]>("buscar_modelos", { texto });
+
+/** `26265` → `26 mil`; `1_200_000` → `1,2 M` */
+export function cifraCorta(n: number): string {
+  if (n >= 1_000_000) return `${decimal(n / 1_000_000)} M`;
+  if (n >= 1000) return `${Math.round(n / 1000)} mil`;
+  return String(n);
+}
+
+/** Unos ajustes (los en uso o los guardados en `config.toml`). */
+export interface ValoresAjustes {
+  context: number;
+  threads: number | "auto";
+  unload_minutes: number;
+  exit_minutes: number;
+  log_days: number;
+  models_folder: string;
+  port: number;
+  parallel: number;
+}
+
+/** Lo que devuelve `GET /api/settings`. */
+export interface Ajustes {
+  active: ValoresAjustes;
+  saved: ValoresAjustes;
+  /** Lo guardado difiere de lo que se usa: hay que reiniciar Locall. */
+  restart_needed: boolean;
+  threads_available: number;
+  data_folder: string;
+}
+
+export const pedirAjustes = () => invoke<Ajustes>("ajustes");
+export const guardarAjustes = (cambios: Record<string, number | "auto">) =>
+  invoke<Ajustes>("guardar_ajustes", { cambios });
+export const reiniciarLocall = () => invoke<void>("reiniciar_locall");
+export const abrirCarpeta = (cual: "datos" | "modelos") => invoke<void>("abrir_carpeta", { cual });
+
 export const cancelarInstalacion = (repo: string, archivo: string) =>
   invoke<void>("cancelar_instalacion", { repo, archivo });
+
+/**
+ * Importa un `.gguf` del equipo: abre la ventana de Windows para elegirlo. `alElegir` recibe el nombre del archivo en
+ * cuanto se elige. Devuelve el modelo importado, o `null` si se cerró la ventana sin elegir.
+ */
+export function importarGguf(alElegir: (nombre: string) => void): Promise<Modelo | null> {
+  const canal = new Channel<string>();
+  canal.onmessage = alElegir;
+  return invoke<Modelo | null>("importar_gguf", { canal });
+}
 
 /** Instala un modelo; `alProgresar` recibe cada aviso de progreso. Devuelve el modelo instalado. */
 export function instalarModelo(

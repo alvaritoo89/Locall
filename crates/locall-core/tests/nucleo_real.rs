@@ -260,3 +260,14 @@ fn parar_y_enviar_enseguida_no_desordena_los_mensajes() {
     assert!(mensajes[0].contenido.starts_with("Cuenta"));
     assert!(mensajes[2].contenido.starts_with("Di solo"));
 }
+
+#[test]
+#[ignore = "usa internet (Hugging Face)"]
+fn busca_en_hugging_face_de_verdad() {
+    let carpeta = CarpetaDePrueba::nueva("hf-buscar");
+    let nucleo = nucleo(&carpeta, None);
+    let encontrados = nucleo.buscar("tiny-llamas", 5).unwrap();
+    eprintln!("{encontrados:#?}");
+    assert!(encontrados.iter().any(|r| r.repo == "ggml-org/tiny-llamas"));
+    assert!(encontrados.len() <= 5);
+}

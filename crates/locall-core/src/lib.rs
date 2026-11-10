@@ -33,8 +33,13 @@ use locall_store::{Almacen, ErrorAlmacen, Huella, NombreArchivo, Segmento};
 mod huggingface;
 mod nombres;
 
+/// Resultados como mucho en una búsqueda en Hugging Face.
+pub const BUSQUEDA_MAX: u32 = 50;
+/// Longitud máxima del texto de una búsqueda (en caracteres).
+pub const BUSQUEDA_TEXTO_MAX: usize = 100;
+
 use huggingface::HuggingFace;
-pub use huggingface::{ArchivoHf, HUGGING_FACE, InfoRevision};
+pub use huggingface::{ArchivoHf, HUGGING_FACE, InfoRevision, RepoEncontrado};
 /// Los tipos de las conversaciones guardadas (para los clientes del núcleo).
 pub use locall_registry::{Autor, Conversacion, MensajeGuardado};
 
@@ -140,6 +145,8 @@ pub struct Nucleo {
     /// (por ejemplo, justo después de parar una respuesta), espera a que el anterior termine de guardarse, para que
     /// los mensajes no se guarden desordenados.
     conversando: (Mutex<BTreeSet<i64>>, Condvar),
+    /// Para que dos cambios de ajustes a la vez no se pisen al escribir `config.toml`.
+    guardando_ajustes: Mutex<()>,
 }
 
 impl Nucleo {
@@ -190,12 +197,40 @@ impl Nucleo {
             planificador,
             instalando: Mutex::new(BTreeSet::new()),
             conversando: (Mutex::new(BTreeSet::new()), Condvar::new()),
+            guardando_ajustes: Mutex::new(()),
         })
     }
 
     /// Avisos al abrir (ajustes desconocidos, almacén en OneDrive…), para mostrarlos al usuario.
     pub fn avisos(&self) -> &[String] {
         &self.avisos
+    }
+
+    /// Los ajustes que hay ahora en `config.toml` (pueden diferir de [`Nucleo::config`], los que se leyeron al
+    /// abrir, si se han cambiado después: se aplican al volver a abrir Locall).
+    pub fn ajustes_guardados(&self) -> Result<Config, ErrorNucleo> {
+        Ok(Config::leer(&self.rutas.config())?.0)
+    }
+
+    /// Guarda estos cambios en `config.toml` (ver [`Config::guardar_cambios`]) y devuelve los ajustes guardados.
+    /// Se aplican la próxima vez que se abra Locall.
+    pub fn guardar_ajustes(
+        &self,
+        cambios: &[(&str, locall_config::lector::Valor)],
+    ) -> Result<Config, ErrorNucleo> {
+        let _candado = self
+            .guardando_ajustes
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        let guardada = Config::guardar_cambios(&self.rutas, cambios).map_err(|e| match e {
+            ErrorConfig::Valor { clave, mensaje, .. } => {
+                ErrorNucleo::AjusteInvalido(format!("«{clave}»: {mensaje}"))
+            }
+            ErrorConfig::NoEditable(_) => ErrorNucleo::AjusteInvalido(e.to_string()),
+            otro => ErrorNucleo::Config(otro),
+        })?;
+        log::info!("ajustes guardados en config.toml (se aplican al volver a abrir Locall)");
+        Ok(guardada)
     }
 
     pub fn config(&self) -> &Config {
@@ -294,6 +329,21 @@ impl Nucleo {
             .filter(|a| a.ruta.ends_with(".gguf"))
             .collect();
         Ok((info, ggufs))
+    }
+
+    /// Busca en Hugging Face repositorios con modelos GGUF cuyo nombre contenga `texto`, los más descargados primero
+    /// (como mucho [`BUSQUEDA_MAX`]). Solo se envía a Hugging Face el texto buscado.
+    pub fn buscar(&self, texto: &str, limite: u32) -> Result<Vec<RepoEncontrado>, ErrorNucleo> {
+        let texto = texto.trim();
+        if texto.is_empty()
+            || texto.chars().count() > BUSQUEDA_TEXTO_MAX
+            || texto.chars().any(char::is_control)
+        {
+            return Err(ErrorNucleo::BusquedaInvalida(
+                texto.chars().take(BUSQUEDA_TEXTO_MAX).collect(),
+            ));
+        }
+        self.hf.buscar(texto, limite.clamp(1, BUSQUEDA_MAX))
     }
 
     /// Instala un modelo de Hugging Face.
@@ -849,11 +899,15 @@ fn elegir_partes(ggufs: &[ArchivoHf], pedido: &str) -> Result<Vec<ArchivoHf>, Er
 #[derive(Debug)]
 pub enum ErrorNucleo {
     Config(ErrorConfig),
+    /// Un ajuste que se quiso cambiar no es válido (o no se puede cambiar así).
+    AjusteInvalido(String),
     Almacen(ErrorAlmacen),
     Registro(ErrorRegistro),
     /// `owner/nombre` no válido.
     RepoInvalido(String),
     RevisionInvalida(String),
+    /// El texto de una búsqueda está vacío, es demasiado largo o tiene caracteres de control.
+    BusquedaInvalida(String),
     /// El identificador pedido no es válido para Locall.
     IdInvalido(String),
     /// Hugging Face no tiene ese repositorio (o es privado).
@@ -900,6 +954,7 @@ impl fmt::Display for ErrorNucleo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ErrorNucleo::Config(e) => write!(f, "{e}"),
+            ErrorNucleo::AjusteInvalido(m) => write!(f, "{m}"),
             ErrorNucleo::Almacen(e) => write!(f, "{e}"),
             ErrorNucleo::Registro(e) => write!(f, "{e}"),
             ErrorNucleo::RepoInvalido(r) => {
@@ -909,6 +964,10 @@ impl fmt::Display for ErrorNucleo {
                 )
             }
             ErrorNucleo::RevisionInvalida(r) => write!(f, "«{r}» no es una revisión válida"),
+            ErrorNucleo::BusquedaInvalida(_) => write!(
+                f,
+                "escribe qué buscar (de 1 a {BUSQUEDA_TEXTO_MAX} caracteres, en una línea)"
+            ),
             ErrorNucleo::IdInvalido(id) => write!(
                 f,
                 "«{id}» no sirve como identificador: solo minúsculas, números, «-», «_» y «.»"

@@ -89,6 +89,44 @@ fn atender(mut c: TcpStream, repos: &BTreeMap<String, Repo>, pedidas: &Mutex<Vec
     };
     let no_existe = |c: &mut TcpStream| responder(c, "401 Unauthorized", b"{}", "");
 
+    // /api/models?search=…&filter=gguf&… : los repositorios cuyo nombre contiene el texto (sin distinguir mayúsculas).
+    // Las «descargas» son el número de archivos × 100, para poder comprobar el orden.
+    if let Some(consulta) = ruta.strip_prefix("/api/models?") {
+        let buscado = consulta
+            .split('&')
+            .find_map(|par| par.strip_prefix("search="))
+            .unwrap_or("")
+            .replace("%20", " ")
+            .to_lowercase();
+        let mut encontrados: Vec<&Repo> = repos
+            .values()
+            .filter(|r| r.nombre.to_lowercase().contains(&buscado))
+            .collect();
+        encontrados.sort_by_key(|r| std::cmp::Reverse(r.archivos.len()));
+        let json: Vec<String> = encontrados
+            .iter()
+            .map(|r| {
+                let licencia = r
+                    .licencia
+                    .as_ref()
+                    .map(|l| format!(",\"license:{l}\""))
+                    .unwrap_or_default();
+                format!(
+                    "{{\"id\":\"{}\",\"downloads\":{},\"likes\":3,\"private\":false,\
+                     \"tags\":[\"gguf\"{licencia}],\"pipeline_tag\":\"text-generation\"}}",
+                    r.nombre,
+                    r.archivos.len() * 100
+                )
+            })
+            .collect();
+        return responder(
+            &mut c,
+            "200 OK",
+            format!("[{}]", json.join(",")).as_bytes(),
+            "",
+        );
+    }
+
     // /api/models/{dueno}/{nombre}/revision/{rev}
     // /api/models/{dueno}/{nombre}/tree/{commit}?recursive=true
     // /{dueno}/{nombre}/resolve/{commit}/{ruta}

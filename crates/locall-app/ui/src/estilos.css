@@ -582,6 +582,116 @@ p {
   min-height: 40px;
 }
 
+.ajustes {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.ajuste {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border: 0;
+  margin: 0;
+  padding: 0;
+  max-width: 560px;
+}
+
+.ajuste > label,
+.ajuste > legend {
+  font-size: 13px;
+  font-weight: 500;
+  padding: 0;
+  margin-bottom: 2px;
+}
+
+.ajuste .campo {
+  flex: none;
+}
+
+.campo.corto {
+  width: 120px;
+}
+
+.fila-opciones {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.opcion {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.opcion input {
+  accent-color: var(--acento);
+}
+
+.dato-ajuste {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+
+.dato-ajuste > :first-child {
+  flex: 0 0 280px;
+}
+
+.ruta {
+  font-size: 12px;
+  word-break: break-all;
+}
+
+.resultados {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.resultado + .resultado {
+  border-top: 1px solid var(--borde);
+}
+
+.resultado-fila {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  padding: 12px 20px;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--texto);
+  text-align: left;
+  cursor: pointer;
+}
+
+.resultado-fila:hover,
+.resultado.abierto .resultado-fila {
+  background: var(--acento-suave);
+}
+
+.resultado-fila:focus-visible {
+  outline: 2px solid var(--acento);
+  outline-offset: -2px;
+}
+
+.resultado-nombre {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.resultado-detalle {
+  padding: 4px 20px 16px;
+}
+
 .lista-conversaciones {
   flex: 1;
   min-height: 0;

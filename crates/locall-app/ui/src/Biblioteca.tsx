@@ -3,15 +3,14 @@
 import { type FormEvent, useState } from "react";
 
 import { EstadoDelModelo, NombreDelModelo } from "./comun";
+import { ArchivosDelRepo, type Instalaciones } from "./Instalar";
 import {
   type EstadoLocall,
   type Modelo,
-  type Progreso,
   type Repositorio,
-  cancelarInstalacion,
   consultarRepo,
   eliminarModelo,
-  instalarModelo,
+  importarGguf,
   tamano,
   textoError,
 } from "./locall";
@@ -22,12 +21,13 @@ interface Props {
   recargar: () => void;
 }
 
-export function Biblioteca({ estado, modelos, recargar }: Props) {
+export function Biblioteca(props: Props & { instalaciones: Instalaciones; irAExplorar: () => void }) {
   return (
     <>
       <h1>Biblioteca</h1>
-      <Instalados estado={estado} modelos={modelos} recargar={recargar} />
-      <AnadirDesdeHuggingFace recargar={recargar} />
+      <Instalados estado={props.estado} modelos={props.modelos} recargar={props.recargar} />
+      <AnadirDesdeHuggingFace instalaciones={props.instalaciones} irAExplorar={props.irAExplorar} />
+      <ImportarDelEquipo recargar={props.recargar} />
     </>
   );
 }
@@ -117,18 +117,11 @@ function Instalados({ estado, modelos, recargar }: Props) {
 
 // ─── Añadir desde Hugging Face ────────────────────────────────────────────────
 
-interface Instalando {
-  progreso: Progreso | null;
-  error: string | null;
-  hecho: string | null;
-}
-
-function AnadirDesdeHuggingFace({ recargar }: { recargar: () => void }) {
+function AnadirDesdeHuggingFace({ instalaciones, irAExplorar }: { instalaciones: Instalaciones; irAExplorar: () => void }) {
   const [texto, setTexto] = useState("");
   const [buscando, setBuscando] = useState(false);
   const [repo, setRepo] = useState<Repositorio | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [instalando, setInstalando] = useState<Record<string, Instalando>>({});
 
   const buscar = async (e: FormEvent) => {
     e.preventDefault();
@@ -145,28 +138,13 @@ function AnadirDesdeHuggingFace({ recargar }: { recargar: () => void }) {
     }
   };
 
-  const instalar = async (repositorio: string, archivo: string) => {
-    const poner = (cambio: Partial<Instalando>) =>
-      setInstalando((actual) => ({
-        ...actual,
-        [archivo]: { ...(actual[archivo] ?? { progreso: null, error: null, hecho: null }), ...cambio },
-      }));
-    poner({ progreso: null, error: null, hecho: null });
-    try {
-      const modelo = await instalarModelo(repositorio, archivo, (p) => poner({ progreso: p }));
-      poner({ hecho: `Instalado «${modelo.id}» (${tamano(modelo.size_bytes)}, verificado con sha256).` });
-      recargar();
-    } catch (e) {
-      poner({ error: textoError(e) });
-    }
-  };
-
   return (
     <section className="tarjeta ancha" aria-labelledby="titulo-anadir">
       <h2 id="titulo-anadir">Añadir desde Hugging Face</h2>
       <p className="pequeño tenue">
         Escribe el repositorio (propietario/nombre). Locall fija la versión exacta, comprueba que el motor puede usar el
-        modelo antes de descargarlo y verifica cada archivo con sha256.
+        modelo antes de descargarlo y verifica cada archivo con sha256. ¿No sabes el nombre exacto?{" "}
+        <button type="button" className="enlace" onClick={irAExplorar}>Búscalo en Explorar</button>.
       </p>
       <form className="buscador" onSubmit={buscar}>
         <label htmlFor="repo" className="solo-lectores">Repositorio de Hugging Face</label>
@@ -177,64 +155,51 @@ function AnadirDesdeHuggingFace({ recargar }: { recargar: () => void }) {
         </button>
       </form>
       {error && <p className="pequeño tono-error" role="alert">{error}</p>}
-      {repo && (
-        <div className="repo">
-          <p className="pequeño tenue">
-            {repo.repo} · versión <span className="mono">{repo.commit.slice(0, 12)}</span> · licencia{" "}
-            {repo.license ?? "sin indicar"}
-          </p>
-          {repo.gated && (
-            <p className="pequeño tono-aviso">
-              Este repositorio exige aceptar condiciones con una cuenta de Hugging Face: Locall todavía no puede
-              descargarlo.
-            </p>
-          )}
-          {repo.files.length === 0 && <p className="pequeño tenue">No tiene modelos GGUF.</p>}
-          <ul className="archivos">
-            {repo.files.map((f) => {
-              const i = instalando[f.path];
-              const enCurso = i && !i.error && !i.hecho;
-              const pct = i?.progreso && i.progreso.total_bytes > 0
-                ? Math.floor((i.progreso.downloaded_bytes / i.progreso.total_bytes) * 100)
-                : 0;
-              return (
-                <li key={f.path} className="archivo">
-                  <div className="archivo-fila">
-                    <span className="mono">{f.path}</span>
-                    <span className="mono tenue">{tamano(f.size_bytes)}</span>
-                    <span className="hueco" />
-                    {enCurso ? (
-                      <button type="button" className="boton" onClick={() => cancelarInstalacion(repo.repo, f.path)}>
-                        Cancelar
-                      </button>
-                    ) : (
-                      <button type="button" className="boton" disabled={repo.gated || !!i?.hecho}
-                        onClick={() => instalar(repo.repo, f.path)}>
-                        {i?.error ? "Reintentar" : "Instalar"}
-                      </button>
-                    )}
-                  </div>
-                  {enCurso && (
-                    <div className="progreso">
-                      <div className="progreso-barra" role="progressbar" aria-valuemin={0} aria-valuemax={100}
-                        aria-valuenow={pct} aria-label={`Descargando ${f.path}`}>
-                        <div style={{ width: `${pct}%` }} />
-                      </div>
-                      <span className="mono pequeño">
-                        {i?.progreso
-                          ? `${pct} % · ${tamano(i.progreso.downloaded_bytes)} de ${tamano(i.progreso.total_bytes)}` +
-                            (i.progreso.parts > 1 ? ` · parte ${i.progreso.part}/${i.progreso.parts}` : "")
-                          : "Comprobando…"}
-                      </span>
-                    </div>
-                  )}
-                  {i?.hecho && <p className="pequeño" role="status">{i.hecho}</p>}
-                  {i?.error && <p className="pequeño tono-error" role="alert">{i.error}</p>}
-                </li>
-              );
-            })}
-          </ul>
-        </div>
+      {repo && <ArchivosDelRepo repo={repo} instalaciones={instalaciones} />}
+    </section>
+  );
+}
+
+// ─── Importar un archivo del equipo ───────────────────────────────────────────
+
+function ImportarDelEquipo({ recargar }: { recargar: () => void }) {
+  const [importando, setImportando] = useState<string | null>(null);
+  const [abierta, setAbierta] = useState(false);
+  const [mensaje, setMensaje] = useState<{ texto: string; error: boolean } | null>(null);
+
+  const importar = async () => {
+    setMensaje(null);
+    setAbierta(true);
+    try {
+      const modelo = await importarGguf((nombre) => setImportando(nombre));
+      if (modelo) {
+        setMensaje({ texto: `Importado «${modelo.id}» (${tamano(modelo.size_bytes)}).`, error: false });
+        recargar();
+      }
+    } catch (e) {
+      setMensaje({ texto: textoError(e), error: true });
+    } finally {
+      setAbierta(false);
+      setImportando(null);
+    }
+  };
+
+  return (
+    <section className="tarjeta ancha" aria-labelledby="titulo-importar">
+      <h2 id="titulo-importar">Importar desde tu equipo</h2>
+      <p className="pequeño tenue">
+        ¿Ya tienes un archivo <span className="mono">.gguf</span>? Locall comprueba que el motor puede usarlo y lo añade
+        sin moverlo. Si está en el mismo disco que Locall, no se copia: no ocupa el doble.
+      </p>
+      <div className="fila-botones">
+        <button type="button" className="boton" disabled={abierta} onClick={importar}>
+          {importando ? `Importando ${importando}…` : abierta ? "Elige el archivo…" : "Elegir un archivo .gguf"}
+        </button>
+      </div>
+      {mensaje && (
+        <p className={`pequeño${mensaje.error ? " tono-error" : ""}`} role={mensaje.error ? "alert" : "status"}>
+          {mensaje.texto}
+        </p>
       )}
     </section>
   );

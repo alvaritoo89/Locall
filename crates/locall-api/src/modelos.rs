@@ -76,6 +76,46 @@ pub(crate) async fn hub(
     })))
 }
 
+// ─── Buscar en Hugging Face ──────────────────────────────────────────────────
+
+/// `POST /api/hub/search` con `{"query": "qwen", "limit": 20}` (`limit` opcional, de 1 a 50; 20 si no se indica).
+///
+/// Es `POST` con el texto en el cuerpo (y no `GET ?q=…`) para que lo buscado nunca forme parte de una dirección.
+pub(crate) async fn buscar(
+    State(c): State<Compartido>,
+    cuerpo: Bytes,
+) -> Result<Json<Value>, ErrorApi> {
+    let json = leer_json(&cuerpo)?;
+    let texto = texto_obligatorio(&json, "query")?;
+    let limite = match &json["limit"] {
+        Value::Null => 20,
+        v => v
+            .as_u64()
+            .and_then(|n| u32::try_from(n).ok())
+            .filter(|n| (1..=locall_core::BUSQUEDA_MAX).contains(n))
+            .ok_or_else(|| {
+                ErrorApi::new(
+                    StatusCode::BAD_REQUEST,
+                    "invalid_request",
+                    format!(
+                        "«limit» debe ser un número de 1 a {}",
+                        locall_core::BUSQUEDA_MAX
+                    ),
+                )
+            })?,
+    };
+    let encontrados = en_hilo(move || c.nucleo.buscar(&texto, limite)).await?;
+    Ok(Json(json!({
+        "results": encontrados.iter().map(|r| json!({
+            "repo": r.repo,
+            "downloads": r.descargas,
+            "likes": r.me_gusta,
+            "license": r.licencia,
+            "task": r.tarea,
+        })).collect::<Vec<_>>(),
+    })))
+}
+
 // ─── Instalar ─────────────────────────────────────────────────────────────────
 
 pub(crate) async fn instalar(

@@ -1,9 +1,12 @@
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 
+import { Ajustes } from "./Ajustes";
 import { Biblioteca } from "./Biblioteca";
 import { Chat } from "./Chat";
 import { Icono } from "./comun";
+import { Explorar } from "./Explorar";
 import { Inicio } from "./Inicio";
+import { useInstalaciones } from "./Instalar";
 import {
   type Conversacion,
   type EstadoLocall,
@@ -56,6 +59,7 @@ export function App() {
       .catch(() => setModelos((actual) => actual ?? []));
   }, []);
   useEffect(recargarModelos, [pagina, recargarModelos]);
+  const instalaciones = useInstalaciones(recargarModelos);
 
   // Las conversaciones guardadas: al empezar, al cambiar de pantalla y cuando el chat cambia algo.
   const recargarConversaciones = useCallback(() => {
@@ -80,7 +84,14 @@ export function App() {
             <Inicio estado={estado} error={error} modelos={modelos} irABiblioteca={() => setPagina("biblioteca")}
               ultima={conversaciones?.[0] ?? null} continuar={continuar} />
           )}
-          {pagina === "biblioteca" && <Biblioteca estado={estado} modelos={modelos} recargar={recargarModelos} />}
+          {pagina === "biblioteca" && (
+            <Biblioteca estado={estado} modelos={modelos} recargar={recargarModelos} instalaciones={instalaciones}
+              irAExplorar={() => setPagina("explorar")} />
+          )}
+          {/* Explorar también se monta siempre, para no perder la búsqueda al cambiar de pantalla. */}
+          <div hidden={pagina !== "explorar"}>
+            <Explorar instalaciones={instalaciones} />
+          </div>
           {/* El chat se monta siempre (oculto si no está a la vista): así no se pierde la conversación al cambiar de
               pantalla, ni se corta una respuesta a medias. */}
           <div className="pantalla-chat" hidden={pagina !== "chat"}>
@@ -88,7 +99,16 @@ export function App() {
               conversaciones={conversaciones} recargarConversaciones={recargarConversaciones}
               abierta={abierta} abrir={(id) => !ocupado && setAbierta(id)} alCambiarOcupado={setOcupado} />
           </div>
-          {(pagina === "explorar" || pagina === "ajustes") && <Proximamente pagina={pagina} />}
+          {pagina === "ajustes" && (
+            <Ajustes
+              ocupado={
+                ocupado ||
+                (estado?.inUse ?? 0) > 0 ||
+                estado?.state === "loading" ||
+                Object.values(instalaciones.estado).some((i) => !i.error && !i.hecho)
+              }
+            />
+          )}
         </main>
       </div>
       <BarraDeEstado estado={estado} error={error} />
@@ -145,23 +165,6 @@ function BarraLateral({ pagina, irA }: { pagina: Pagina; irA: (p: Pagina) => voi
         true,
       )}
     </nav>
-  );
-}
-
-// ─── Lo que llega en las próximas partes ──────────────────────────────────────
-
-const PROXIMAS: Record<"explorar" | "ajustes", { titulo: string; parte: string }> = {
-  explorar: { titulo: "Explorar", parte: "5e" },
-  ajustes: { titulo: "Ajustes", parte: "5e" },
-};
-
-function Proximamente({ pagina }: { pagina: "explorar" | "ajustes" }) {
-  const { titulo, parte } = PROXIMAS[pagina];
-  return (
-    <>
-      <h1>{titulo}</h1>
-      <p className="tenue">Esta pantalla llegará en la parte {parte} de la Fase 5.</p>
-    </>
   );
 }
 

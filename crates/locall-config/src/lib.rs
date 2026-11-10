@@ -243,6 +243,41 @@ impl Config {
         }
     }
 
+    /// Guarda estos cambios en el archivo de ajustes (lo crea si no existe) y devuelve los ajustes guardados.
+    ///
+    /// - Solo se pueden cambiar los ajustes de [`EDITABLES`].
+    /// - Se reescriben **solo las líneas** de esos ajustes (si un ajuste no está en el archivo, se añade al final): los
+    ///   comentarios y el resto del archivo se quedan como estaban.
+    /// - El resultado se **valida antes de escribirlo**, y se escribe en un archivo temporal que después sustituye al
+    ///   original: un corte a mitad nunca deja un `config.toml` roto.
+    /// - Los cambios se aplican la próxima vez que se abra Locall.
+    pub fn guardar_cambios(
+        rutas: &Rutas,
+        cambios: &[(&str, Valor)],
+    ) -> Result<Config, ErrorConfig> {
+        let ruta = rutas.config();
+        let actual = match std::fs::read_to_string(&ruta) {
+            Ok(texto) => texto,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => ARCHIVO_POR_DEFECTO.to_owned(),
+            Err(error) => return Err(ErrorConfig::Io { ruta, error }),
+        };
+        let nuevo = texto_con_cambios(&actual, cambios)?;
+        let (config, _) = Config::desde_texto(&nuevo)?;
+        let temporal = ruta.with_extension("toml.nuevo");
+        let io = |error| ErrorConfig::Io {
+            ruta: ruta.clone(),
+            error,
+        };
+        std::fs::create_dir_all(rutas.datos()).map_err(io)?;
+        std::fs::write(&temporal, nuevo.as_bytes()).map_err(io)?;
+        // En Windows, `rename` sustituye el archivo de destino si ya existe (MoveFileEx con REPLACE_EXISTING).
+        if let Err(e) = std::fs::rename(&temporal, &ruta) {
+            let _ = std::fs::remove_file(&temporal);
+            return Err(io(e));
+        }
+        Ok(config)
+    }
+
     /// Hilos que se darán al motor.
     pub fn hilos_para_motor(&self) -> usize {
         match self.hilos {
@@ -268,6 +303,51 @@ impl Config {
     pub fn inactividad(&self) -> Option<Duration> {
         (self.inactividad_minutos > 0)
             .then(|| Duration::from_secs(u64::from(self.inactividad_minutos) * 60))
+    }
+}
+
+// ─── Cambiar ajustes ──────────────────────────────────────────────────────────
+
+/// Los ajustes que se pueden cambiar desde la app. Los demás (carpeta de modelos, puerto, paralelo) solo a mano en
+/// `config.toml`: cambiarlos con Locall abierto tiene consecuencias que la app aún no gestiona (ADR 0020).
+pub const EDITABLES: [&str; 5] = [
+    "contexto",
+    "hilos",
+    "inactividad_minutos",
+    "cierre_inactividad_minutos",
+    "registros_dias",
+];
+
+/// El texto del archivo con estos cambios (sin validar los valores: eso lo hace [`Config::desde_texto`]).
+pub fn texto_con_cambios(texto: &str, cambios: &[(&str, Valor)]) -> Result<String, ErrorConfig> {
+    let entradas = lector::leer(texto).map_err(|e| ErrorConfig::Sintaxis {
+        linea: e.linea,
+        mensaje: e.mensaje,
+    })?;
+    let salto = if texto.contains("\r\n") { "\r\n" } else { "\n" };
+    let mut lineas: Vec<String> = texto.lines().map(str::to_owned).collect();
+    let mut nuevas = Vec::new();
+    for (clave, valor) in cambios {
+        if !EDITABLES.contains(clave) {
+            return Err(ErrorConfig::NoEditable((*clave).to_owned()));
+        }
+        let linea = format!("{clave} = {}", escribir(valor));
+        match entradas.iter().find(|e| e.clave == *clave) {
+            Some(e) => lineas[e.linea - 1] = linea,
+            None => nuevas.push(linea),
+        }
+    }
+    lineas.extend(nuevas);
+    let mut resultado = lineas.join(salto);
+    resultado.push_str(salto);
+    Ok(resultado)
+}
+
+/// Un valor como se escribe en el archivo. Los textos van entre comillas dobles, con `\` y `"` escapados.
+fn escribir(valor: &Valor) -> String {
+    match valor {
+        Valor::Entero(n) => n.to_string(),
+        Valor::Texto(t) => format!("\"{}\"", t.replace('\\', "\\\\").replace('"', "\\\"")),
     }
 }
 
@@ -367,6 +447,8 @@ pub enum ErrorConfig {
     },
     /// No se pudo leer o escribir el archivo.
     Io { ruta: PathBuf, error: io::Error },
+    /// Se intentó cambiar desde la app un ajuste que no está en [`EDITABLES`].
+    NoEditable(String),
 }
 
 impl fmt::Display for ErrorConfig {
@@ -390,6 +472,10 @@ impl fmt::Display for ErrorConfig {
             ErrorConfig::Io { ruta, error } => {
                 write!(f, "no se pudo usar {}: {error}", ruta.display())
             }
+            ErrorConfig::NoEditable(clave) => write!(
+                f,
+                "el ajuste «{clave}» no se puede cambiar desde aquí; cámbialo en config.toml"
+            ),
         }
     }
 }

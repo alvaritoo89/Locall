@@ -19,6 +19,9 @@ tauri-build = { version = "2", features = [] }
 # La parte Rust de la app habla con Locall igual que la CLI: reutiliza su cliente y el arranque bajo demanda.
 locall-cli = { path = "../locall-cli" }
 locall-config = { path = "../locall-config" }
+# La ventana normal de Windows para elegir un archivo (importar un .gguf). MIT. En Windows solo usa `windows-sys` y
+# `raw-window-handle`, que ya estaban en el proyecto (ADR 0020).
+rfd = { version = "=0.17.2", default-features = false }
 serde_json = "1.0.154"
 # Ventana con la interfaz web (WebView2 de Windows). ADR 0018.
 tauri = { version = "2.12", features = [] }

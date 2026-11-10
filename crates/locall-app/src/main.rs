@@ -116,6 +116,76 @@ async fn estado(conexion: tauri::State<'_, Conexion>) -> Result<Value, String> {
     .await
 }
 
+// ─── Órdenes: ajustes ─────────────────────────────────────────────────────────
+
+/// Los ajustes en uso y los guardados en `config.toml` (`GET /api/settings`).
+#[tauri::command]
+async fn ajustes(conexion: tauri::State<'_, Conexion>) -> Result<Value, String> {
+    let conexion = conexion.inner().clone();
+    en_hilo(move || conexion.con_cliente(|c| c.get("/api/settings"))).await
+}
+
+/// Guarda cambios de ajustes (`{"context": 8192, …}`). Se aplican al reiniciar Locall.
+#[tauri::command]
+async fn guardar_ajustes(
+    conexion: tauri::State<'_, Conexion>,
+    cambios: Value,
+) -> Result<Value, String> {
+    let conexion = conexion.inner().clone();
+    en_hilo(move || conexion.con_cliente(|c| c.patch("/api/settings", &cambios))).await
+}
+
+/// Cierra Locall para que se vuelva a abrir con los ajustes nuevos. No hace falta abrirlo: la próxima petición de la
+/// app (la barra de estado pregunta cada 2 s) lo abre sola, igual que hace la línea de comandos.
+#[tauri::command]
+async fn reiniciar_locall(conexion: tauri::State<'_, Conexion>) -> Result<(), String> {
+    let conexion = conexion.inner().clone();
+    en_hilo(move || {
+        let cliente = conexion.cliente()?;
+        cliente
+            .post("/api/shutdown", &json!({}))
+            .map_err(|e| e.to_string())?;
+        conexion.olvidar();
+        // Esperar (como mucho 15 s) a que el Locall viejo se cierre de verdad: si no, la siguiente petición podría
+        // llegarle a él, con los ajustes antiguos.
+        for _ in 0..150 {
+            if !cliente.responde() {
+                return Ok(());
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+        Err("Locall todavía no se ha cerrado; vuelve a intentarlo en unos segundos".to_owned())
+    })
+    .await
+}
+
+/// Abre en el Explorador de Windows la carpeta de datos de Locall (`"datos"`) o la de los modelos (`"modelos"`). La
+/// ruta la da Locall, no la interfaz: la interfaz solo elige cuál de las dos.
+#[tauri::command]
+async fn abrir_carpeta(conexion: tauri::State<'_, Conexion>, cual: String) -> Result<(), String> {
+    let conexion = conexion.inner().clone();
+    en_hilo(move || {
+        let ajustes = conexion.con_cliente(|c| c.get("/api/settings"))?;
+        let ruta = match cual.as_str() {
+            "datos" => ajustes["data_folder"].as_str(),
+            "modelos" => ajustes["active"]["models_folder"].as_str(),
+            _ => None,
+        }
+        .map(PathBuf::from)
+        .ok_or_else(|| format!("no conozco la carpeta «{cual}»"))?;
+        if !ruta.is_dir() {
+            return Err(format!("la carpeta {} no existe", ruta.display()));
+        }
+        // El Explorador devuelve un código de salida distinto de 0 aunque abra bien la carpeta: no se mira.
+        std::process::Command::new("explorer.exe")
+            .arg(&ruta)
+            .spawn()
+            .map(|_| ())
+            .map_err(|e| format!("no se pudo abrir el Explorador: {e}"))
+    })
+    .await
+}
+
 // ─── Órdenes: modelos ─────────────────────────────────────────────────────────
 
 /// Los modelos instalados, con si caben en el equipo.
@@ -123,6 +193,40 @@ async fn estado(conexion: tauri::State<'_, Conexion>) -> Result<Value, String> {
 async fn modelos(conexion: tauri::State<'_, Conexion>) -> Result<Value, String> {
     let conexion = conexion.inner().clone();
     en_hilo(move || conexion.con_cliente(|c| Ok(c.get("/api/models")?["models"].take()))).await
+}
+
+/// Importa un `.gguf` que ya tienes en el equipo. Abre la ventana normal de Windows para elegirlo (la ruta la elige
+/// la persona en esa ventana, nunca la interfaz). En cuanto se elige, envía el nombre del archivo por `canal` (para
+/// mostrar «Importando…»: comprobar un modelo grande tarda unos segundos). Devuelve el modelo importado, o `null` si
+/// se cerró la ventana sin elegir nada.
+#[tauri::command]
+async fn importar_gguf(
+    conexion: tauri::State<'_, Conexion>,
+    ventana: tauri::WebviewWindow,
+    canal: Channel<String>,
+) -> Result<Value, String> {
+    let conexion = conexion.inner().clone();
+    en_hilo(move || {
+        let elegido = rfd::FileDialog::new()
+            .set_title("Importar un modelo GGUF")
+            .add_filter("Modelos GGUF", &["gguf"])
+            .set_parent(&ventana)
+            .pick_file();
+        let Some(ruta) = elegido else {
+            return Ok(Value::Null);
+        };
+        let nombre = ruta
+            .file_name()
+            .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
+        let _ = canal.send(nombre);
+        conexion.con_cliente(|c| {
+            c.post(
+                "/api/models/import",
+                &json!({"path": ruta.to_string_lossy()}),
+            )
+        })
+    })
+    .await
 }
 
 /// Elimina un modelo. Devuelve los bytes liberados.
@@ -155,6 +259,21 @@ async fn consultar_repo(
             codificar(nombre.trim())
         );
         conexion.con_cliente(|c| c.get(&ruta))
+    })
+    .await
+}
+
+/// Busca en Hugging Face repositorios con GGUF por nombre (los más descargados primero).
+#[tauri::command]
+async fn buscar_modelos(
+    conexion: tauri::State<'_, Conexion>,
+    texto: String,
+) -> Result<Value, String> {
+    let conexion = conexion.inner().clone();
+    en_hilo(move || {
+        conexion.con_cliente(|c| {
+            Ok(c.post("/api/hub/search", &json!({"query": texto, "limit": 30}))?["results"].take())
+        })
     })
     .await
 }
@@ -411,6 +530,12 @@ fn main() {
             modelos,
             eliminar,
             consultar_repo,
+            buscar_modelos,
+            importar_gguf,
+            ajustes,
+            guardar_ajustes,
+            reiniciar_locall,
+            abrir_carpeta,
             instalar,
             cancelar_instalacion,
             conversaciones,

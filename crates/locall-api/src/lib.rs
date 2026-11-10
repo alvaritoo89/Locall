@@ -31,6 +31,7 @@ use locall_scheduler::ErrorCarga;
 use locall_scheduler::Estado;
 use serde_json::{Value, json};
 
+mod ajustes;
 mod chat;
 mod conversaciones;
 mod flujo;
@@ -122,6 +123,10 @@ pub fn rutas_vigiladas(
         .route("/api/system", get(sistema))
         .route("/api/status", get(estado))
         .route("/api/shutdown", post(apagar))
+        .route(
+            "/api/settings",
+            get(ajustes::ver).merge(patch(ajustes::cambiar)),
+        )
         .route("/api/models", get(modelos))
         .route(
             "/api/models/{id}",
@@ -129,6 +134,7 @@ pub fn rutas_vigiladas(
         )
         .route("/api/models/pull", post(modelos::instalar))
         .route("/api/models/import", post(modelos::importar))
+        .route("/api/hub/search", post(modelos::buscar))
         .route("/api/hub/{owner}/{name}", get(modelos::hub))
         .route("/api/chat", post(chat::chat))
         .route(
@@ -439,7 +445,9 @@ impl From<ErrorNucleo> for ErrorApi {
             ErrorNucleo::EnUso(_) => (S::CONFLICT, "model_in_use"),
             ErrorNucleo::RepoInvalido(_)
             | ErrorNucleo::RevisionInvalida(_)
-            | ErrorNucleo::IdInvalido(_) => (S::BAD_REQUEST, "invalid_request"),
+            | ErrorNucleo::IdInvalido(_)
+            | ErrorNucleo::BusquedaInvalida(_)
+            | ErrorNucleo::AjusteInvalido(_) => (S::BAD_REQUEST, "invalid_request"),
             ErrorNucleo::RepoNoEncontrado(_) | ErrorNucleo::ArchivoNoEncontrado { .. } => {
                 (S::NOT_FOUND, "not_found_on_hub")
             }
