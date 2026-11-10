@@ -7,6 +7,8 @@
 
 <p align="center"><b>Modelos de IA en tu propio ordenador.</b><br>Gratis, local y privado.</p>
 
+<p align="center"><a href="https://alvaritoo89.github.io/Locall/">Web</a> · <a href="https://alvaritoo89.github.io/Locall/modelos/index.html">Modelos</a></p>
+
 <p align="center">
   <img src="docs/assets/insignia-estado.svg" alt="estado: en desarrollo">
   <img src="docs/assets/insignia-licencia.svg" alt="licencia: Apache-2.0">
@@ -22,8 +24,8 @@ inteligencia artificial **en tu propio equipo**. Sin cuentas, sin suscripciones 
 ningún sitio.
 
 > [!NOTE]
-> Locall está en **desarrollo temprano**. Ya se puede usar desde la línea de comandos compilándolo desde el código
-> (ver [Probarlo](#probarlo)); el instalador llegará con la aplicación de escritorio.
+> Locall está en **desarrollo**. Ya se puede usar (la app de escritorio y la línea de comandos) compilándolo desde el
+> código (ver [Probarlo](#probarlo)); el instalador firmado llegará en la Fase 8.
 
 ## Principios
 
@@ -102,7 +104,7 @@ las cifras serán distintas:
 - [x] Fase 3: API local (núcleo, servidor con token, conversación, descargas, formato compatible con OpenAI, cierre por inactividad)
 - [x] Fase 4: línea de comandos (`locall pull`, `run`, `list`, `show`, `rm`, `import`, `status`, `stop`) · **MVP**
 - [x] Fase 5: aplicación de escritorio (inicio, biblioteca, chat con conversaciones guardadas y borrado real, explorar Hugging Face, ajustes, importar, atajos de teclado, accesibilidad, modo oscuro)
-- [ ] Fase 6: catálogo de modelos compatibles y web de descarga
+- [x] Fase 6: catálogo de modelos compatibles, firmado, y la web ([alvaritoo89.github.io/Locall](https://alvaritoo89.github.io/Locall/))
 - [ ] Fase 7: endurecimiento (seguridad y fiabilidad)
 - [ ] Fase 8: instalador, firma y distribución
 
