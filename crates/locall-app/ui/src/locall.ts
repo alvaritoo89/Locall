@@ -254,6 +254,9 @@ export function conversar(envio: Envio, alRecibir: (t: Trozo) => void): Promise<
 
 export const parar = (peticion: string) => invoke<void>("parar", { peticion });
 
+/** Copia un texto al portapapeles (lo hace la parte Rust: ver `copiar` en src/main.rs). */
+export const copiarTexto = (texto: string) => invoke<void>("copiar", { texto });
+
 /** Hoy, Ayer, Esta semana o Anteriores, según la fecha (en segundos). */
 export function grupoDeFecha(segundos: number, ahora = new Date()): string {
   const dia = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();

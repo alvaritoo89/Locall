@@ -72,7 +72,8 @@ export function Explorar({ instalaciones }: { instalaciones: Instalaciones }) {
         </p>
         <form className="buscador" onSubmit={buscar} role="search">
           <label htmlFor="buscar" className="solo-lectores">Buscar modelos</label>
-          <input id="buscar" className="campo" placeholder="qwen3" value={texto} maxLength={100}
+          <input id="buscar" className="campo" placeholder="qwen3   (Ctrl+K)" value={texto} maxLength={100}
+            aria-keyshortcuts="Control+K"
             onChange={(e) => setTexto(e.target.value)} autoComplete="off" spellCheck={false} />
           <button type="submit" className="boton primario" disabled={buscando || !texto.trim()}>
             {buscando ? "Buscando…" : "Buscar"}

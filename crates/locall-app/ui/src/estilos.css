@@ -12,6 +12,10 @@
   --usado: #a3a3a3;
   --acento: #5b7464; /* verde salvia */
   --acento-suave: rgba(91, 116, 100, 0.1);
+  /* Texto en verde: un poco más oscuro que el acento para llegar a 4,5:1 también sobre el fondo verde suave. */
+  --acento-texto: #526b5b;
+  /* Borde de los campos donde se escribe: 3:1 con el fondo (WCAG 1.4.11). */
+  --borde-control: #8f8f8f;
   --aviso: #8a5a00;
   --error: #b42318;
   --listo: #2e7d4f;
@@ -31,6 +35,8 @@
     --usado: #6b6b6b;
     --acento: #8fa597; /* verde salvia para fondo oscuro */
     --acento-suave: rgba(143, 165, 151, 0.14);
+    --acento-texto: #8fa597;
+    --borde-control: #6b6b6b;
     --aviso: #e0a84a;
     --error: #f97066;
     --listo: #5cc08a;
@@ -153,7 +159,7 @@ p {
 
 .entrada.activa {
   background: var(--acento-suave);
-  color: var(--acento);
+  color: var(--acento-texto);
   font-weight: 600;
 }
 
@@ -180,6 +186,16 @@ p {
 
 .tarjeta.aviso {
   border-color: var(--error);
+}
+
+/* Algo pendiente que no es un error (por ejemplo, ajustes por aplicar). */
+.tarjeta.pendiente {
+  border-color: var(--acento);
+  background: var(--acento-suave);
+}
+
+.tarjeta .boton {
+  align-self: flex-start;
 }
 
 .titulo-tarjeta {
@@ -391,7 +407,7 @@ p {
   align-items: center;
   gap: 6px;
   font-weight: 500;
-  color: var(--acento);
+  color: var(--acento-texto);
 }
 
 .tono-aviso {
@@ -409,7 +425,7 @@ p {
   font: inherit;
   font-size: 13px;
   font-weight: 500;
-  color: var(--acento);
+  color: var(--acento-texto);
   cursor: pointer;
 }
 
@@ -466,7 +482,7 @@ p {
   flex: 1;
   min-height: 40px;
   padding: 0 12px;
-  border: 1px solid var(--borde-fuerte);
+  border: 1px solid var(--borde-control);
   border-radius: 6px;
   background: var(--fondo);
   color: var(--texto);
@@ -570,6 +586,8 @@ p {
 
 .conversaciones {
   flex: 0 0 230px;
+  /* Sin esto, un título largo ensancharía la columna (un elemento flexible no baja de su contenido más largo). */
+  min-width: 0;
   border-right: 1px solid var(--borde);
   padding: 16px 10px;
   display: flex;
@@ -646,6 +664,83 @@ p {
 .ruta {
   font-size: 12px;
   word-break: break-all;
+}
+
+.atajos {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 8px 24px;
+}
+
+.atajo-fila {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  font-size: 13px;
+}
+
+.atajo-fila dt {
+  flex: 0 0 64px;
+}
+
+.atajo-fila dd {
+  margin: 0;
+}
+
+kbd {
+  display: inline-block;
+  padding: 1px 6px;
+  border: 1px solid var(--borde-fuerte);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  font-size: 11px;
+  background: var(--fondo-lateral);
+}
+
+.contenedor-codigo {
+  position: relative;
+}
+
+.copiar {
+  border: 1px solid var(--borde-fuerte);
+  border-radius: 4px;
+  background: var(--fondo);
+  color: var(--texto-2);
+  font: inherit;
+  font-size: 11px;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+
+.copiar:hover {
+  border-color: var(--texto);
+  color: var(--texto);
+}
+
+.copiar:focus-visible {
+  outline: 2px solid var(--acento);
+  outline-offset: 1px;
+}
+
+.copiar.sobre-codigo {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  opacity: 0;
+}
+
+/* Se ve al pasar el ratón por el código o al llegar con el teclado. */
+.contenedor-codigo:hover .copiar.sobre-codigo,
+.copiar.sobre-codigo:focus-visible {
+  opacity: 1;
+}
+
+.pie-mensaje {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .resultados {
@@ -817,6 +912,8 @@ p {
 }
 
 .titulo-chat {
+  flex: 1 1 auto;
+  min-width: 0;
   font-size: 16px;
   white-space: nowrap;
   overflow: hidden;
@@ -824,9 +921,13 @@ p {
 }
 
 .selector {
+  flex: 0 1 auto;
+  max-width: 45%;
+  min-width: 0;
+  text-overflow: ellipsis;
   min-height: 34px;
   padding: 0 8px;
-  border: 1px solid var(--borde-fuerte);
+  border: 1px solid var(--borde-control);
   border-radius: 6px;
   background: var(--fondo);
   color: var(--texto);
@@ -867,7 +968,7 @@ p {
 }
 
 .autor.modelo {
-  color: var(--acento);
+  color: var(--acento-texto);
 }
 
 .parrafo-respuesta {
@@ -925,7 +1026,7 @@ p {
 .campo-texto {
   resize: none;
   padding: 10px 12px;
-  border: 1px solid var(--borde-fuerte);
+  border: 1px solid var(--borde-control);
   border-radius: 6px;
   background: var(--fondo);
   color: var(--texto);
@@ -1012,4 +1113,46 @@ p {
   border-radius: 6px;
   padding: 8px 10px;
   overflow-wrap: anywhere;
+}
+
+/* El botón «Ajustes» del chat y el «Cerrar» del panel solo existen en ventanas estrechas (ver abajo). */
+.boton-ajustes-chat,
+.cerrar-ajustes {
+  display: none;
+}
+
+@media (max-width: 1100px) {
+  .chat {
+    position: relative;
+  }
+
+  .conversaciones {
+    flex-basis: 200px;
+  }
+
+  .boton-ajustes-chat,
+  .cerrar-ajustes {
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .boton-ajustes-chat {
+    flex: none;
+  }
+
+  /* El panel de ajustes, por encima de la conversación (a la derecha) en vez de quitarle sitio. */
+  .ajustes-chat {
+    display: none;
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 280px;
+    z-index: 5;
+    box-shadow: -8px 0 24px rgba(0, 0, 0, 0.18);
+  }
+
+  .ajustes-chat.abierto {
+    display: flex;
+  }
 }

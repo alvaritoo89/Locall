@@ -1,8 +1,8 @@
 // Piezas que comparten varias pantallas.
 
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 
-import { type EstadoLocall, type Modelo, tamano, textoEncaje } from "./locall";
+import { type EstadoLocall, type Modelo, copiarTexto, tamano, textoEncaje } from "./locall";
 
 /** Un icono de trazo (como los de las maquetas). */
 export function Icono({ children }: { children: ReactNode }) {
@@ -80,5 +80,29 @@ export function NombreDelModelo({ modelo }: { modelo: Modelo }) {
       {modelo.id}
       {modelo.quantization && <span className="mono pequeño tenue"> {modelo.quantization}</span>}
     </span>
+  );
+}
+
+/**
+ * Un botón que copia `texto` al portapapeles y dice «Copiado» un momento. (El portapapeles solo se usa al pulsarlo:
+ * la app nunca lo lee.)
+ */
+export function BotonCopiar({ texto, etiqueta, clase = "" }: { texto: string; etiqueta: string; clase?: string }) {
+  const [estado, setEstado] = useState<"listo" | "copiado" | "error">("listo");
+  useEffect(() => {
+    if (estado === "listo") return;
+    const t = setTimeout(() => setEstado("listo"), 1500);
+    return () => clearTimeout(t);
+  }, [estado]);
+  const copiar = () =>
+    copiarTexto(texto).then(
+      () => setEstado("copiado"),
+      () => setEstado("error"),
+    );
+  return (
+    <button type="button" className={`copiar ${clase}`} onClick={copiar} aria-label={etiqueta}>
+      {estado === "copiado" ? "Copiado" : estado === "error" ? "No se pudo copiar" : "Copiar"}
+      <span className="solo-lectores" role="status">{estado === "copiado" ? "Copiado al portapapeles" : ""}</span>
+    </button>
   );
 }

@@ -1,6 +1,7 @@
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 
 import { Ajustes } from "./Ajustes";
+import { ATAJOS_PANTALLA, type Pagina, esAtajoDelNavegador } from "./atajos";
 import { Biblioteca } from "./Biblioteca";
 import { Chat } from "./Chat";
 import { Icono } from "./comun";
@@ -21,8 +22,6 @@ import {
 import logoClaro from "./assets/logo-claro.png";
 import logoOscuro from "./assets/logo-oscuro.png";
 
-type Pagina = "inicio" | "chat" | "biblioteca" | "explorar" | "ajustes";
-
 /** Cada cuánto se pregunta a Locall cómo está (para la barra de estado). */
 const INTERVALO_ESTADO_MS = 2000;
 
@@ -36,6 +35,8 @@ export function App() {
   const [abierta, setAbierta] = useState<number | null>(null);
   /** Hay una respuesta en marcha: mientras tanto no se cambia de conversación. */
   const [ocupado, setOcupado] = useState(false);
+  /** Cada vez que sube, el chat empieza una conversación nueva (Ctrl+N). */
+  const [pedidoNueva, setPedidoNueva] = useState(0);
 
   // Preguntar el estado al empezar y cada 2 s. (La primera vez puede tardar: si Locall no está abierto, se abre.)
   useEffect(() => {
@@ -69,6 +70,36 @@ export function App() {
   }, []);
   useEffect(recargarConversaciones, [pagina, recargarConversaciones]);
 
+  // Atajos de teclado (ver atajos.ts).
+  useEffect(() => {
+    const alTeclear = (e: KeyboardEvent) => {
+      if (import.meta.env.PROD && esAtajoDelNavegador(e)) {
+        e.preventDefault();
+        return;
+      }
+      if (!e.ctrlKey || e.altKey || e.metaKey || e.isComposing) return;
+      const tecla = e.key.toLowerCase();
+      // (también por la posición de la tecla, por si la distribución del teclado da otro carácter)
+      const pantalla = ATAJOS_PANTALLA.find(
+        (a) => a.tecla === tecla || (a.tecla === "," && e.code === "Comma") || e.code === `Digit${a.tecla}`,
+      );
+      if (pantalla) {
+        e.preventDefault();
+        setPagina(pantalla.pagina);
+      } else if (tecla === "n" && !e.shiftKey) {
+        e.preventDefault(); // (si no, WebView2 abriría una ventana nueva)
+        setPagina("chat");
+        setPedidoNueva((n) => n + 1);
+      } else if (tecla === "k") {
+        e.preventDefault();
+        setPagina("explorar");
+        enfocar("buscar");
+      }
+    };
+    window.addEventListener("keydown", alTeclear);
+    return () => window.removeEventListener("keydown", alTeclear);
+  }, []);
+
   /** Abre una conversación en el chat (desde el Inicio, «Continuar»). */
   const continuar = (id: number) => {
     if (!ocupado) setAbierta(id);
@@ -97,7 +128,8 @@ export function App() {
           <div className="pantalla-chat" hidden={pagina !== "chat"}>
             <Chat estado={estado} modelos={modelos} irABiblioteca={() => setPagina("biblioteca")}
               conversaciones={conversaciones} recargarConversaciones={recargarConversaciones}
-              abierta={abierta} abrir={(id) => !ocupado && setAbierta(id)} alCambiarOcupado={setOcupado} />
+              abierta={abierta} abrir={(id) => !ocupado && setAbierta(id)} alCambiarOcupado={setOcupado}
+              pedidoNueva={pedidoNueva} />
           </div>
           {pagina === "ajustes" && (
             <Ajustes
@@ -118,6 +150,17 @@ export function App() {
 
 // ─── Barra lateral ────────────────────────────────────────────────────────────
 
+/** Pone el foco en un elemento por su id, en cuanto esté a la vista (tras cambiar de pantalla). */
+export function enfocar(id: string) {
+  requestAnimationFrame(() => {
+    const el = document.getElementById(id);
+    if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
+      el.focus();
+      el.select();
+    }
+  });
+}
+
 const ENTRADAS: { id: Pagina; nombre: string; icono: ReactNode }[] = [
   { id: "inicio", nombre: "Inicio", icono: <path d="M3 11l9-7 9 7M5 10v10h14V10" /> },
   { id: "chat", nombre: "Chat", icono: <path d="M4 5h16v11H9l-5 4V5z" /> },
@@ -135,18 +178,23 @@ const ENTRADAS: { id: Pagina; nombre: string; icono: ReactNode }[] = [
 ];
 
 function BarraLateral({ pagina, irA }: { pagina: Pagina; irA: (p: Pagina) => void }) {
-  const boton = (id: Pagina, nombre: string, icono: ReactNode, secundario = false) => (
-    <button
-      key={id}
-      type="button"
-      className={`entrada${pagina === id ? " activa" : ""}${secundario ? " secundaria" : ""}`}
-      aria-current={pagina === id ? "page" : undefined}
-      onClick={() => irA(id)}
-    >
-      <Icono>{icono}</Icono>
-      {nombre}
-    </button>
-  );
+  const boton = (id: Pagina, nombre: string, icono: ReactNode, secundario = false) => {
+    const atajo = ATAJOS_PANTALLA.find((a) => a.pagina === id)?.tecla;
+    return (
+      <button
+        key={id}
+        type="button"
+        className={`entrada${pagina === id ? " activa" : ""}${secundario ? " secundaria" : ""}`}
+        aria-current={pagina === id ? "page" : undefined}
+        title={atajo ? `${nombre} (Ctrl+${atajo})` : nombre}
+        aria-keyshortcuts={atajo ? `Control+${atajo}` : undefined}
+        onClick={() => irA(id)}
+      >
+        <Icono>{icono}</Icono>
+        {nombre}
+      </button>
+    );
+  };
   return (
     <nav className="lateral" aria-label="Navegación principal">
       <picture className="logo">

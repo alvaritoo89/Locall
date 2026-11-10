@@ -3,6 +3,7 @@
 
 import { type FormEvent, type KeyboardEvent, useEffect, useRef, useState } from "react";
 
+import { BotonCopiar } from "./comun";
 import { Formato } from "./Formato";
 import {
   type Conversacion,
@@ -56,6 +57,8 @@ interface Props {
   abrir: (id: number | null) => void;
   /** Avisa de si hay una respuesta en marcha (mientras tanto no se cambia de conversación). */
   alCambiarOcupado: (ocupado: boolean) => void;
+  /** Cada vez que cambia, empezar una conversación nueva (Ctrl+N). */
+  pedidoNueva: number;
 }
 
 export function Chat(props: Props) {
@@ -70,11 +73,32 @@ export function Chat(props: Props) {
   const [temperatura, setTemperatura] = useState(TEMPERATURA_INICIAL);
   const [sistema, setSistema] = useState("");
   const [errorCarga, setErrorCarga] = useState<string | null>(null);
+  /** En ventanas estrechas, el panel de ajustes se abre por encima de la conversación. */
+  const [ajustesAbiertos, setAjustesAbiertos] = useState(false);
   const lista = useRef<HTMLDivElement>(null);
   /** La conversación cuyos mensajes están en pantalla (para no recargar la que se acaba de crear al enviar). */
   const enPantalla = useRef<number | null>(null);
 
   useEffect(() => props.alCambiarOcupado(!!generando), [generando]); // (solo al empezar o terminar)
+
+  /** Empieza una conversación nueva y deja el cursor en el cuadro del mensaje. */
+  const nueva = () => {
+    if (generando) return;
+    // (si la conversación en pantalla no llegó a guardarse, por un error, basta con vaciarla)
+    if (abierta === null) {
+      setBurbujas([]);
+      setTitulo(null);
+      setErrorCarga(null);
+    } else {
+      abrir(null);
+    }
+    requestAnimationFrame(() => document.getElementById("mensaje")?.focus());
+  };
+
+  // Ctrl+N (lo detecta App y avisa subiendo `pedidoNueva`).
+  useEffect(() => {
+    if (props.pedidoNueva > 0) nueva();
+  }, [props.pedidoNueva]); // (solo cuando se pide)
 
   // Modelo por defecto: el cargado, si está instalado; si no, el primero.
   useEffect(() => {
@@ -225,16 +249,7 @@ export function Chat(props: Props) {
         abierta={abierta}
         ocupado={!!generando}
         abrir={abrir}
-        nueva={() => {
-          // (si la conversación en pantalla no llegó a guardarse, por un error, basta con vaciarla)
-          if (abierta === null) {
-            setBurbujas([]);
-            setTitulo(null);
-            setErrorCarga(null);
-          } else {
-            abrir(null);
-          }
-        }}
+        nueva={nueva}
         alCambiar={(c) => c.id === abierta && setTitulo(c.title)}
         alEliminar={(id) => {
           if (id === abierta) abrir(null);
@@ -246,6 +261,10 @@ export function Chat(props: Props) {
       <section className="conversacion" aria-label="Conversación">
         <header className="cabecera-chat">
           <h1 className="titulo-chat">{titulo ?? "Nueva conversación"}</h1>
+          <button type="button" className="boton boton-ajustes-chat" aria-expanded={ajustesAbiertos}
+            aria-controls="ajustes-chat" onClick={() => setAjustesAbiertos((a) => !a)}>
+            Ajustes
+          </button>
           <label className="solo-lectores" htmlFor="modelo">Modelo</label>
           <select id="modelo" className="selector" value={modelo} disabled={!!generando || usables.length === 0}
             onChange={(e) => setModelo(e.target.value)}>
@@ -255,7 +274,7 @@ export function Chat(props: Props) {
           </select>
         </header>
 
-        <div className="mensajes" ref={lista} aria-live="polite">
+        <div className="mensajes" ref={lista} aria-live="polite" aria-busy={!!generando}>
           {errorCarga && <p className="tono-error" role="alert">No se pudo abrir la conversación: {errorCarga}</p>}
           {!errorCarga && burbujas.length === 0 && <p className="tenue vacio">Escribe abajo para empezar.</p>}
           {burbujas.map((b, i) => {
@@ -281,7 +300,14 @@ export function Chat(props: Props) {
                 )}
                 {b.cortada && <span className="pequeño tenue">Respuesta parada.</span>}
                 {b.error && <p className="pequeño tono-error" role="alert">{b.error}</p>}
-                {b.cifras && <span className="mono cifras">{b.cifras}</span>}
+                {(b.cifras || (b.rol === "assistant" && b.texto && !escribiendo)) && (
+                  <div className="pie-mensaje">
+                    {b.cifras && <span className="mono cifras">{b.cifras}</span>}
+                    {b.rol === "assistant" && b.texto && !escribiendo && (
+                      <BotonCopiar texto={b.texto} etiqueta="Copiar la respuesta" />
+                    )}
+                  </div>
+                )}
               </article>
             );
           })}
@@ -307,8 +333,14 @@ export function Chat(props: Props) {
         </form>
       </section>
 
-      <aside className="ajustes-chat" aria-label="Ajustes de la conversación">
-        <h2>Ajustes</h2>
+      <aside id="ajustes-chat" className={`ajustes-chat${ajustesAbiertos ? " abierto" : ""}`}
+        aria-label="Ajustes de la conversación">
+        <div className="fila-etiqueta">
+          <h2>Ajustes</h2>
+          <button type="button" className="enlace cerrar-ajustes" onClick={() => setAjustesAbiertos(false)}>
+            Cerrar
+          </button>
+        </div>
         <fieldset className="grupo">
           <legend className="pequeño tenue">Estilo de respuesta</legend>
           <div className="segmentado">
@@ -400,7 +432,8 @@ function ListaDeConversaciones(props: PropsLista) {
 
   return (
     <nav className="conversaciones" aria-label="Conversaciones guardadas">
-      <button type="button" className="boton ancho" disabled={ocupado} onClick={nueva}>
+      <button type="button" className="boton ancho" disabled={ocupado} onClick={nueva} aria-keyshortcuts="Control+N"
+        title="Nueva conversación (Ctrl+N)">
         + Nueva conversación
       </button>
       {error && <p className="pequeño tono-error" role="alert">{error}</p>}

@@ -5,18 +5,22 @@ use std::os::windows::io::AsRawHandle;
 use std::process::Child;
 
 use windows_sys::Win32::Foundation::{
-    CloseHandle, HANDLE, HANDLE_FLAG_INHERIT, INVALID_HANDLE_VALUE, SYSTEMTIME,
+    CloseHandle, GlobalFree, HANDLE, HANDLE_FLAG_INHERIT, INVALID_HANDLE_VALUE, SYSTEMTIME,
     SetHandleInformation,
 };
 use windows_sys::Win32::System::Console::{
     CTRL_BREAK_EVENT, CTRL_C_EVENT, GetStdHandle, STD_ERROR_HANDLE, STD_INPUT_HANDLE,
     STD_OUTPUT_HANDLE, SetConsoleCtrlHandler,
 };
+use windows_sys::Win32::System::DataExchange::{
+    CloseClipboard, EmptyClipboard, OpenClipboard, SetClipboardData,
+};
 use windows_sys::Win32::System::JobObjects::{
     AssignProcessToJobObject, CreateJobObjectW, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
     JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JobObjectExtendedLimitInformation,
     SetInformationJobObject,
 };
+use windows_sys::Win32::System::Memory::{GMEM_MOVEABLE, GlobalAlloc, GlobalLock, GlobalUnlock};
 use windows_sys::Win32::System::ProcessStatus::{K32GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS};
 use windows_sys::Win32::System::Registry::{HKEY_LOCAL_MACHINE, RRF_RT_REG_SZ, RegGetValueW};
 use windows_sys::Win32::System::SystemInformation::{
@@ -29,6 +33,63 @@ use crate::{FechaHora, Memoria};
 /// Convierte un texto a UTF-16 terminado en 0, como lo quiere Windows.
 fn ancho(texto: &str) -> Vec<u16> {
     texto.encode_utf16().chain([0]).collect()
+}
+
+/// Formato del portapapeles para texto UTF-16 (`CF_UNICODETEXT`).
+const TEXTO_UNICODE: u32 = 13;
+
+pub fn copiar_al_portapapeles(texto: &str) -> io::Result<()> {
+    let utf16 = ancho(texto);
+    // Otro programa puede tener el portapapeles abierto un instante: se reintenta un poco.
+    let mut abierto = false;
+    for _ in 0..10 {
+        // SAFETY: un HWND nulo es válido (el portapapeles queda asociado a esta tarea).
+        if unsafe { OpenClipboard(std::ptr::null_mut()) } != 0 {
+            abierto = true;
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    if !abierto {
+        return Err(io::Error::last_os_error());
+    }
+    let resultado = (|| {
+        // SAFETY: el portapapeles está abierto por nosotros (OpenClipboard tuvo éxito).
+        if unsafe { EmptyClipboard() } == 0 {
+            return Err(io::Error::last_os_error());
+        }
+        let bytes = utf16.len() * std::mem::size_of::<u16>();
+        // SAFETY: pedir memoria movible de `bytes` bytes; se comprueba que no sea nula.
+        let memoria = unsafe { GlobalAlloc(GMEM_MOVEABLE, bytes) };
+        if memoria.is_null() {
+            return Err(io::Error::last_os_error());
+        }
+        // SAFETY: `memoria` es un bloque válido recién pedido; GlobalLock da un puntero a sus `bytes` bytes.
+        let destino = unsafe { GlobalLock(memoria) }.cast::<u16>();
+        if destino.is_null() {
+            let error = io::Error::last_os_error();
+            // SAFETY: el bloque es nuestro y no se ha entregado a nadie.
+            unsafe { GlobalFree(memoria) };
+            return Err(error);
+        }
+        // SAFETY: `destino` apunta a `utf16.len()` u16 (el bloque mide exactamente eso) y no se solapa con `utf16`.
+        unsafe {
+            std::ptr::copy_nonoverlapping(utf16.as_ptr(), destino, utf16.len());
+            GlobalUnlock(memoria);
+        }
+        // SAFETY: el bloque contiene texto UTF-16 terminado en 0. Si SetClipboardData tiene éxito, el bloque pasa a
+        // ser del sistema y NO se debe liberar; si falla, sigue siendo nuestro y se libera.
+        if unsafe { SetClipboardData(TEXTO_UNICODE, memoria) }.is_null() {
+            let error = io::Error::last_os_error();
+            // SAFETY: SetClipboardData falló: el bloque sigue siendo nuestro.
+            unsafe { GlobalFree(memoria) };
+            return Err(error);
+        }
+        Ok(())
+    })();
+    // SAFETY: lo abrimos nosotros arriba.
+    unsafe { CloseClipboard() };
+    resultado
 }
 
 pub fn memoria() -> io::Result<Memoria> {

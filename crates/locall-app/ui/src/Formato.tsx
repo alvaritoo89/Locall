@@ -6,6 +6,8 @@
 
 import type { ReactNode } from "react";
 
+import { BotonCopiar } from "./comun";
+
 /** Un trozo del texto: un bloque de código o un párrafo normal. */
 type Bloque = { tipo: "codigo"; lenguaje: string; texto: string } | { tipo: "parrafo"; texto: string };
 
@@ -62,9 +64,13 @@ export function Formato({ texto }: { texto: string }) {
     <>
       {dividir(texto).map((b, i) =>
         b.tipo === "codigo" ? (
-          <pre key={i} className="bloque-codigo" aria-label={b.lenguaje ? `Código ${b.lenguaje}` : "Código"}>
-            <code>{b.texto}</code>
-          </pre>
+          <div key={i} className="contenedor-codigo">
+            <pre className="bloque-codigo" aria-label={b.lenguaje ? `Código ${b.lenguaje}` : "Código"}>
+              <code>{b.texto}</code>
+            </pre>
+            <BotonCopiar texto={b.texto} etiqueta={b.lenguaje ? `Copiar el código ${b.lenguaje}` : "Copiar el código"}
+              clase="sobre-codigo" />
+          </div>
         ) : (
           <p key={i} className="parrafo-respuesta">{enLinea(b.texto)}</p>
         ),

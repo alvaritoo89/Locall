@@ -134,6 +134,22 @@ pub fn no_heredar_entrada_salida() {
     windows::no_heredar_entrada_salida();
 }
 
+// ─── Portapapeles ──────────────────────────────────────────────────────────────
+
+/// Pone `texto` en el portapapeles de Windows (lo usa el botón «Copiar» de la app). Solo escribe: Locall nunca lee
+/// el portapapeles.
+pub fn copiar_al_portapapeles(texto: &str) -> io::Result<()> {
+    #[cfg(windows)]
+    {
+        windows::copiar_al_portapapeles(texto)
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = texto;
+        Err(no_soportado())
+    }
+}
+
 // ─── Ctrl+C ───────────────────────────────────────────────────────────────────
 
 /// Se pone a `true` al pulsar Ctrl+C, si se ha llamado a [`capturar_ctrl_c`].
@@ -333,5 +349,16 @@ mod pruebas {
             );
             std::thread::sleep(Duration::from_millis(50));
         }
+    }
+}
+
+#[cfg(test)]
+mod pruebas_portapapeles {
+    /// Escribe en el portapapeles real del usuario: solo a mano (`cargo test -- --ignored`), y comprobándolo desde
+    /// fuera (por ejemplo con `Get-Clipboard` en PowerShell).
+    #[test]
+    #[ignore = "escribe en el portapapeles"]
+    fn copia_texto_con_acentos_al_portapapeles() {
+        super::copiar_al_portapapeles("Locall: prueba del portapapeles — ñ á 🙂").unwrap();
     }
 }

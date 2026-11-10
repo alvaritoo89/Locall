@@ -13,6 +13,8 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 
+mod ventana;
+
 use locall_cli::modelos::codificar;
 use locall_cli::{Cliente, ErrorCli, arranque};
 use locall_config::Rutas;
@@ -503,6 +505,13 @@ fn parar(respuestas: tauri::State<'_, Respuestas>, peticion: String) {
     }
 }
 
+/// Copia un texto al portapapeles de Windows (botón «Copiar»). Lo hace Rust y no el navegador integrado, que puede
+/// tener el portapapeles bloqueado.
+#[tauri::command]
+fn copiar(texto: String) -> Result<(), String> {
+    locall_system::copiar_al_portapapeles(&texto).map_err(|e| format!("no se pudo copiar: {e}"))
+}
+
 /// Pide cancelar una instalación en marcha.
 #[tauri::command]
 fn cancelar_instalacion(
@@ -522,6 +531,18 @@ fn cancelar_instalacion(
 
 fn main() {
     tauri::Builder::default()
+        // La ventana arranca oculta (tauri.conf.json) y se muestra ya colocada donde estaba la última vez.
+        .setup(|app| {
+            if let Some(principal) = tauri::Manager::get_webview_window(app, "main") {
+                ventana::restaurar(&principal);
+            }
+            Ok(())
+        })
+        .on_window_event(|ventana, evento| {
+            if let tauri::WindowEvent::CloseRequested { .. } = evento {
+                ventana::guardar(ventana);
+            }
+        })
         .manage(Conexion::default())
         .manage(Instalaciones::default())
         .manage(Respuestas::default())
@@ -544,7 +565,8 @@ fn main() {
             renombrar_conversacion,
             eliminar_conversacion,
             conversar,
-            parar
+            parar,
+            copiar
         ])
         .run(tauri::generate_context!())
         .expect("no se pudo abrir la ventana de Locall");

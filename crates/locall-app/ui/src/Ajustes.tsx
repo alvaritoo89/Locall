@@ -12,6 +12,7 @@ import {
   reiniciarLocall,
   textoError,
 } from "./locall";
+import { LISTA_DE_ATAJOS } from "./atajos";
 
 /** Lo que se puede cambiar aquí (como texto mientras se escribe). */
 interface Formulario {
@@ -124,7 +125,7 @@ export function Ajustes({ ocupado }: Props) {
       <h1>Ajustes</h1>
 
       {datos.restart_needed && (
-        <section className="tarjeta aviso ancha" role="status">
+        <section className="tarjeta pendiente ancha" role="status">
           <p>
             Hay ajustes guardados que todavía no se usan: se aplican al reiniciar Locall (tus modelos y conversaciones
             no se tocan).
@@ -225,6 +226,18 @@ export function Ajustes({ ocupado }: Props) {
           carpeta de datos), con Locall cerrado: cambiarlos con Locall abierto dejaría tus modelos o la conexión en el
           sitio antiguo.
         </p>
+      </section>
+
+      <section className="tarjeta ancha" aria-labelledby="titulo-atajos">
+        <h2 id="titulo-atajos">Atajos de teclado</h2>
+        <dl className="atajos">
+          {LISTA_DE_ATAJOS.map((a) => (
+            <div key={a.teclas} className="atajo-fila">
+              <dt><kbd className="mono">{a.teclas}</kbd></dt>
+              <dd>{a.que}</dd>
+            </div>
+          ))}
+        </dl>
       </section>
 
       <section className="tarjeta ancha" aria-labelledby="titulo-privacidad">

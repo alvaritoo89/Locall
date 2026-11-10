@@ -1897,6 +1897,7 @@ version = "0.0.1"
 dependencies = [
  "locall-cli",
  "locall-config",
+ "locall-system",
  "rfd",
  "serde_json",
  "tauri",
