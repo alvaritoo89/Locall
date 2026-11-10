@@ -1,6 +1,6 @@
 [package]
 name = "locall-catalogo"
-description = "El catálogo de modelos probados de Locall: formato, validación y firma (minisign)."
+description = "El catálogo de modelos compatibles de Locall: formato, validación y firma (minisign)."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

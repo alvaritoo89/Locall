@@ -20,13 +20,13 @@ fn base() -> Value {
             "variants": [
                 {
                     "name": "q4_k_m", "default": true, "repo": "Qwen/Qwen3-4B-GGUF",
-                    "commit": "0123456789abcdef0123456789abcdef01234567", "tested_engine": "b12189",
+                    "commit": "0123456789abcdef0123456789abcdef01234567", "checked_engine": "b12189",
                     "files": [{"path": "Qwen3-4B-Q4_K_M.gguf", "size": 2497280256u64,
                                "sha256": "047bf46455a544931cff6fef14d7910154c56afbc23ab1c5e56a72e69912c04b"}]
                 },
                 {
                     "name": "q8_0", "repo": "Qwen/Qwen3-4B-GGUF",
-                    "commit": "0123456789abcdef0123456789abcdef01234567", "tested_engine": "b12189",
+                    "commit": "0123456789abcdef0123456789abcdef01234567", "checked_engine": "b12189",
                     "files": [{"path": "Qwen3-4B-Q8_0.gguf", "size": 4280000000u64,
                                "sha256": "6151b19256b2bb93bc4b9d1fe6f17c14bd5be8f42bb0f6f6fcbe1c9d9a6f3a04"}]
                 }

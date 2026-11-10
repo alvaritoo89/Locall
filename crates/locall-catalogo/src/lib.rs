@@ -1,13 +1,15 @@
 //! # locall-catalogo
 //!
-//! El **catálogo de modelos probados** de Locall (ADR 0022): qué modelos recomienda Locall, de dónde se descargan
+//! El **catálogo de modelos compatibles** de Locall (ADR 0022): qué modelos recomienda Locall, de dónde se descargan
 //! exactamente (repositorio, commit fijado, archivos con su sha256) y para qué sirven.
 //!
 //! - El catálogo es un JSON (`catalogo/catalogo.json` en el repositorio) **firmado con minisign** por quien publica
 //!   Locall (`catalogo.json.minisig`). La app y la CLI llevan dentro la clave pública ([`CLAVE_PUBLICA`]).
 //! - [`verificar`] comprueba **primero la firma** y solo después lee el contenido: nunca se interpreta un archivo
 //!   sin firmar. Después lo valida campo por campo, con límites de tamaño.
-//! - Estar en el catálogo significa **probado**: se instaló desde ese commit, el motor lo cargó y respondió.
+//! - Estar en el catálogo significa **compatible**: se leyó la cabecera del archivo exacto (ese commit) y el motor que
+//!   indica `checked_engine` reconoce su arquitectura y sus tipos de datos. **No** significa que se haya probado a
+//!   conversar con él: la app y la web lo dicen así.
 //!
 //! ```json
 //! {
@@ -18,7 +20,7 @@
 //!     "description": "…", "tags": ["conversar"], "license": "apache-2.0", "context_length": 40960,
 //!     "variants": [{
 //!       "name": "q4_k_m", "default": true, "repo": "Qwen/Qwen3-4B-GGUF", "commit": "<40 hex>",
-//!       "tested_engine": "b12189",
+//!       "checked_engine": "b12189",
 //!       "files": [{"path": "Qwen3-4B-Q4_K_M.gguf", "size": 2497280256, "sha256": "<64 hex>"}]
 //!     }]
 //!   }]
@@ -90,8 +92,8 @@ pub struct Variante {
     pub repo: String,
     /// Commit exacto (40 caracteres hexadecimales, en minúsculas).
     pub commit: String,
-    /// Versión del motor con la que se probó (`b12189`).
-    pub motor_probado: String,
+    /// Versión del motor con la que se comprobó la compatibilidad (`b12189`).
+    pub motor_comprobado: String,
     pub archivos: Vec<ArchivoCatalogo>,
 }
 
@@ -138,6 +140,19 @@ impl Catalogo {
         };
         Some((modelo, variante))
     }
+}
+
+// ─── El catálogo que va dentro de Locall ──────────────────────────────────────
+
+/// El catálogo oficial tal como estaba al compilar este Locall (`catalogo/catalogo.json`), con su firma. Sirve sin
+/// internet y como punto de partida: la app lo sustituye por uno más nuevo si lo descarga y su firma es buena.
+pub const CATALOGO_INCLUIDO: &[u8] = include_bytes!("../../../catalogo/catalogo.json");
+/// La firma de [`CATALOGO_INCLUIDO`].
+pub const FIRMA_INCLUIDA: &str = include_str!("../../../catalogo/catalogo.json.minisig");
+
+/// El catálogo que va dentro de Locall, verificado igual que uno descargado (con [`CLAVE_PUBLICA`]).
+pub fn incluido() -> Result<Catalogo, ErrorCatalogo> {
+    verificar(CATALOGO_INCLUIDO, FIRMA_INCLUIDA, CLAVE_PUBLICA)
 }
 
 // ─── Verificar ────────────────────────────────────────────────────────────────
@@ -284,7 +299,7 @@ fn leer_variante(valor: &Value, modelo: &str) -> Result<Variante, ErrorCatalogo>
             "«commit» debe ser un commit completo (40 caracteres hexadecimales, en minúsculas)",
         ));
     }
-    let motor_probado = texto(v, "tested_engine", &donde, 32)?;
+    let motor_comprobado = texto(v, "checked_engine", &donde, 32)?;
     let lista_archivos = lista(v, "files", &donde, ARCHIVOS_MAX)?;
     if lista_archivos.is_empty() {
         return Err(invalido(&donde, "no tiene archivos"));
@@ -321,7 +336,7 @@ fn leer_variante(valor: &Value, modelo: &str) -> Result<Variante, ErrorCatalogo>
         por_defecto,
         repo,
         commit,
-        motor_probado,
+        motor_comprobado,
         archivos,
     })
 }

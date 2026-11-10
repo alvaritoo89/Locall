@@ -100,7 +100,7 @@ las cifras serán distintas:
 - [x] Fase 3: API local (núcleo, servidor con token, conversación, descargas, formato compatible con OpenAI, cierre por inactividad)
 - [x] Fase 4: línea de comandos (`locall pull`, `run`, `list`, `show`, `rm`, `import`, `status`, `stop`) · **MVP**
 - [x] Fase 5: aplicación de escritorio (inicio, biblioteca, chat con conversaciones guardadas y borrado real, explorar Hugging Face, ajustes, importar, atajos de teclado, accesibilidad, modo oscuro)
-- [ ] Fase 6: catálogo de modelos probados y web de descarga
+- [ ] Fase 6: catálogo de modelos compatibles y web de descarga
 - [ ] Fase 7: endurecimiento (seguridad y fiabilidad)
 - [ ] Fase 8: instalador, firma y distribución
 
@@ -117,7 +117,7 @@ las cifras serán distintas:
 | [`crates/locall-engine`](crates/locall-engine) | Arranca, vigila y para `llama-server` de forma segura y conversa con él por trozos (con cancelación) |
 | [`crates/locall-scheduler`](crates/locall-scheduler) | Planificador: un modelo a la vez, comprobación de memoria antes de cargar, cola por orden de llegada y descarga por inactividad |
 | [`crates/locall-config`](crates/locall-config) | Carpeta de datos, ajustes del usuario (`config.toml`) y registros diarios sin datos de las conversaciones |
-| [`crates/locall-catalogo`](crates/locall-catalogo) | Catálogo de modelos probados: formato, validación y firma minisign |
+| [`crates/locall-catalogo`](crates/locall-catalogo) | Catálogo de modelos compatibles: formato, validación y firma minisign |
 | [`crates/locall-core`](crates/locall-core) | Núcleo: instalar de Hugging Face (fijado al commit y verificado), importar, listar, eliminar, conversar y guardar las conversaciones |
 | [`crates/locall-api`](crates/locall-api) | API local (axum): solo 127.0.0.1, token y protección frente a webs (`Host`, `Origin`) |
 | [`crates/locall-cli`](crates/locall-cli) | Línea de comandos: cliente de la API que abre Locall en segundo plano cuando hace falta |

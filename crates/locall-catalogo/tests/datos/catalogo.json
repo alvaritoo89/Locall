@@ -16,7 +16,7 @@
           "default": true,
           "repo": "prueba/Prueba-1B-GGUF",
           "commit": "0123456789abcdef0123456789abcdef01234567",
-          "tested_engine": "b12189",
+          "checked_engine": "b12189",
           "files": [
             {"path": "Prueba-1B-Q4_K_M.gguf", "size": 1000000, "sha256": "047bf46455a544931cff6fef14d7910154c56afbc23ab1c5e56a72e69912c04b"}
           ]
@@ -25,7 +25,7 @@
           "name": "q8_0",
           "repo": "prueba/Prueba-1B-GGUF",
           "commit": "0123456789abcdef0123456789abcdef01234567",
-          "tested_engine": "b12189",
+          "checked_engine": "b12189",
           "files": [
             {"path": "Q8_0/Prueba-1B-Q8_0-00001-of-00002.gguf", "size": 900000, "sha256": "6151b19256b2bb93bc4b9d1fe6f17c14bd5be8f42bb0f6f6fcbe1c9d9a6f3a04"},
             {"path": "Q8_0/Prueba-1B-Q8_0-00002-of-00002.gguf", "size": 800000, "sha256": "6151b19256b2bb93bc4b9d1fe6f17c14bd5be8f42bb0f6f6fcbe1c9d9a6f3a05"}
@@ -48,7 +48,7 @@
           "default": true,
           "repo": "otra/Otra-3B-GGUF",
           "commit": "abcdef0123456789abcdef0123456789abcdef01",
-          "tested_engine": "b12189",
+          "checked_engine": "b12189",
           "files": [
             {"path": "otra-3b-q4_0.gguf", "size": 2000000, "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
           ]
