@@ -83,7 +83,8 @@ ajustes, conversaciones guardadas, registros) están en `%LOCALAPPDATA%\Locall` 
 
 ## Medido, no prometido
 
-Pruebas reales en un portátil normal (Intel Core i5-1334U, gráfica integrada Iris Xe, 16 GB de RAM):
+Pruebas reales en un portátil normal (procesador de portátil reciente, gráfica integrada y 16 GB de RAM). En otros equipos
+las cifras serán distintas:
 
 | Modelo | Escribir (CPU) | Leer el prompt (gráfica integrada) | Memoria (sin mapeo) |
 |---|---|---|---|

@@ -45,7 +45,7 @@ pub fn memoria() -> io::Result<Memoria> {
 /// El procesador del equipo.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Procesador {
-    /// Nombre comercial, por ejemplo `13th Gen Intel(R) Core(TM) i5-1334U`, si se puede averiguar.
+    /// Nombre comercial, por ejemplo `Intel(R) Core(TM) …` o `AMD Ryzen …`, si se puede averiguar.
     pub nombre: Option<String>,
     /// Hilos que puede ejecutar a la vez.
     pub hilos_logicos: usize,

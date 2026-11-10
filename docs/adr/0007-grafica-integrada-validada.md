@@ -6,13 +6,13 @@
 ## Decisión
 
 La aceleración por gráfica integrada (Vulkan) se activa **por defecto solo en dispositivos validados** (hoy:
-Intel Iris Xe), con un interruptor para desactivarla y **vuelta automática a CPU** si el motor falla con ella.
+una gráfica integrada de Intel de portátil reciente), con un interruptor para desactivarla y **vuelta automática a CPU** si el motor falla con ella.
 En el resto de gráficas integradas queda desactivada por defecto.
 
 "Usar CPU" significa usar el **paquete CPU** del motor: en el paquete Vulkan, `-ngl 0` sigue enviando la lectura del
 prompt a la gráfica.
 
-## Motivos (Iris Xe, paquete Vulkan, 8 hilos, sin mapeo)
+## Motivos (gráfica integrada de Intel, paquete Vulkan, 8 hilos, sin mapeo)
 
 | Modelo | Leer el prompt CPU → gráfica | Escribir CPU → gráfica |
 |---|---|---|
