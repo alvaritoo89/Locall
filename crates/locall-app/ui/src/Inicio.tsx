@@ -1,4 +1,4 @@
-// Inicio: tu equipo, la última conversación y los modelos instalados.
+// Home: your computer, the latest conversation and the installed models.
 
 import { EstadoDelModelo, NombreDelModelo, ReglaDeMemoria } from "./comun";
 import { type Conversacion, type EstadoLocall, type Modelo, haceCuanto, tamano } from "./locall";
@@ -8,7 +8,7 @@ interface Props {
   error: string | null;
   modelos: Modelo[] | null;
   irABiblioteca: () => void;
-  /** La conversación más reciente, para seguirla. */
+  /** The most recent conversation, to continue it. */
   ultima: Conversacion | null;
   continuar: (id: number) => void;
 }

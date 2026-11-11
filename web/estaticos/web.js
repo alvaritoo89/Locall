@@ -1,9 +1,9 @@
-// La web funciona sin JavaScript. Esto solo añade: botones «Copiar» en los comandos y los filtros de la biblioteca.
-// Sin estadísticas, sin cookies, sin pedir nada a otros sitios.
+// The website works without JavaScript. This only adds: «Copiar» buttons on the commands and the library filters.
+// No analytics, no cookies, nothing requested from other sites.
 
 document.documentElement.classList.add("con-js");
 
-// «Copiar»: el botón está justo después del <code> con el comando.
+// «Copiar»: the button is right after the <code> with the command.
 document.addEventListener("click", (e) => {
   const boton = e.target.closest(".copiar");
   if (!boton) return;
@@ -21,8 +21,8 @@ function avisar(boton, texto) {
   setTimeout(() => (boton.textContent = antes), 1600);
 }
 
-// Filtros de la biblioteca: por texto, por uso (etiqueta) y por tamaño. Cada ficha lleva data-texto, data-etiquetas y
-// data-gb. Filtrar no envía nada a ningún sitio.
+// Library filters: by text, by use (tag) and by size. Each card carries data-texto, data-etiquetas and data-gb.
+// Filtering sends nothing anywhere.
 const filtros = document.querySelector(".filtros");
 if (filtros) {
   const estado = { etiqueta: "todos", tamano: "todos", texto: "" };
@@ -33,7 +33,7 @@ if (filtros) {
     (estado.tamano === "grande" && gb >= 6);
   const aplicar = () => {
     let visibles = 0;
-    // Solo las fichas del catálogo (no los resultados de Hugging Face).
+    // Only the catalog cards (not the Hugging Face results).
     for (const ficha of document.querySelectorAll("ul.modelos:not(.lista-hf) > .ficha")) {
       const etiquetas = ficha.dataset.etiquetas.split(" ");
       const ver =
@@ -68,9 +68,9 @@ if (filtros) {
   });
 }
 
-// ─── Buscar en Hugging Face (solo al pulsar el botón) ───
+// ─── Search Hugging Face (only when the button is pressed) ────────────────────
 
-/** Solo nombres de repositorio con la forma normal (propietario/nombre). */
+/** Only repository names in the normal form (owner/name). */
 const REPO_VALIDO = /^[A-Za-z0-9][A-Za-z0-9._-]{0,95}\/[A-Za-z0-9][A-Za-z0-9._-]{0,95}$/;
 
 async function buscarEnHuggingFace(texto) {
@@ -100,7 +100,7 @@ async function buscarEnHuggingFace(texto) {
   estado.textContent = validos.length
     ? `${validos.length} resultados, los más descargados primero.`
     : "No hay modelos GGUF con ese nombre en Hugging Face.";
-  // Todo con textContent: lo que llega de fuera nunca se interpreta como HTML.
+  // Everything with textContent: what comes from outside is never interpreted as HTML.
   for (const r of validos) {
     const licencia = (r.tags || []).find((t) => typeof t === "string" && t.startsWith("license:"));
     const ficha = el("li", "ficha");

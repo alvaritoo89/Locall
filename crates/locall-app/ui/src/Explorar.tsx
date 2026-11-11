@@ -1,7 +1,7 @@
-// Explorar: buscar modelos en Hugging Face por nombre e instalarlos.
+// Explorar: search Hugging Face models by name and install them.
 //
-// Solo se envía a Hugging Face el texto que escribes (ni cuenta ni datos del equipo). Locall no tiene un catálogo
-// propio todavía (llegará en la Fase 6): aquí se ve lo que hay en Hugging Face, ordenado por descargas.
+// Only the text you type is sent to Hugging Face (no account, no computer data). Locall's own catalog is shown first
+// («Recomendados»); the search shows what is on Hugging Face, sorted by downloads.
 
 import { type FormEvent, useEffect, useRef, useState } from "react";
 
@@ -20,7 +20,7 @@ import {
   textoError,
 } from "./locall";
 
-/** Para qué sirve un modelo, en palabras. (Solo las tareas más habituales; las demás se muestran tal cual.) */
+/** What a model is for, in words. (Only the most common tasks; the rest are shown as is.) */
 const TAREAS: Record<string, string> = {
   "text-generation": "texto",
   "image-text-to-text": "texto e imágenes",
@@ -30,9 +30,9 @@ const TAREAS: Record<string, string> = {
 
 interface Props {
   instalaciones: Instalaciones;
-  /** Si la pantalla está a la vista (el catálogo se pide la primera vez que se ve, no al abrir la app). */
+  /** Whether the screen is in view (the catalog is requested the first time it is seen, not when the app opens). */
   visible: boolean;
-  /** Cambia cuando cambian los modelos instalados (para marcar «Instalado»). */
+  /** Changes when the installed models change (to mark «Instalado»). */
   modelosInstalados: number;
 }
 
@@ -46,7 +46,7 @@ export function Explorar({ instalaciones, visible, modelosInstalados }: Props) {
   );
 }
 
-// ─── Recomendados por Locall (el catálogo) ────────────────────────────────────
+// ─── Recommended by Locall (the catalog) ──────────────────────────────────────
 
 function Recomendados({ instalaciones, visible, modelosInstalados }: Props) {
   const [catalogo, setCatalogo] = useState<Catalogo | null>(null);
@@ -56,7 +56,7 @@ function Recomendados({ instalaciones, visible, modelosInstalados }: Props) {
   useEffect(() => {
     if (!visible) return;
     if (pedido.current && catalogo) {
-      // Ya lo tenemos: solo refrescar «Instalado» (sin volver a mirar en GitHub: Locall lo hace una vez al día).
+      // We already have it: only refresh «Instalado» (without checking GitHub again: Locall does that once a day).
       pedirCatalogo().then(setCatalogo).catch(() => {});
       return;
     }
@@ -140,7 +140,7 @@ function Recomendados({ instalaciones, visible, modelosInstalados }: Props) {
   );
 }
 
-// ─── Buscar en Hugging Face ───────────────────────────────────────────────────
+// ─── Search Hugging Face ──────────────────────────────────────────────────────
 
 function BuscarEnHuggingFace({ instalaciones }: { instalaciones: Instalaciones }) {
   const [texto, setTexto] = useState("");
@@ -150,7 +150,7 @@ function BuscarEnHuggingFace({ instalaciones }: { instalaciones: Instalaciones }
   const [abierto, setAbierto] = useState<string | null>(null);
   const [repo, setRepo] = useState<Repositorio | null>(null);
   const [errorRepo, setErrorRepo] = useState<string | null>(null);
-  /** El último repositorio pedido (las respuestas de otros pedidos antes se ignoran). */
+  /** The last repository requested (responses to earlier requests are ignored). */
   const pedido = useRef<string | null>(null);
 
   const buscar = async (e: FormEvent) => {

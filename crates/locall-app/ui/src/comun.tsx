@@ -1,10 +1,10 @@
-// Piezas que comparten varias pantallas.
+// Pieces shared by several screens.
 
 import { type ReactNode, useEffect, useState } from "react";
 
 import { type EstadoLocall, type Modelo, copiarTexto, tamano, textoEncaje } from "./locall";
 
-/** Un icono de trazo (como los de las maquetas). */
+/** A stroke icon (like the ones in the mockups). */
 export function Icono({ children }: { children: ReactNode }) {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"
@@ -15,8 +15,8 @@ export function Icono({ children }: { children: ReactNode }) {
 }
 
 /**
- * La regla de memoria: lo que usan el sistema y las demás apps, lo que usa el modelo cargado (rayado, en verde
- * salvia) y lo libre.
+ * The memory bar: what the system and the other apps use, what the loaded model uses (striped, in sage green) and
+ * what is free.
  */
 export function ReglaDeMemoria({ estado }: { estado: EstadoLocall }) {
   const total = estado.memoryTotal;
@@ -49,7 +49,7 @@ export function ReglaDeMemoria({ estado }: { estado: EstadoLocall }) {
   );
 }
 
-/** El estado de un modelo en las tablas: cargado, o si cabe en el equipo. */
+/** A model's state in the tables: loaded, or whether it fits on the computer. */
 export function EstadoDelModelo({ modelo, estado }: { modelo: Modelo; estado: EstadoLocall | null }) {
   if (estado?.model === modelo.id && estado.state !== "idle") {
     return (
@@ -73,7 +73,7 @@ export function EstadoDelModelo({ modelo, estado }: { modelo: Modelo; estado: Es
   );
 }
 
-/** El nombre de un modelo con su cuantización, como en las maquetas. */
+/** A model's name with its quantization, as in the mockups. */
 export function NombreDelModelo({ modelo }: { modelo: Modelo }) {
   return (
     <span className="nombre-modelo">
@@ -84,8 +84,8 @@ export function NombreDelModelo({ modelo }: { modelo: Modelo }) {
 }
 
 /**
- * Un botón que copia `texto` al portapapeles y dice «Copiado» un momento. (El portapapeles solo se usa al pulsarlo:
- * la app nunca lo lee.)
+ * A button that copies `texto` to the clipboard and says «Copiado» for a moment. (The clipboard is only used when it
+ * is pressed: the app never reads it.)
  */
 export function BotonCopiar({ texto, etiqueta, clase = "" }: { texto: string; etiqueta: string; clase?: string }) {
   const [estado, setEstado] = useState<"listo" | "copiado" | "error">("listo");

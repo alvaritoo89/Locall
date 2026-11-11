@@ -1,14 +1,14 @@
-r"""Prueba de Locall con el cliente OFICIAL de OpenAI (paquete `openai` de Python). ADR 0016.
+r"""Test of Locall with the OFFICIAL OpenAI client (Python `openai` package). ADR 0016.
 
-No forma parte de `cargo test` porque necesita instalar el paquete `openai`. Para repetirla:
+It is not part of `cargo test` because it needs the `openai` package installed. To run it again:
 
     python -m venv %TEMP%\venv-openai
     %TEMP%\venv-openai\Scripts\python -m pip install openai
-    (con `locall serve` en marcha y un modelo instalado como «qwen»)
+    (with `locall serve` running and a model installed as «qwen»)
     %TEMP%\venv-openai\Scripts\python scripts\probar_openai.py %LOCALAPPDATA%\Locall\token 11470
 
-Comprueba: lista de modelos, respuesta entera, por trozos con el uso al final, y que los errores (función no
-admitida, clave incorrecta, modelo inexistente) llegan como las excepciones que espera el cliente.
+Checks: model list, whole answer, chunked answer with the usage at the end, and that errors (unsupported feature,
+wrong key, missing model) arrive as the exceptions the client expects.
 """
 
 import sys
@@ -31,12 +31,12 @@ def comprobar(nombre, condicion, detalle=""):
 
 print(f"openai {openai.__version__} contra {base}\n")
 
-# 1) Lista de modelos
+# 1) Model list
 modelos = cliente.models.list()
 ids = [m.id for m in modelos.data]
 comprobar("models.list()", "qwen" in ids, f"modelos: {ids}")
 
-# 2) Respuesta entera
+# 2) Whole answer
 r = cliente.chat.completions.create(
     model="qwen",
     messages=[
@@ -57,7 +57,7 @@ comprobar(
 )
 comprobar("  motivo del final", r.choices[0].finish_reason in ("stop", "length"), r.choices[0].finish_reason)
 
-# 3) Por trozos (SSE), con el uso al final
+# 3) In chunks (SSE), with the usage at the end
 trozos = list(
     cliente.chat.completions.create(
         model="qwen",
@@ -73,7 +73,7 @@ texto = "".join(t.choices[0].delta.content or "" for t in trozos if t.choices)
 comprobar("stream=True", "Roma" in texto, f"{len(trozos)} trozos, respuesta: {texto!r}")
 comprobar("  uso en el último trozo", trozos[-1].usage is not None and trozos[-1].usage.completion_tokens > 0)
 
-# 4) Lo no admitido: error claro (400), no silencio
+# 4) What is not supported: a clear error (400), not silence
 try:
     cliente.chat.completions.create(
         model="qwen",
@@ -84,14 +84,14 @@ try:
 except openai.BadRequestError as e:
     comprobar("tools rechazado con BadRequestError (400)", "tools" in str(e), str(e)[:90])
 
-# 5) Clave incorrecta
+# 5) Wrong key
 try:
     OpenAI(base_url=base, api_key="0" * 64).models.list()
     comprobar("clave incorrecta rechazada", False, "no dio error")
 except openai.AuthenticationError as e:
     comprobar("clave incorrecta con AuthenticationError (401)", True, str(e)[:90])
 
-# 6) Modelo que no existe
+# 6) Model that does not exist
 try:
     cliente.chat.completions.create(model="no-existe", messages=[{"role": "user", "content": "hola"}])
     comprobar("modelo inexistente", False, "no dio error")

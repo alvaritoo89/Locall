@@ -1,7 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
-// Las fuentes van dentro de la app (licencia OFL): nunca se piden a internet.
+// The fonts are bundled with the app (OFL license): they are never requested from the internet.
 import "@fontsource-variable/inter";
 import "@fontsource-variable/jetbrains-mono";
 import "./estilos.css";

@@ -1,7 +1,7 @@
-// Instalar modelos de Hugging Face: el estado de las instalaciones en marcha y la lista de archivos de un repositorio.
+// Installing Hugging Face models: the state of the installations in progress and a repository's file list.
 //
-// El estado vive en `App` (con `useInstalaciones`) y no en cada pantalla: así, si empiezas a instalar en Explorar y te
-// vas a la Biblioteca, el progreso sigue a la vista y la instalación no se pierde.
+// The state lives in `App` (with `useInstalaciones`) and not in each screen: this way, if you start installing in
+// Explorar and go to the Library, the progress stays visible and the installation is not lost.
 
 import { useCallback, useState } from "react";
 
@@ -15,19 +15,19 @@ import {
   textoError,
 } from "./locall";
 
-/** Cómo va una instalación. */
+/** How an installation is going. */
 export interface Instalando {
   progreso: Progreso | null;
   error: string | null;
   hecho: string | null;
 }
 
-/** Las instalaciones (clave: `repo/archivo`) y cómo empezarlas o cancelarlas. */
+/** The installations (key: `repo/file`) and how to start or cancel them. */
 export interface Instalaciones {
   estado: Record<string, Instalando>;
   instalar: (repo: string, archivo: string) => void;
   cancelar: (repo: string, archivo: string) => void;
-  /** Instala un modelo del catálogo (su progreso va en `estado[clave("catalogo", nombre)]`). */
+  /** Installs a catalog model (its progress goes in `estado[clave("catalogo", nombre)]`). */
   instalarDelCatalogo: (nombre: string) => void;
 }
 
@@ -36,7 +36,7 @@ export const clave = (repo: string, archivo: string) => `${repo}/${archivo}`;
 export function useInstalaciones(alInstalar: () => void): Instalaciones {
   const [estado, setEstado] = useState<Record<string, Instalando>>({});
 
-  /** Lleva el estado de una instalación (`k`) mientras `trabajo` la hace. */
+  /** Tracks the state of an installation (`k`) while `trabajo` does it. */
   const seguir = useCallback(
     async (k: string, trabajo: (alProgresar: (p: Progreso) => void) => Promise<{ id: string; size_bytes: number }>) => {
       const poner = (cambio: Partial<Instalando>) =>
@@ -73,7 +73,7 @@ export function useInstalaciones(alInstalar: () => void): Instalaciones {
   return { estado, instalar, cancelar, instalarDelCatalogo: instalarCatalogo };
 }
 
-/** Los GGUF de un repositorio, cada uno con su botón de instalar y su progreso. */
+/** A repository's GGUFs, each with its install button and its progress. */
 export function ArchivosDelRepo({ repo, instalaciones }: { repo: Repositorio; instalaciones: Instalaciones }) {
   return (
     <div className="repo">

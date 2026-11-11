@@ -1,18 +1,18 @@
-// Lo que la interfaz pide a la parte Rust de la app (que es quien habla con Locall). La interfaz nunca ve el token.
+// What the UI asks of the app's Rust side (which is what talks to Locall). The UI never sees the token.
 
 import { Channel, invoke } from "@tauri-apps/api/core";
 
-/** Estado de Locall y del equipo (orden `estado` de src/main.rs). */
+/** State of Locall and of the computer (the `estado` command in src/main.rs). */
 export interface EstadoLocall {
   version: string;
   engine: string;
-  /** "idle" (sin modelo), "loading" (cargando) o "ready" (listo). */
+  /** "idle" (no model), "loading" or "ready". */
   state: "idle" | "loading" | "ready";
   model: string | null;
   inUse: number;
-  /** Memoria que ocupa ahora el modelo cargado. */
+  /** Memory the loaded model takes right now. */
   modelMemory: number | null;
-  /** Segundos que faltan para que el modelo se descargue por inactividad. */
+  /** Seconds left until the model unloads due to inactivity. */
   unloadIn: number | null;
   warnings: string[];
   cpu: string | null;
@@ -21,10 +21,10 @@ export interface EstadoLocall {
   memoryAvailable: number;
 }
 
-/** ¿Cabe en el equipo? (`locall-compat`) */
+/** Does it fit on the computer? (`locall-compat`) */
 export type Encaje = "comfortable" | "fits" | "tight" | "too_big";
 
-/** Un modelo instalado (como lo da la API). */
+/** An installed model (as the API gives it). */
 export interface Modelo {
   id: string;
   name: string;
@@ -42,7 +42,7 @@ export interface Modelo {
   compatible: boolean | null;
 }
 
-/** Un repositorio de Hugging Face y sus GGUF. */
+/** A Hugging Face repository and its GGUFs. */
 export interface Repositorio {
   repo: string;
   commit: string;
@@ -51,7 +51,7 @@ export interface Repositorio {
   files: { path: string; size_bytes: number; sha256: string | null }[];
 }
 
-/** Un aviso de progreso de una instalación. */
+/** A progress notice of an installation. */
 export interface Progreso {
   part: number;
   parts: number;
@@ -63,7 +63,7 @@ export const pedirEstado = () => invoke<EstadoLocall>("estado");
 export const pedirModelos = () => invoke<Modelo[]>("modelos");
 export const eliminarModelo = (id: string) => invoke<number>("eliminar", { id });
 export const consultarRepo = (repo: string) => invoke<Repositorio>("consultar_repo", { repo });
-/** Un modelo del catálogo de Locall. */
+/** A model from Locall's catalog. */
 export interface ModeloCatalogo {
   name: string;
   title: string;
@@ -72,43 +72,43 @@ export interface ModeloCatalogo {
   tags: string[];
   license: string;
   context_length: number;
-  /** Siempre «compatible»: el motor reconoce su formato (no se ha probado uno a uno). */
+  /** Always «compatible»: the engine recognizes its format (they have not been tested one by one). */
   status: "compatible";
   repo: string;
   size_bytes: number;
   installed: boolean;
-  /** Aproximado: con el tamaño del archivo y la memoria libre ahora. */
+  /** Approximate: from the file size and the memory free right now. */
   fit_estimate: Encaje;
   memory_estimate_bytes: number;
 }
 
-/** El catálogo de Locall. */
+/** Locall's catalog. */
 export interface Catalogo {
   published: number;
-  /** «builtin»: el que lleva la app; «downloaded»: uno más nuevo de GitHub. */
+  /** «builtin»: the one shipped with the app; «downloaded»: a newer one from GitHub. */
   source: "builtin" | "downloaded";
   checked_at: number | null;
   models: ModeloCatalogo[];
-  /** Si no se pudo mirar si había uno más nuevo. */
+  /** If it could not check whether there was a newer one. */
   warning?: string;
 }
 
 export const pedirCatalogo = () => invoke<Catalogo>("catalogo");
 
-/** Instala un modelo del catálogo por su nombre. */
+/** Installs a catalog model by its name. */
 export function instalarDelCatalogo(nombre: string, alProgresar: (p: Progreso) => void): Promise<Modelo> {
   const canal = new Channel<Progreso>();
   canal.onmessage = alProgresar;
   return invoke<Modelo>("instalar_catalogo", { nombre, canal });
 }
 
-/** Un repositorio encontrado al buscar en Hugging Face. */
+/** A repository found when searching Hugging Face. */
 export interface Encontrado {
   repo: string;
   downloads: number;
   likes: number;
   license: string | null;
-  /** Para qué sirve según Hugging Face (`text-generation`…). */
+  /** What it is for according to Hugging Face (`text-generation`…). */
   task: string | null;
 }
 
@@ -121,7 +121,7 @@ export function cifraCorta(n: number): string {
   return String(n);
 }
 
-/** Unos ajustes (los en uso o los guardados en `config.toml`). */
+/** A set of settings (those in use or those saved in `config.toml`). */
 export interface ValoresAjustes {
   context: number;
   threads: number | "auto";
@@ -133,11 +133,11 @@ export interface ValoresAjustes {
   parallel: number;
 }
 
-/** Lo que devuelve `GET /api/settings`. */
+/** What `GET /api/settings` returns. */
 export interface Ajustes {
   active: ValoresAjustes;
   saved: ValoresAjustes;
-  /** Lo guardado difiere de lo que se usa: hay que reiniciar Locall. */
+  /** What is saved differs from what is in use: Locall must be restarted. */
   restart_needed: boolean;
   threads_available: number;
   data_folder: string;
@@ -153,8 +153,8 @@ export const cancelarInstalacion = (repo: string, archivo: string) =>
   invoke<void>("cancelar_instalacion", { repo, archivo });
 
 /**
- * Importa un `.gguf` del equipo: abre la ventana de Windows para elegirlo. `alElegir` recibe el nombre del archivo en
- * cuanto se elige. Devuelve el modelo importado, o `null` si se cerró la ventana sin elegir.
+ * Imports a `.gguf` from the computer: opens the Windows dialog to pick it. `alElegir` receives the file name as soon
+ * as it is picked. Returns the imported model, or `null` if the dialog was closed without picking.
  */
 export function importarGguf(alElegir: (nombre: string) => void): Promise<Modelo | null> {
   const canal = new Channel<string>();
@@ -162,7 +162,7 @@ export function importarGguf(alElegir: (nombre: string) => void): Promise<Modelo
   return invoke<Modelo | null>("importar_gguf", { canal });
 }
 
-/** Instala un modelo; `alProgresar` recibe cada aviso de progreso. Devuelve el modelo instalado. */
+/** Installs a model; `alProgresar` receives each progress notice. Returns the installed model. */
 export function instalarModelo(
   repo: string,
   archivo: string,
@@ -173,9 +173,9 @@ export function instalarModelo(
   return invoke<Modelo>("instalar", { repo, archivo, canal });
 }
 
-// ─── Formatos ─────────────────────────────────────────────────────────────────
+// ─── Formats ──────────────────────────────────────────────────────────────────
 
-/** `1_185_376` → `1,2 MB` (unidades decimales, como la CLI y Hugging Face). */
+/** `1_185_376` → `1,2 MB` (decimal units, like the CLI and Hugging Face). */
 export function tamano(bytes: number): string {
   const unidades = ["B", "KB", "MB", "GB", "TB"];
   let valor = bytes;
@@ -196,7 +196,7 @@ export function minutosSegundos(segundos: number): string {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
-/** Texto y tono para "¿cabe?". */
+/** Text and tone for "does it fit?". */
 export function textoEncaje(encaje: Encaje | null): { texto: string; tono: "normal" | "aviso" | "error" } {
   switch (encaje) {
     case "comfortable":
@@ -212,16 +212,16 @@ export function textoEncaje(encaje: Encaje | null): { texto: string; tono: "norm
   }
 }
 
-/** Un error de `invoke` como texto. */
+/** An `invoke` error as text. */
 export const textoError = (e: unknown) => (typeof e === "string" ? e : String(e));
 
-// ─── Conversaciones guardadas ─────────────────────────────────────────────────
+// ─── Saved conversations ──────────────────────────────────────────────────────
 
-/** Una conversación guardada (sin los mensajes). Las fechas, en segundos desde 1970. */
+/** A saved conversation (without the messages). Dates in seconds since 1970. */
 export interface Conversacion {
   id: number;
   title: string;
-  /** El último modelo usado (puede haberse eliminado después). */
+  /** The last model used (it may have been removed since). */
   model: string | null;
   system: string;
   temperature: number | null;
@@ -230,7 +230,7 @@ export interface Conversacion {
   message_count: number;
 }
 
-/** Un mensaje guardado. */
+/** A saved message. */
 export interface MensajeGuardado {
   index: number;
   role: "user" | "assistant";
@@ -239,7 +239,7 @@ export interface MensajeGuardado {
   model: string | null;
   completion_tokens: number | null;
   generation_per_second: number | null;
-  /** La respuesta se paró antes de terminar. */
+  /** The answer was stopped before it finished. */
   truncated: boolean;
   created_at: number;
 }
@@ -252,27 +252,27 @@ export const renombrarConversacion = (id: number, titulo: string) =>
   invoke<Conversacion>("renombrar_conversacion", { id, titulo });
 export const eliminarConversacion = (id: number) => invoke<void>("eliminar_conversacion", { id });
 
-// ─── Conversar ────────────────────────────────────────────────────────────────
+// ─── Chatting ─────────────────────────────────────────────────────────────────
 
-/** Lo que llega mientras el modelo responde. */
+/** What arrives while the model answers. */
 export type Trozo =
   | { type: "text"; text: string }
   | { type: "reasoning"; text: string }
   | { type: "prompt_progress"; processed: number; total: number };
 
-/** El resumen al terminar una respuesta. */
+/** The summary when an answer ends. */
 export interface FinRespuesta {
   finish: "stop" | "length" | "cancelled";
   usage?: { prompt_tokens: number; cached_tokens: number; completion_tokens: number };
   speed?: { prompt_per_second: number | null; generation_per_second: number | null };
-  /** Lo que Locall guardó (no llega si se paró: Locall lo guarda igualmente). */
+  /** What Locall saved (it does not arrive if it was stopped: Locall saves it anyway). */
   conversation?: Conversacion;
   message?: MensajeGuardado | null;
 }
 
-/** Lo que se envía al conversar. */
+/** What is sent when chatting. */
 export interface Envio {
-  /** Identifica la respuesta, para poder pararla. */
+  /** Identifies the answer, so it can be stopped. */
   peticion: string;
   conversacion: number;
   contenido: string;
@@ -282,8 +282,8 @@ export interface Envio {
 }
 
 /**
- * Escribe un mensaje en una conversación guardada; `alRecibir` recibe cada trozo de la respuesta. Locall envía al
- * modelo la conversación entera y guarda la pregunta y la respuesta.
+ * Writes a message to a saved conversation; `alRecibir` receives each chunk of the answer. Locall sends the whole
+ * conversation to the model and saves the question and the answer.
  */
 export function conversar(envio: Envio, alRecibir: (t: Trozo) => void): Promise<FinRespuesta> {
   const canal = new Channel<Trozo>();
@@ -293,10 +293,10 @@ export function conversar(envio: Envio, alRecibir: (t: Trozo) => void): Promise<
 
 export const parar = (peticion: string) => invoke<void>("parar", { peticion });
 
-/** Copia un texto al portapapeles (lo hace la parte Rust: ver `copiar` en src/main.rs). */
+/** Copies a text to the clipboard (done by the Rust side: see `copiar` in src/main.rs). */
 export const copiarTexto = (texto: string) => invoke<void>("copiar", { texto });
 
-/** Hoy, Ayer, Esta semana o Anteriores, según la fecha (en segundos). */
+/** Hoy, Ayer, Esta semana or Anteriores (Today, Yesterday, This week, Earlier), by date (in seconds). */
 export function grupoDeFecha(segundos: number, ahora = new Date()): string {
   const dia = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
   const dias = Math.round((dia(ahora) - dia(new Date(segundos * 1000))) / 86_400_000);
@@ -306,7 +306,7 @@ export function grupoDeFecha(segundos: number, ahora = new Date()): string {
   return "Anteriores";
 }
 
-/** "hace 5 min", "hace 3 h", "ayer", "12 oct". */
+/** "hace 5 min", "hace 3 h", "ayer", "12 oct" (relative time, in Spanish). */
 export function haceCuanto(segundos: number, ahora = Date.now()): string {
   const s = Math.max(0, Math.floor(ahora / 1000 - segundos));
   if (s < 60) return "ahora mismo";

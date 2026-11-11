@@ -1,5 +1,5 @@
-// Chat: conversar con un modelo instalado. Las conversaciones las guarda Locall (parte 5d): a la izquierda, la lista;
-// al abrir una, se cargan sus mensajes y se puede seguir donde se dejó.
+// Chat: talk to an installed model. Locall saves the conversations (part 5d): the list is on the left; opening one
+// loads its messages and lets you continue where you left off.
 
 import { type FormEvent, type KeyboardEvent, useEffect, useRef, useState } from "react";
 
@@ -22,19 +22,19 @@ import {
   textoError,
 } from "./locall";
 
-/** Un mensaje tal como se muestra. */
+/** A message as it is displayed. */
 interface Burbuja {
   rol: "user" | "assistant";
   texto: string;
   razonamiento: string;
-  /** Solo en las respuestas: el modelo que respondió y sus cifras. */
+  /** Only in answers: the model that answered and its figures. */
   modelo?: string;
   cifras?: string;
   error?: string;
   cortada?: boolean;
 }
 
-/** Estilos de respuesta de la maqueta: atajos para la temperatura. */
+/** Answer styles from the mockup: shortcuts for the temperature. */
 const ESTILOS = [
   { nombre: "Preciso", temperatura: 0.2 },
   { nombre: "Equilibrado", temperatura: 0.7 },
@@ -42,22 +42,22 @@ const ESTILOS = [
 ] as const;
 const TEMPERATURA_INICIAL = 0.7;
 
-/** Longitud del título automático (el principio del primer mensaje). */
+/** Length of the automatic title (the beginning of the first message). */
 const TITULO_AUTOMATICO = 60;
 
 interface Props {
   estado: EstadoLocall | null;
   modelos: Modelo[] | null;
   irABiblioteca: () => void;
-  /** Las conversaciones guardadas (`null` mientras se cargan). */
+  /** The saved conversations (`null` while they load). */
   conversaciones: Conversacion[] | null;
   recargarConversaciones: () => void;
-  /** La conversación abierta (`null`: una nueva, aún sin guardar). */
+  /** The open conversation (`null`: a new one, not saved yet). */
   abierta: number | null;
   abrir: (id: number | null) => void;
-  /** Avisa de si hay una respuesta en marcha (mientras tanto no se cambia de conversación). */
+  /** Reports whether an answer is in progress (meanwhile the conversation is not changed). */
   alCambiarOcupado: (ocupado: boolean) => void;
-  /** Cada vez que cambia, empezar una conversación nueva (Ctrl+N). */
+  /** Every time it changes, start a new conversation (Ctrl+N). */
   pedidoNueva: number;
 }
 
@@ -73,18 +73,18 @@ export function Chat(props: Props) {
   const [temperatura, setTemperatura] = useState(TEMPERATURA_INICIAL);
   const [sistema, setSistema] = useState("");
   const [errorCarga, setErrorCarga] = useState<string | null>(null);
-  /** En ventanas estrechas, el panel de ajustes se abre por encima de la conversación. */
+  /** In narrow windows, the settings panel opens on top of the conversation. */
   const [ajustesAbiertos, setAjustesAbiertos] = useState(false);
   const lista = useRef<HTMLDivElement>(null);
-  /** La conversación cuyos mensajes están en pantalla (para no recargar la que se acaba de crear al enviar). */
+  /** The conversation whose messages are on screen (so the one just created on sending is not reloaded). */
   const enPantalla = useRef<number | null>(null);
 
-  useEffect(() => props.alCambiarOcupado(!!generando), [generando]); // (solo al empezar o terminar)
+  useEffect(() => props.alCambiarOcupado(!!generando), [generando]); // (only when starting or finishing)
 
-  /** Empieza una conversación nueva y deja el cursor en el cuadro del mensaje. */
+  /** Starts a new conversation and leaves the cursor in the message box. */
   const nueva = () => {
     if (generando) return;
-    // (si la conversación en pantalla no llegó a guardarse, por un error, basta con vaciarla)
+    // (if the conversation on screen never got saved, because of an error, emptying it is enough)
     if (abierta === null) {
       setBurbujas([]);
       setTitulo(null);
@@ -95,19 +95,19 @@ export function Chat(props: Props) {
     requestAnimationFrame(() => document.getElementById("mensaje")?.focus());
   };
 
-  // Ctrl+N (lo detecta App y avisa subiendo `pedidoNueva`).
+  // Ctrl+N (App detects it and signals by increasing `pedidoNueva`).
   useEffect(() => {
     if (props.pedidoNueva > 0) nueva();
-  }, [props.pedidoNueva]); // (solo cuando se pide)
+  }, [props.pedidoNueva]); // (only when requested)
 
-  // Modelo por defecto: el cargado, si está instalado; si no, el primero.
+  // Default model: the loaded one, if it is installed; otherwise, the first one.
   useEffect(() => {
     if (modelo && usables.some((m) => m.id === modelo)) return;
     const cargado = usables.find((m) => m.id === estado?.model);
     setModelo(cargado?.id ?? usables[0]?.id ?? "");
-  }, [modelos, estado?.model]); // (solo al cambiar la lista o el modelo cargado)
+  }, [modelos, estado?.model]); // (only when the list or the loaded model changes)
 
-  // Al abrir otra conversación: cargar sus mensajes y sus ajustes.
+  // When another conversation is opened: load its messages and its settings.
   useEffect(() => {
     if (abierta === enPantalla.current) return;
     enPantalla.current = abierta;
@@ -140,13 +140,13 @@ export function Chat(props: Props) {
     };
   }, [abierta]);
 
-  // Bajar hasta el final cuando llega texto (si el usuario ya estaba abajo).
+  // Scroll to the bottom when text arrives (if the user was already at the bottom).
   useEffect(() => {
     const el = lista.current;
     if (el && el.scrollHeight - el.scrollTop - el.clientHeight < 120) el.scrollTop = el.scrollHeight;
   }, [burbujas]);
 
-  // Esc para parar la respuesta.
+  // Esc to stop the answer.
   useEffect(() => {
     if (!generando) return;
     const tecla = (e: globalThis.KeyboardEvent) => {
@@ -156,7 +156,7 @@ export function Chat(props: Props) {
     return () => window.removeEventListener("keydown", tecla);
   }, [generando]);
 
-  /** Cambia la última burbuja (la respuesta que se está escribiendo). */
+  /** Changes the last bubble (the answer being written). */
   const cambiarUltima = (cambio: (b: Burbuja) => Burbuja) =>
     setBurbujas((actual) => [...actual.slice(0, -1), cambio(actual[actual.length - 1])]);
 
@@ -177,7 +177,7 @@ export function Chat(props: Props) {
     let primerToken: number | null = null;
     let llegoAlgo = false;
     try {
-      // Una conversación nueva se guarda al enviar el primer mensaje (así no quedan conversaciones vacías).
+      // A new conversation is saved when the first message is sent (so no empty conversations are left).
       let id = abierta;
       if (id === null) {
         const nueva = await crearConversacion(pregunta.slice(0, TITULO_AUTOMATICO));
@@ -206,14 +206,15 @@ export function Chat(props: Props) {
         },
       );
       if (fin.finish === "cancelled" && !llegoAlgo) {
-        // Se paró antes de que llegara nada: Locall no guarda la pregunta, así que se quita y vuelve al cuadro.
+        // It was stopped before anything arrived: Locall does not save the question, so it is removed and goes back to the
+        // box.
         setBurbujas((actual) => actual.slice(0, -2));
         setEntrada((actual) => actual || pregunta);
       } else {
         cambiarUltima((b) => ({ ...b, cortada: fin.finish === "cancelled", cifras: cifras(fin, inicio, primerToken) }));
       }
     } catch (error) {
-      // Locall no guarda una pregunta que falló: se ve el error aquí y, al reintentar, no queda repetida.
+      // Locall does not save a question that failed: the error is shown here and, on retry, it is not duplicated.
       cambiarUltima((b) => ({ ...b, error: textoError(error) }));
     } finally {
       setGenerando(null);
@@ -222,7 +223,7 @@ export function Chat(props: Props) {
     }
   };
 
-  // Enter envía; Mayúsculas+Enter, salto de línea.
+  // Enter sends; Shift+Enter, new line.
   const alTeclear = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
@@ -378,7 +379,7 @@ export function Chat(props: Props) {
   );
 }
 
-// ─── La lista de la izquierda ─────────────────────────────────────────────────
+// ─── The list on the left ─────────────────────────────────────────────────────
 
 interface PropsLista {
   conversaciones: Conversacion[] | null;
@@ -398,7 +399,7 @@ function ListaDeConversaciones(props: PropsLista) {
   const [confirmando, setConfirmando] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Agrupadas por fecha (la lista ya llega de la más reciente a la más antigua).
+  // Grouped by date (the list already arrives from the most recent to the oldest).
   const grupos: { nombre: string; lista: Conversacion[] }[] = [];
   for (const c of conversaciones ?? []) {
     const nombre = grupoDeFecha(c.updated_at);
@@ -493,9 +494,9 @@ function ListaDeConversaciones(props: PropsLista) {
   );
 }
 
-// ─── Ayudantes ────────────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-/** Un mensaje guardado, como burbuja. */
+/** A saved message, as a bubble. */
 function burbujaGuardada(m: MensajeGuardado): Burbuja {
   const partes: string[] = [];
   if (m.generation_per_second) partes.push(`${decimal(m.generation_per_second)} t/s`);

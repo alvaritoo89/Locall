@@ -1,4 +1,4 @@
-// Biblioteca: los modelos instalados (con eliminar) y añadir uno desde Hugging Face.
+// Library: the installed models (with remove) and adding one from Hugging Face.
 
 import { type FormEvent, useState } from "react";
 
@@ -32,7 +32,7 @@ export function Biblioteca(props: Props & { instalaciones: Instalaciones; irAExp
   );
 }
 
-// ─── Instalados ───────────────────────────────────────────────────────────────
+// ─── Installed ────────────────────────────────────────────────────────────────
 
 function Instalados({ estado, modelos, recargar }: Props) {
   const [confirmando, setConfirmando] = useState<string | null>(null);
@@ -115,7 +115,7 @@ function Instalados({ estado, modelos, recargar }: Props) {
   );
 }
 
-// ─── Añadir desde Hugging Face ────────────────────────────────────────────────
+// ─── Add from Hugging Face ────────────────────────────────────────────────────
 
 function AnadirDesdeHuggingFace({ instalaciones, irAExplorar }: { instalaciones: Instalaciones; irAExplorar: () => void }) {
   const [texto, setTexto] = useState("");
@@ -160,7 +160,7 @@ function AnadirDesdeHuggingFace({ instalaciones, irAExplorar }: { instalaciones:
   );
 }
 
-// ─── Importar un archivo del equipo ───────────────────────────────────────────
+// ─── Import a file from the computer ──────────────────────────────────────────
 
 function ImportarDelEquipo({ recargar }: { recargar: () => void }) {
   const [importando, setImportando] = useState<string | null>(null);

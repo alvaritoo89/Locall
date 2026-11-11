@@ -1,10 +1,9 @@
-// Atajos de teclado de la app. La lista está aquí para que la pantalla de Ajustes muestre exactamente los mismos que
-// funcionan.
+// The app's keyboard shortcuts. The list lives here so the Settings screen shows exactly the same ones that work.
 
-/** Una pantalla de la app. */
+/** A screen of the app. */
 export type Pagina = "inicio" | "chat" | "biblioteca" | "explorar" | "ajustes";
 
-/** Ctrl + tecla → pantalla. */
+/** Ctrl + key → screen. */
 export const ATAJOS_PANTALLA: { tecla: string; pagina: Pagina; nombre: string }[] = [
   { tecla: "1", pagina: "inicio", nombre: "Inicio" },
   { tecla: "2", pagina: "chat", nombre: "Chat" },
@@ -13,7 +12,7 @@ export const ATAJOS_PANTALLA: { tecla: string; pagina: Pagina; nombre: string }[
   { tecla: ",", pagina: "ajustes", nombre: "Ajustes" },
 ];
 
-/** Todos los atajos, para mostrarlos. */
+/** All the shortcuts, to display them. */
 export const LISTA_DE_ATAJOS: { teclas: string; que: string }[] = [
   { teclas: "Ctrl+N", que: "Nueva conversación" },
   { teclas: "Ctrl+K", que: "Buscar modelos en Explorar" },
@@ -23,9 +22,9 @@ export const LISTA_DE_ATAJOS: { teclas: string; que: string }[] = [
 ];
 
 /**
- * Atajos del navegador que en una app de escritorio solo hacen daño: recargar (F5, Ctrl+R) borraría lo que hay en
- * pantalla, e imprimir (Ctrl+P) o buscar en la página (Ctrl+F) no tienen sentido aquí. Solo se bloquean en la versión
- * final: en desarrollo, recargar es útil.
+ * Browser shortcuts that only do harm in a desktop app: reloading (F5, Ctrl+R) would wipe what is on screen, and
+ * printing (Ctrl+P) or finding in the page (Ctrl+F) make no sense here. They are only blocked in the release build:
+ * in development, reloading is useful.
  */
 export function esAtajoDelNavegador(e: KeyboardEvent): boolean {
   const tecla = e.key.toLowerCase();

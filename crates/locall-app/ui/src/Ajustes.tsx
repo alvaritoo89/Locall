@@ -1,5 +1,5 @@
-// Ajustes: ver y cambiar `config.toml` sin abrirlo a mano. Los cambios se guardan en el archivo y se aplican al
-// reiniciar Locall (ADR 0020).
+// Settings: view and change `config.toml` without opening it by hand. Changes are saved to the file and take effect
+// when Locall restarts (ADR 0020).
 
 import { type FormEvent, useEffect, useState } from "react";
 
@@ -14,7 +14,7 @@ import {
 } from "./locall";
 import { LISTA_DE_ATAJOS } from "./atajos";
 
-/** Lo que se puede cambiar aquí (como texto mientras se escribe). */
+/** What can be changed here (as text while it is typed). */
 interface Formulario {
   context: string;
   threadsAuto: boolean;
@@ -34,7 +34,7 @@ const deAjustes = (a: ValoresAjustes): Formulario => ({
 });
 
 interface Props {
-  /** Hay algo en marcha (una respuesta, una instalación, un modelo cargándose): no se puede reiniciar ahora. */
+  /** Something is in progress (an answer, an installation, a model loading): it cannot restart now. */
   ocupado: boolean;
 }
 
@@ -71,7 +71,7 @@ export function Ajustes({ ocupado }: Props) {
     setMensaje(null);
   };
 
-  // Solo se envía lo que ha cambiado respecto a lo guardado.
+  // Only what changed compared to what is saved is sent.
   const cambios: Record<string, number | "auto"> = {};
   const numero = (campo: "context" | "unload_minutes" | "exit_minutes" | "log_days") => {
     const n = Number(form[campo]);
@@ -107,7 +107,7 @@ export function Ajustes({ ocupado }: Props) {
     setError(null);
     try {
       await reiniciarLocall();
-      // Esperar a que vuelva a abrirse (lo abre la siguiente petición) y releer.
+      // Wait for it to reopen (the next request opens it) and read again.
       await new Promise((r) => setTimeout(r, 1500));
       await cargar();
       setMensaje("Locall se ha reiniciado con los ajustes nuevos.");

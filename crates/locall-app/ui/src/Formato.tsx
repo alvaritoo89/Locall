@@ -1,17 +1,17 @@
-// Formato de las respuestas: bloques de código (```), `código en línea` y **negrita**.
+// Formatting of the answers: code blocks (```), `inline code` and **bold**.
 //
-// El texto lo escribe el modelo: NO es de fiar. Por eso no se convierte a HTML (nada de innerHTML ni de librerías que
-// generen HTML): se construyen elementos de React, que siempre tratan el texto como texto. Si un modelo escribe
-// "<script>", se ve tal cual y no se ejecuta.
+// The text is written by the model: it is NOT trustworthy. That is why it is not turned into HTML (no innerHTML and no
+// libraries that generate HTML): React elements are built, and they always treat text as text. If a model writes
+// "<script>", it is shown as is and not executed.
 
 import type { ReactNode } from "react";
 
 import { BotonCopiar } from "./comun";
 
-/** Un trozo del texto: un bloque de código o un párrafo normal. */
+/** A piece of the text: a code block or a normal paragraph. */
 type Bloque = { tipo: "codigo"; lenguaje: string; texto: string } | { tipo: "parrafo"; texto: string };
 
-/** Divide el texto en bloques de código (```lenguaje … ```) y párrafos (separados por líneas en blanco). */
+/** Splits the text into code blocks (```language … ```) and paragraphs (separated by blank lines). */
 export function dividir(texto: string): Bloque[] {
   const bloques: Bloque[] = [];
   const partes = texto.split(/```/);
@@ -58,7 +58,7 @@ function enLinea(texto: string): ReactNode[] {
   return resultado;
 }
 
-/** Muestra una respuesta con formato. Mientras se escribe, un bloque de código sin cerrar se ve ya como código. */
+/** Shows a formatted answer. While it is being written, an unclosed code block already looks like code. */
 export function Formato({ texto }: { texto: string }) {
   return (
     <>

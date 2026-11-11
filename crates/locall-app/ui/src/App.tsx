@@ -22,7 +22,7 @@ import {
 import logoClaro from "./assets/logo-claro.png";
 import logoOscuro from "./assets/logo-oscuro.png";
 
-/** Cada cuánto se pregunta a Locall cómo está (para la barra de estado). */
+/** How often Locall is asked how it is doing (for the status bar). */
 const INTERVALO_ESTADO_MS = 2000;
 
 export function App() {
@@ -31,14 +31,14 @@ export function App() {
   const [error, setError] = useState<string | null>(null);
   const [modelos, setModelos] = useState<Modelo[] | null>(null);
   const [conversaciones, setConversaciones] = useState<Conversacion[] | null>(null);
-  /** La conversación abierta en el chat (`null`: una nueva). */
+  /** The conversation open in the chat (`null`: a new one). */
   const [abierta, setAbierta] = useState<number | null>(null);
-  /** Hay una respuesta en marcha: mientras tanto no se cambia de conversación. */
+  /** An answer is in progress: meanwhile the conversation is not changed. */
   const [ocupado, setOcupado] = useState(false);
-  /** Cada vez que sube, el chat empieza una conversación nueva (Ctrl+N). */
+  /** Every time it goes up, the chat starts a new conversation (Ctrl+N). */
   const [pedidoNueva, setPedidoNueva] = useState(0);
 
-  // Preguntar el estado al empezar y cada 2 s. (La primera vez puede tardar: si Locall no está abierto, se abre.)
+  // Ask for the state at the start and every 2 s. (The first time may take a while: if Locall is not open, it opens.)
   useEffect(() => {
     let vivo = true;
     const preguntar = () =>
@@ -53,7 +53,7 @@ export function App() {
     };
   }, []);
 
-  // La lista de modelos: al empezar, al cambiar de pantalla y cuando se instala o elimina uno.
+  // The model list: at the start, when changing screens and when one is installed or removed.
   const recargarModelos = useCallback(() => {
     pedirModelos()
       .then(setModelos)
@@ -62,7 +62,7 @@ export function App() {
   useEffect(recargarModelos, [pagina, recargarModelos]);
   const instalaciones = useInstalaciones(recargarModelos);
 
-  // Las conversaciones guardadas: al empezar, al cambiar de pantalla y cuando el chat cambia algo.
+  // The saved conversations: at the start, when changing screens and when the chat changes something.
   const recargarConversaciones = useCallback(() => {
     pedirConversaciones()
       .then(setConversaciones)
@@ -70,7 +70,7 @@ export function App() {
   }, []);
   useEffect(recargarConversaciones, [pagina, recargarConversaciones]);
 
-  // Atajos de teclado (ver atajos.ts).
+  // Keyboard shortcuts (see atajos.ts).
   useEffect(() => {
     const alTeclear = (e: KeyboardEvent) => {
       if (import.meta.env.PROD && esAtajoDelNavegador(e)) {
@@ -79,7 +79,7 @@ export function App() {
       }
       if (!e.ctrlKey || e.altKey || e.metaKey || e.isComposing) return;
       const tecla = e.key.toLowerCase();
-      // (también por la posición de la tecla, por si la distribución del teclado da otro carácter)
+      // (also by the key's position, in case the keyboard layout gives another character)
       const pantalla = ATAJOS_PANTALLA.find(
         (a) => a.tecla === tecla || (a.tecla === "," && e.code === "Comma") || e.code === `Digit${a.tecla}`,
       );
@@ -87,7 +87,7 @@ export function App() {
         e.preventDefault();
         setPagina(pantalla.pagina);
       } else if (tecla === "n" && !e.shiftKey) {
-        e.preventDefault(); // (si no, WebView2 abriría una ventana nueva)
+        e.preventDefault(); // (otherwise WebView2 would open a new window)
         setPagina("chat");
         setPedidoNueva((n) => n + 1);
       } else if (tecla === "k") {
@@ -100,7 +100,7 @@ export function App() {
     return () => window.removeEventListener("keydown", alTeclear);
   }, []);
 
-  /** Abre una conversación en el chat (desde el Inicio, «Continuar»). */
+  /** Opens a conversation in the chat (from Home, «Continuar»). */
   const continuar = (id: number) => {
     if (!ocupado) setAbierta(id);
     setPagina("chat");
@@ -119,13 +119,13 @@ export function App() {
             <Biblioteca estado={estado} modelos={modelos} recargar={recargarModelos} instalaciones={instalaciones}
               irAExplorar={() => setPagina("explorar")} />
           )}
-          {/* Explorar también se monta siempre, para no perder la búsqueda al cambiar de pantalla. */}
+          {/* Explorar is also always mounted, so the search is not lost when changing screens. */}
           <div hidden={pagina !== "explorar"}>
             <Explorar instalaciones={instalaciones} visible={pagina === "explorar"}
               modelosInstalados={modelos?.length ?? 0} />
           </div>
-          {/* El chat se monta siempre (oculto si no está a la vista): así no se pierde la conversación al cambiar de
-              pantalla, ni se corta una respuesta a medias. */}
+          {/* The chat is always mounted (hidden when not in view): this way the conversation is not lost when changing
+              screens, and an answer in progress is not cut. */}
           <div className="pantalla-chat" hidden={pagina !== "chat"}>
             <Chat estado={estado} modelos={modelos} irABiblioteca={() => setPagina("biblioteca")}
               conversaciones={conversaciones} recargarConversaciones={recargarConversaciones}
@@ -149,9 +149,9 @@ export function App() {
   );
 }
 
-// ─── Barra lateral ────────────────────────────────────────────────────────────
+// ─── Sidebar ──────────────────────────────────────────────────────────────────
 
-/** Pone el foco en un elemento por su id, en cuanto esté a la vista (tras cambiar de pantalla). */
+/** Focuses an element by its id, as soon as it is in view (after changing screens). */
 export function enfocar(id: string) {
   requestAnimationFrame(() => {
     const el = document.getElementById(id);
@@ -217,7 +217,7 @@ function BarraLateral({ pagina, irA }: { pagina: Pagina; irA: (p: Pagina) => voi
   );
 }
 
-// ─── Barra de estado ──────────────────────────────────────────────────────────
+// ─── Status bar ───────────────────────────────────────────────────────────────
 
 function BarraDeEstado({ estado, error }: { estado: EstadoLocall | null; error: string | null }) {
   let punto = "apagado";

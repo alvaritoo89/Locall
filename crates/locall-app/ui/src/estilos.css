@@ -1,4 +1,4 @@
-/* Estilos de Locall: los de las maquetas de la investigación (blanco y negro, acento verde salvia). */
+/* Locall's styles: those of the research mockups (black and white, sage green accent). */
 
 :root {
   --fondo: #ffffff;
@@ -10,11 +10,11 @@
   --borde-fuerte: #dadada;
   --relleno-regla: #f2f2f2;
   --usado: #a3a3a3;
-  --acento: #5b7464; /* verde salvia */
+  --acento: #5b7464; /* sage green */
   --acento-suave: rgba(91, 116, 100, 0.1);
-  /* Texto en verde: un poco más oscuro que el acento para llegar a 4,5:1 también sobre el fondo verde suave. */
+  /* Green text: a little darker than the accent to reach 4.5:1 also on the light green background. */
   --acento-texto: #526b5b;
-  /* Borde de los campos donde se escribe: 3:1 con el fondo (WCAG 1.4.11). */
+  /* Border of the fields you type into: 3:1 against the background (WCAG 1.4.11). */
   --borde-control: #8f8f8f;
   --aviso: #8a5a00;
   --error: #b42318;
@@ -33,7 +33,7 @@
     --borde-fuerte: #3a3a3a;
     --relleno-regla: #232323;
     --usado: #6b6b6b;
-    --acento: #8fa597; /* verde salvia para fondo oscuro */
+    --acento: #8fa597; /* sage green for the dark background */
     --acento-suave: rgba(143, 165, 151, 0.14);
     --acento-texto: #8fa597;
     --borde-control: #6b6b6b;
@@ -96,7 +96,7 @@ p {
   flex: 1;
 }
 
-/* ─── Estructura ───────────────────────────────────────────────────────────── */
+/* ─── Layout ─────────────────────────────────────────────────────────────── */
 
 .app {
   height: 100%;
@@ -120,7 +120,7 @@ p {
   gap: 24px;
 }
 
-/* ─── Barra lateral ────────────────────────────────────────────────────────── */
+/* ─── Sidebar ────────────────────────────────────────────────────────────── */
 
 .lateral {
   flex: 0 0 220px;
@@ -172,7 +172,7 @@ p {
   outline-offset: 1px;
 }
 
-/* ─── Tarjetas ─────────────────────────────────────────────────────────────── */
+/* ─── Cards ──────────────────────────────────────────────────────────────── */
 
 .tarjeta {
   border: 1px solid var(--borde);
@@ -188,7 +188,7 @@ p {
   border-color: var(--error);
 }
 
-/* Algo pendiente que no es un error (por ejemplo, ajustes por aplicar). */
+/* Something pending that is not an error (for example, settings waiting to be applied). */
 .tarjeta.pendiente {
   border-color: var(--acento);
   background: var(--acento-suave);
@@ -224,7 +224,7 @@ p {
   color: var(--aviso);
 }
 
-/* ─── Regla de memoria ─────────────────────────────────────────────────────── */
+/* ─── Memory bar ─────────────────────────────────────────────────────────── */
 
 .regla {
   display: flex;
@@ -273,7 +273,7 @@ p {
   border: 1px solid var(--borde-fuerte);
 }
 
-/* ─── Barra de estado ──────────────────────────────────────────────────────── */
+/* ─── Status bar ─────────────────────────────────────────────────────────── */
 
 .estado {
   flex: 0 0 34px;
@@ -331,7 +331,7 @@ p {
   background: var(--usado);
 }
 
-/* ─── Parte 5b: tablas, botones, formulario, progreso ─────────────────────── */
+/* ─── Part 5b: tables, buttons, form, progress ───────────────────────────── */
 
 .solo-lectores {
   position: absolute;
@@ -542,7 +542,7 @@ p {
   transition: width 0.2s;
 }
 
-/* La regla de memoria con el modelo cargado (rayado, como en la maqueta) y sus marcas. */
+/* The memory bar with the loaded model (striped, as in the mockup) and its marks. */
 .regla-modelo,
 .muestra.modelo {
   background: repeating-linear-gradient(45deg, var(--acento) 0 4px, var(--acento-suave) 4px 8px);
@@ -561,9 +561,9 @@ p {
   background: var(--acento);
 }
 
-/* ─── Parte 5c: chat ───────────────────────────────────────────────────────── */
+/* ─── Part 5c: chat ──────────────────────────────────────────────────────── */
 
-/* En el chat, el contenido ocupa toda la altura (sin el relleno de las otras pantallas). */
+/* In the chat, the content takes the full height (without the padding of the other screens). */
 .contenido:has(> .pantalla-chat:not([hidden])) {
   padding: 0;
   gap: 0;
@@ -586,7 +586,7 @@ p {
 
 .conversaciones {
   flex: 0 0 230px;
-  /* Sin esto, un título largo ensancharía la columna (un elemento flexible no baja de su contenido más largo). */
+  /* Without this, a long title would widen the column (a flex item does not shrink below its longest content). */
   min-width: 0;
   border-right: 1px solid var(--borde);
   padding: 16px 10px;
@@ -730,7 +730,7 @@ kbd {
   opacity: 0;
 }
 
-/* Se ve al pasar el ratón por el código o al llegar con el teclado. */
+/* Shown when hovering over the code or when reaching it with the keyboard. */
 .contenedor-codigo:hover .copiar.sobre-codigo,
 .copiar.sobre-codigo:focus-visible {
   opacity: 1;
@@ -1166,7 +1166,7 @@ kbd {
   overflow-wrap: anywhere;
 }
 
-/* El botón «Ajustes» del chat y el «Cerrar» del panel solo existen en ventanas estrechas (ver abajo). */
+/* The chat's «Ajustes» button and the panel's «Cerrar» only exist in narrow windows (see below). */
 .boton-ajustes-chat,
 .cerrar-ajustes {
   display: none;
@@ -1191,7 +1191,7 @@ kbd {
     flex: none;
   }
 
-  /* El panel de ajustes, por encima de la conversación (a la derecha) en vez de quitarle sitio. */
+  /* The settings panel, on top of the conversation (on the right) instead of taking space from it. */
   .ajustes-chat {
     display: none;
     position: absolute;

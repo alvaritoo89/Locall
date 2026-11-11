@@ -1,5 +1,5 @@
-/* La web de Locall: la misma estética que la app (blanco y negro, acento verde salvia) y los mismos contrastes
-   medidos (ADR 0021). Sin nada externo: las fuentes van en la propia web. */
+/* Locall's website: the same look as the app (black and white, sage green accent) and the same measured contrasts
+   (ADR 0021). Nothing external: the fonts are served by the website itself. */
 
 @font-face {
   font-family: "Inter Variable";
@@ -131,7 +131,7 @@ pre {
   z-index: 10;
 }
 
-/* ─── Cabecera y pie ─── */
+/* ─── Header and footer ─── */
 
 .cabecera {
   border-bottom: 1px solid var(--borde);
@@ -199,7 +199,7 @@ pre {
   color: var(--tenue);
 }
 
-/* ─── Contenido ─── */
+/* ─── Content ─── */
 
 .contenido {
   padding-top: 48px;
@@ -304,7 +304,7 @@ h2 {
   margin-top: 12px;
 }
 
-/* ─── Comandos con «Copiar» ─── */
+/* ─── Commands with «Copiar» ─── */
 
 .comando {
   position: relative;
@@ -327,7 +327,7 @@ h2 {
 }
 
 .copiar {
-  display: none; /* solo con JavaScript (sin él, el texto se puede seleccionar a mano) */
+  display: none; /* only with JavaScript (without it, the text can be selected by hand) */
   border: 1px solid var(--borde-fuerte);
   border-radius: 4px;
   background: var(--fondo);
@@ -342,11 +342,11 @@ h2 {
   display: inline-block;
 }
 
-/* ─── Biblioteca de modelos ─── */
+/* ─── Model library ─── */
 
 .buscador,
 .buscador-nota {
-  display: none; /* solo con JavaScript */
+  display: none; /* only with JavaScript */
 }
 
 .con-js .buscador {
@@ -366,7 +366,7 @@ h2 {
   min-width: 0;
   min-height: 44px;
   padding: 0 14px;
-  border: 1px solid #8f8f8f; /* 3:1 con el fondo (WCAG 1.4.11) */
+  border: 1px solid #8f8f8f; /* 3:1 against the background (WCAG 1.4.11) */
   border-radius: 6px;
   background: var(--fondo);
   color: var(--texto);
@@ -384,7 +384,7 @@ h2 {
   margin-top: 8px;
 }
 
-/* Los nombres de repositorio pueden ser largos: el comando salta de línea en vez de cortarse. */
+/* Repository names can be long: the command wraps instead of being cut. */
 .lista-hf .comando code {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -395,7 +395,7 @@ h2 {
 }
 
 .filtros {
-  display: none; /* solo con JavaScript */
+  display: none; /* only with JavaScript */
   gap: 8px;
   flex-wrap: wrap;
   margin: 0 0 20px;

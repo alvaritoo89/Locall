@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.0.1",
   "type": "module",
-  "description": "Interfaz de la aplicación de escritorio de Locall (React + TypeScript + Vite, dentro de Tauri).",
+  "description": "User interface of the Locall desktop app (React + TypeScript + Vite, inside Tauri).",
   "license": "Apache-2.0",
   "scripts": {
     "dev": "vite",
