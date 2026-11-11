@@ -1,15 +1,15 @@
-//! Registros de Locall: lo que **hace** el programa, para poder entender un fallo después.
+//! Locall's logs: what the program **does**, so a failure can be understood afterwards.
 //!
-//! - Un archivo por día: `registros\locall-AAAA-MM-DD.log`, con la hora local. Los de más de `registros_dias`
-//!   días se borran al iniciar.
-//! - Cada crate escribe con las macros del crate `log` (`log::info!`, `log::warn!`…), sin saber adónde van; aquí
-//!   está el "escritor" que las guarda.
-//! - Solo se guardan los mensajes de **nuestros crates** (`locall…`) de nivel `INFO` o más importante. Los de otros
-//!   crates (por ejemplo, `ureq`) no se guardan.
+//! - One file per day: `registros\locall-YYYY-MM-DD.log`, in local time. Those older than `registros_dias` days are
+//!   deleted on startup.
+//! - Each crate writes with the `log` crate's macros (`log::info!`, `log::warn!`…), without knowing where they go;
+//!   the "writer" that saves them is here.
+//! - Only messages from **our crates** (`locall…`) at `INFO` level or above are saved. Those from other crates (for
+//!   example, `ureq`) are not.
 //!
-//! **Privacidad (regla 17, ADR 0014):** se anota lo que hace Locall (modelo cargado, descarga terminada, errores,
-//! tiempos), **nunca** el contenido de las conversaciones, las preguntas, las respuestas ni las claves. Esto es una
-//! norma para quien escribe `log::info!` en Locall, y una prueba con el motor real comprueba que se cumple.
+//! **Privacy (rule 17, ADR 0014):** what Locall does is recorded (model loaded, download finished, errors, timings),
+//! **never** the content of conversations, questions, answers or keys. This is a rule for whoever writes
+//! `log::info!` in Locall, and a test with the real engine checks it is followed.
 
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Write};
@@ -19,15 +19,15 @@ use std::time::{Duration, SystemTime};
 
 use log::{Level, LevelFilter, Log, Metadata, Record};
 
-/// Prefijo de los crates cuyos mensajes se guardan.
+/// Prefix of the crates whose messages are saved.
 const PREFIJO_PROPIO: &str = "locall";
 
-/// Lo que puede fallar al iniciar los registros.
+/// What can fail when starting the logs.
 #[derive(Debug)]
 pub enum ErrorRegistros {
-    /// Ya se iniciaron en este proceso (solo puede haber un escritor global).
+    /// They were already started in this process (there can only be one global writer).
     YaIniciados,
-    /// No se pudo crear la carpeta o limpiar los antiguos.
+    /// The folder could not be created or the old ones could not be cleaned.
     Io(io::Error),
 }
 
@@ -49,9 +49,9 @@ impl std::error::Error for ErrorRegistros {
     }
 }
 
-/// Inicia los registros en `carpeta`, borrando antes los de más de `dias` días. Devuelve cuántos se borraron.
+/// Starts the logs in `carpeta`, first deleting those older than `dias` days. Returns how many were deleted.
 ///
-/// Se llama **una vez**, al arrancar Locall.
+/// Called **once**, when Locall starts.
 pub fn iniciar(carpeta: &Path, dias: u32) -> Result<usize, ErrorRegistros> {
     fs::create_dir_all(carpeta).map_err(ErrorRegistros::Io)?;
     let borrados = limpiar(carpeta, dias, SystemTime::now()).map_err(ErrorRegistros::Io)?;
@@ -64,13 +64,13 @@ pub fn iniciar(carpeta: &Path, dias: u32) -> Result<usize, ErrorRegistros> {
     Ok(borrados)
 }
 
-/// Nombre del archivo de un día.
+/// File name for a day.
 pub fn nombre_del_dia(fecha: &str) -> String {
     format!("locall-{fecha}.log")
 }
 
-/// Borra los registros de Locall (`locall-*.log`) modificados hace más de `dias` días. No toca ningún otro archivo
-/// (por ejemplo, el registro del motor).
+/// Deletes Locall's logs (`locall-*.log`) modified more than `dias` days ago. It does not touch any other file (for
+/// example, the engine's log).
 pub fn limpiar(carpeta: &Path, dias: u32, ahora: SystemTime) -> io::Result<usize> {
     let limite = Duration::from_secs(u64::from(dias) * 24 * 60 * 60);
     let mut borrados = 0;
@@ -96,17 +96,17 @@ pub fn limpiar(carpeta: &Path, dias: u32, ahora: SystemTime) -> io::Result<usize
     Ok(borrados)
 }
 
-/// Da formato a una línea: `2026-11-08 18:42:03.123 INFO  locall_scheduler: modelo cargado`.
+/// Formats a line: `2026-11-08 18:42:03.123 INFO  locall_scheduler: modelo cargado`.
 pub fn linea(cuando: &str, nivel: Level, origen: &str, mensaje: &str) -> String {
-    // Un mensaje de varias líneas se queda en una sola, para que cada línea del archivo sea un suceso.
+    // A multi-line message is kept on a single line, so each line of the file is one event.
     let mensaje = mensaje.replace(['\r', '\n'], " ");
     format!("{cuando} {nivel:<5} {origen}: {mensaje}\n")
 }
 
-/// El escritor global.
+/// The global writer.
 struct Escritor {
     carpeta: PathBuf,
-    /// El archivo del día abierto ahora (fecha, archivo). Con candado: escriben varios hilos.
+    /// The day's file currently open (date, file). Behind a lock: several threads write.
     abierto: Mutex<Option<(String, File)>>,
 }
 
@@ -130,14 +130,14 @@ impl Log for Escritor {
             &record.args().to_string(),
         );
 
-        // Si el disco falla, se pierde la línea: un registro nunca debe hacer fallar a Locall.
+        // If the disk fails, the line is lost: a log must never make Locall fail.
         let mut abierto = self
             .abierto
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let hay_que_abrir = abierto.as_ref().is_none_or(|(dia, _)| *dia != fecha);
         if hay_que_abrir {
-            // Cambio de día (o primera línea): se abre el archivo del nuevo día.
+            // Day change (or first line): the new day's file is opened.
             *abierto = OpenOptions::new()
                 .create(true)
                 .append(true)
@@ -192,10 +192,10 @@ mod pruebas {
         let ahora = SystemTime::now();
         let hace = |dias: u64| ahora - Duration::from_secs(dias * 24 * 60 * 60);
         let archivos = [
-            ("locall-2026-10-01.log", hace(30)), // antiguo: se borra
-            ("locall-2026-11-05.log", hace(3)),  // reciente: se queda
-            ("motor.log", hace(30)),             // no es nuestro: se queda
-            ("notas.txt", hace(30)),             // tampoco
+            ("locall-2026-10-01.log", hace(30)), // old: deleted
+            ("locall-2026-11-05.log", hace(3)),  // recent: kept
+            ("motor.log", hace(30)),             // not ours: kept
+            ("notas.txt", hace(30)),             // neither
         ];
         for (nombre, cuando) in archivos {
             let ruta = carpeta.join(nombre);

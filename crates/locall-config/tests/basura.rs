@@ -1,5 +1,5 @@
-//! Entradas basura contra los ajustes (ADR 0026): `config.toml` lo puede editar cualquiera a mano; un archivo mal
-//! escrito debe dar un error claro, nunca cerrar Locall de golpe.
+//! Malformed inputs against the settings (ADR 0026): anyone can edit `config.toml` by hand; a malformed file must
+//! give a clear error, never crash Locall.
 
 use locall_config::lector::Valor;
 use locall_config::{ARCHIVO_POR_DEFECTO, Config, texto_con_cambios};

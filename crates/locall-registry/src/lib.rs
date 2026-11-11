@@ -1,16 +1,16 @@
 //! # locall-registry
 //!
-//! El **registro de modelos instalados**: una base de datos SQLite (un solo archivo, `locall.db`) donde Locall
-//! apunta qué modelo es cada archivo del almacén, de dónde vino, su licencia y cuándo se usó.
+//! The **registry of installed models**: a SQLite database (a single file, `locall.db`) where Locall records which
+//! model each store file belongs to, where it came from, its license and when it was used.
 //!
-//! - **Transacciones:** registrar o eliminar un modelo se hace entero o no se hace (si se va la luz a mitad, no queda
-//!   nada a medias).
-//! - **Migraciones:** la base de datos lleva un número de versión (`PRAGMA user_version`). Al abrirla, Locall aplica
-//!   los cambios que falten, en orden, sin perder datos. Si la creó una versión **más nueva** de Locall, se niega a
-//!   tocarla en lugar de estropearla.
-//! - **Tipos seguros:** huellas, identificadores y nombres usan los tipos validados de `locall-store`; si alguien
-//!   manipulara el archivo a mano, los datos inválidos se detectan al leerlos.
-//! - **Fechas** como segundos desde el 1 de enero de 1970 (UTC), sin dependencias extra.
+//! - **Transactions:** registering or removing a model happens entirely or not at all (if the power goes out
+//!   halfway, nothing is left half-done).
+//! - **Migrations:** the database carries a version number (`PRAGMA user_version`). When opening it, Locall applies
+//!   the missing changes, in order, without losing data. If a **newer** version of Locall created it, it refuses to
+//!   touch it instead of breaking it.
+//! - **Safe types:** hashes, identifiers and names use the validated types from `locall-store`; if someone tampered
+//!   with the file by hand, invalid data is detected when it is read.
+//! - **Dates** as seconds since January 1, 1970 (UTC), with no extra dependencies.
 
 use std::collections::BTreeSet;
 use std::fmt;
@@ -20,12 +20,12 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use locall_store::{Huella, NombreArchivo, Segmento};
 use rusqlite::{Connection, OptionalExtension, Row, Transaction, params};
 
-// ─── Esquema y migraciones ────────────────────────────────────────────────────
+// ─── Schema and migrations ────────────────────────────────────────────────────
 
-/// Cada elemento es una migración: la posición 0 lleva la base de datos de la versión 0 a la 1, la 1 de la 1 a
-/// la 2, etc. **Nunca se modifica una migración ya publicada**: los cambios van en una migración nueva al final.
+/// Each element is a migration: position 0 takes the database from version 0 to 1, position 1 from 1 to 2, etc.
+/// **A published migration is never modified**: changes go into a new migration at the end.
 const MIGRACIONES: &[&str] = &[
-    // Versión 1: modelos y sus archivos.
+    // Version 1: models and their files.
     "
     CREATE TABLE modelos (
         id            TEXT    PRIMARY KEY,
@@ -52,7 +52,7 @@ const MIGRACIONES: &[&str] = &[
 
     CREATE INDEX archivos_por_huella ON archivos(huella);
     ",
-    // Versión 2: conversaciones guardadas y sus mensajes (Fase 5, parte 5d).
+    // Version 2: saved conversations and their messages (Phase 5, part 5d).
     "
     CREATE TABLE conversaciones (
         id           INTEGER PRIMARY KEY,
@@ -82,12 +82,12 @@ const MIGRACIONES: &[&str] = &[
     ",
 ];
 
-/// Versión del esquema que entiende esta versión de Locall.
+/// Schema version this version of Locall understands.
 pub const VERSION_ESQUEMA: u32 = MIGRACIONES.len() as u32;
 
-// ─── Tipos públicos ───────────────────────────────────────────────────────────
+// ─── Public types ─────────────────────────────────────────────────────────────
 
-/// Un archivo de un modelo.
+/// A file of a model.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ArchivoModelo {
     pub nombre: NombreArchivo,
@@ -95,27 +95,27 @@ pub struct ArchivoModelo {
     pub bytes: u64,
 }
 
-/// Los datos para registrar un modelo recién instalado.
+/// The data to register a freshly installed model.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModeloNuevo {
-    /// Identificador corto y seguro, por ejemplo `qwen3-4b`.
+    /// Short, safe identifier, for example `qwen3-4b`.
     pub id: Segmento,
-    /// Nombre para mostrar, por ejemplo `Qwen3 4B`.
+    /// Display name, for example `Qwen3 4B`.
     pub nombre: String,
-    /// De dónde viene, por ejemplo `hf:Qwen/Qwen3-4B-GGUF` o `local`.
+    /// Where it comes from, for example `hf:Qwen/Qwen3-4B-GGUF` or `local`.
     pub origen: String,
-    /// Revisión (commit) exacta del origen.
+    /// Exact revision (commit) of the source.
     pub revision: String,
     pub cuantizacion: Option<String>,
     pub licencia: Option<String>,
     pub arquitectura: Option<String>,
     pub contexto_max: Option<u64>,
-    /// `true` si viene del catálogo verificado; `false` si se importó del disco.
+    /// `true` if it comes from the verified catalog; `false` if it was imported from disk.
     pub verificado: bool,
     pub archivos: Vec<ArchivoModelo>,
 }
 
-/// Un modelo registrado.
+/// A registered model.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Modelo {
     pub id: Segmento,
@@ -127,21 +127,21 @@ pub struct Modelo {
     pub arquitectura: Option<String>,
     pub contexto_max: Option<u64>,
     pub verificado: bool,
-    /// Segundos desde 1970 (UTC).
+    /// Seconds since 1970 (UTC).
     pub instalado: u64,
     pub ultimo_uso: Option<u64>,
-    /// En orden (en un modelo dividido, la parte 1 primero).
+    /// In order (in a split model, part 1 first).
     pub archivos: Vec<ArchivoModelo>,
 }
 
 impl Modelo {
-    /// Lo que ocupan todos sus archivos.
+    /// The space all its files take.
     pub fn bytes_totales(&self) -> u64 {
         self.archivos.iter().map(|a| a.bytes).sum()
     }
 }
 
-/// Segundos desde el 1 de enero de 1970 (UTC), la forma en que el registro guarda las fechas.
+/// Seconds since January 1, 1970 (UTC), the way the registry stores dates.
 pub fn ahora() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -149,25 +149,25 @@ pub fn ahora() -> u64 {
         .as_secs()
 }
 
-// ─── Errores ──────────────────────────────────────────────────────────────────
+// ─── Errors ───────────────────────────────────────────────────────────────────
 
-/// Lo que puede salir mal en el registro.
+/// What can go wrong in the registry.
 #[derive(Debug)]
 pub enum ErrorRegistro {
-    /// Error de la base de datos.
+    /// Database error.
     Sqlite(rusqlite::Error),
-    /// Ya hay un modelo con ese identificador.
+    /// There is already a model with that identifier.
     YaExiste(String),
-    /// No hay ningún modelo con ese identificador.
+    /// There is no model with that identifier.
     NoEncontrado(String),
-    /// Un modelo necesita al menos un archivo.
+    /// A model needs at least one file.
     SinArchivos,
-    /// Un dato guardado no es válido (la base de datos se ha modificado a mano o está dañada).
+    /// A stored value is not valid (the database was modified by hand or is damaged).
     DatoInvalido {
         campo: &'static str,
         detalle: String,
     },
-    /// La base de datos es de una versión más nueva de Locall: no se toca para no estropearla.
+    /// The database belongs to a newer version of Locall: it is not touched so as not to break it.
     VersionFutura { encontrada: u32, soportada: u32 },
 }
 
@@ -210,9 +210,9 @@ impl From<rusqlite::Error> for ErrorRegistro {
 
 type Resultado<T> = Result<T, ErrorRegistro>;
 
-// ─── Conversiones entre Rust y SQLite ─────────────────────────────────────────
+// ─── Conversions between Rust and SQLite ──────────────────────────────────────
 
-/// SQLite guarda enteros con signo (i64); nuestros tamaños son u64.
+/// SQLite stores signed integers (i64); our sizes are u64.
 fn a_i64(valor: u64, campo: &'static str) -> Resultado<i64> {
     i64::try_from(valor).map_err(|_| ErrorRegistro::DatoInvalido {
         campo,
@@ -234,44 +234,44 @@ fn invalido(campo: &'static str, e: impl fmt::Display) -> ErrorRegistro {
     }
 }
 
-// ─── El registro ──────────────────────────────────────────────────────────────
+// ─── The registry ─────────────────────────────────────────────────────────────
 
-/// El registro de modelos, sobre una base de datos SQLite.
+/// The model registry, on top of a SQLite database.
 pub struct Registro {
     conexion: Connection,
 }
 
 impl Registro {
-    /// Abre (o crea) el registro en un archivo y lo actualiza a la versión actual del esquema.
+    /// Opens (or creates) the registry in a file and upgrades it to the current schema version.
     pub fn abrir(ruta: &Path) -> Resultado<Registro> {
         let conexion = Connection::open(ruta)?;
-        // WAL: permite leer mientras otro proceso (la CLI, la app) escribe.
+        // WAL: allows reading while another process (the CLI, the app) writes.
         conexion.pragma_update(None, "journal_mode", "WAL")?;
         Registro::preparar(conexion)
     }
 
-    /// Un registro en memoria (para pruebas): desaparece al cerrarlo.
+    /// An in-memory registry (for tests): it disappears when closed.
     pub fn en_memoria() -> Resultado<Registro> {
         Registro::preparar(Connection::open_in_memory()?)
     }
 
     fn preparar(mut conexion: Connection) -> Resultado<Registro> {
-        conexion.pragma_update(None, "foreign_keys", "ON")?; // que ON DELETE CASCADE funcione
-        // Lo borrado se rellena con ceros: una conversación eliminada no debe poder recuperarse del archivo.
+        conexion.pragma_update(None, "foreign_keys", "ON")?; // so that ON DELETE CASCADE works
+        // Deleted data is filled with zeros: a deleted conversation must not be recoverable from the file.
         conexion.pragma_update(None, "secure_delete", "ON")?;
-        conexion.busy_timeout(Duration::from_secs(5))?; // esperar si otro proceso está escribiendo
+        conexion.busy_timeout(Duration::from_secs(5))?; // wait if another process is writing
         migrar(&mut conexion)?;
         Ok(Registro { conexion })
     }
 
-    /// Versión del esquema de la base de datos abierta.
+    /// Schema version of the open database.
     pub fn version_esquema(&self) -> Resultado<u32> {
         Ok(self
             .conexion
             .pragma_query_value(None, "user_version", |f| f.get(0))?)
     }
 
-    /// Registra un modelo recién instalado (todo o nada).
+    /// Registers a freshly installed model (all or nothing).
     pub fn registrar(&mut self, m: &ModeloNuevo, instalado: u64) -> Resultado<()> {
         if m.archivos.is_empty() {
             return Err(ErrorRegistro::SinArchivos);
@@ -304,7 +304,7 @@ impl Registro {
                 a_i64(instalado, "instalado")?,
             ],
         )?;
-        // Ordenados por nombre: en un modelo dividido, la parte -00001-of- queda la primera.
+        // Sorted by name: in a split model, the -00001-of- part comes first.
         let mut archivos: Vec<&ArchivoModelo> = m.archivos.iter().collect();
         archivos.sort_by(|a, b| a.nombre.cmp(&b.nombre));
         for (orden, a) in archivos.iter().enumerate() {
@@ -319,11 +319,11 @@ impl Registro {
                 ],
             )?;
         }
-        tx.commit()?; // si algo falló antes, `tx` se descarta y no queda nada
+        tx.commit()?; // if something failed earlier, `tx` is dropped and nothing remains
         Ok(())
     }
 
-    /// Todos los modelos, ordenados por nombre.
+    /// All the models, sorted by name.
     pub fn listar(&self) -> Resultado<Vec<Modelo>> {
         let ids: Vec<String> = {
             let mut consulta = self
@@ -341,12 +341,12 @@ impl Registro {
             .collect()
     }
 
-    /// Un modelo por su identificador.
+    /// A model by its identifier.
     pub fn obtener(&self, id: &Segmento) -> Resultado<Option<Modelo>> {
         self.leer(id.como_str())
     }
 
-    /// Apunta que el modelo se acaba de usar.
+    /// Records that the model was just used.
     pub fn marcar_uso(&self, id: &Segmento, momento: u64) -> Resultado<()> {
         let cambiadas = self.conexion.execute(
             "UPDATE modelos SET ultimo_uso = ?1 WHERE id = ?2",
@@ -358,8 +358,8 @@ impl Registro {
         Ok(())
     }
 
-    /// Elimina un modelo del registro y devuelve las huellas de sus archivos, para que el almacén pueda ofrecer
-    /// limpiarlas si ya nadie las usa. (Los archivos del almacén no se tocan aquí.)
+    /// Removes a model from the registry and returns the hashes of its files, so the store can offer to clean them up
+    /// if nobody uses them anymore. (The store files are not touched here.)
     pub fn eliminar(&mut self, id: &Segmento) -> Resultado<Vec<Huella>> {
         let tx = self.conexion.transaction()?;
         let huellas = huellas_de(&tx, id.como_str())?;
@@ -371,8 +371,8 @@ impl Registro {
         Ok(huellas)
     }
 
-    /// Todas las huellas que usa algún modelo registrado. Es la segunda comprobación (además del número de
-    /// enlaces duros) antes de ofrecer borrar un archivo del almacén.
+    /// All the hashes used by some registered model. It is the second check (besides the hard link count) before
+    /// offering to delete a file from the store.
     pub fn huellas_en_uso(&self) -> Resultado<BTreeSet<Huella>> {
         let mut consulta = self
             .conexion
@@ -438,7 +438,7 @@ impl Registro {
     }
 }
 
-/// Una fila de `modelos` tal como sale de SQLite, antes de validarla.
+/// A `modelos` row as it comes out of SQLite, before validating it.
 struct FilaModelo {
     id: String,
     nombre: String,
@@ -483,7 +483,7 @@ fn huellas_de(tx: &Transaction<'_>, id: &str) -> Resultado<Vec<Huella>> {
         .collect()
 }
 
-/// Aplica, en orden y cada una en su transacción, las migraciones que falten.
+/// Applies the missing migrations, in order and each in its own transaction.
 fn migrar(conexion: &mut Connection) -> Resultado<()> {
     let actual: u32 = conexion.pragma_query_value(None, "user_version", |f| f.get(0))?;
     if actual > VERSION_ESQUEMA {

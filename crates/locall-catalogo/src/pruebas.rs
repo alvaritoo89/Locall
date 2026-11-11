@@ -1,10 +1,10 @@
-//! Validación del contenido (sin firma: la firma se prueba en `tests/firma.rs`).
+//! Content validation (no signature: the signature is tested in `tests/firma.rs`).
 
 use serde_json::{Value, json};
 
 use crate::{ErrorCatalogo, FORMATO, leer};
 
-/// Un catálogo válido mínimo, para estropearlo campo a campo.
+/// A minimal valid catalog, to break field by field.
 fn base() -> Value {
     json!({
         "format": 1,
@@ -39,7 +39,7 @@ fn leer_json(v: &Value) -> Result<crate::Catalogo, ErrorCatalogo> {
     leer(v.to_string().as_bytes())
 }
 
-/// Aplica un cambio a la base y devuelve el mensaje de error.
+/// Applies a change to the base and returns the error message.
 fn error_con(cambio: impl FnOnce(&mut Value)) -> String {
     let mut v = base();
     cambio(&mut v);
@@ -80,7 +80,7 @@ fn un_formato_mas_nuevo_pide_actualizar() {
     assert!(mensaje.contains("actualiza Locall"), "{mensaje}");
 }
 
-/// Un cambio que estropea la base y una pista de lo que debe decir el error.
+/// A change that breaks the base, and a hint of what the error must say.
 type Caso = (Box<dyn FnOnce(&mut Value)>, &'static str);
 
 #[test]

@@ -1,4 +1,4 @@
-//! El escritor de registros de verdad (es global: un solo `iniciar` por proceso, por eso es una sola prueba).
+//! The real log writer (it is global: a single `iniciar` per process, which is why it is a single test).
 
 use locall_config::registros::{self, ErrorRegistros};
 
@@ -26,7 +26,7 @@ fn guarda_solo_lo_nuestro_y_en_el_archivo_del_dia() {
     );
     assert!(lineas[1].contains("WARN  locall_prueba: reintento de descarga"));
 
-    // Solo puede haber un escritor por proceso.
+    // There can only be one writer per process.
     assert!(matches!(
         registros::iniciar(&carpeta, 7),
         Err(ErrorRegistros::YaIniciados)

@@ -1,7 +1,7 @@
-//! Descarga un archivo al almacén mostrando el progreso. Ctrl+C lo interrumpe (y la próxima vez continúa).
+//! Downloads a file into the store showing progress. Ctrl+C interrupts it (and the next run resumes).
 //!
 //! ```text
-//! cargo run -p locall-download --example descargar -- <carpeta_almacen> <url> <sha256> <bytes>
+//! cargo run -p locall-download --example descargar -- <store_folder> <url> <sha256> <bytes>
 //! ```
 
 use std::io::Write;

@@ -1,23 +1,23 @@
 //! # locall-gguf
 //!
-//! Lector de **cabeceras GGUF** (versión 3), el formato de los modelos de llama.cpp.
+//! Reader for **GGUF headers** (version 3), the format of llama.cpp models.
 //!
-//! Lee la "etiqueta" del modelo (metadatos y descripción de los tensores) **sin cargar los pesos**, para:
-//! - conocer la arquitectura, el número de capas, el contexto máximo, etc.;
-//! - comprobar la compatibilidad antes de cargar un modelo;
-//! - estimar la memoria de la caché KV (ver ADR 0005).
+//! Reads the model's "label" (metadata and tensor descriptions) **without loading the weights**, in order to:
+//! - know the architecture, number of layers, maximum context, etc.;
+//! - check compatibility before loading a model;
+//! - estimate the KV cache memory (see ADR 0005).
 //!
-//! Formato (según `ggml/include/gguf.h` de llama.cpp), todo en *little-endian*:
-//! 1. Firma `GGUF` (4 bytes) y versión (`u32`).
-//! 2. Número de tensores y de pares clave-valor (`i64`).
-//! 3. Los pares clave-valor (metadatos).
-//! 4. La descripción de cada tensor (nombre, dimensiones, tipo, posición).
+//! Format (per llama.cpp's `ggml/include/gguf.h`), all *little-endian*:
+//! 1. Magic `GGUF` (4 bytes) and version (`u32`).
+//! 2. Number of tensors and of key-value pairs (`i64`).
+//! 3. The key-value pairs (metadata).
+//! 4. The description of each tensor (name, dimensions, type, offset).
 //!
-//! ## Seguridad
+//! ## Security
 //!
-//! Un archivo GGUF descargado es **entrada no confiable**: podría estar dañado o manipulado. Por eso cada longitud
-//! leída del archivo se comprueba contra un **límite** antes de reservar memoria, y los errores se devuelven como
-//! [`ErrorGguf`] en lugar de provocar un cierre del programa.
+//! A downloaded GGUF file is **untrusted input**: it could be damaged or tampered with. That is why every length
+//! read from the file is checked against a **limit** before allocating memory, and errors are returned as
+//! [`ErrorGguf`] instead of crashing the program.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
@@ -25,35 +25,35 @@ use std::fs::File;
 use std::io::{self, BufReader, Read};
 use std::path::Path;
 
-/// Firma con la que empieza todo archivo GGUF.
+/// Magic every GGUF file starts with.
 pub const MAGIA: [u8; 4] = *b"GGUF";
-/// Única versión del formato que admitimos (ADR 0004).
+/// The only format version we accept (ADR 0004).
 pub const VERSION_SOPORTADA: u32 = 3;
 
-// ─── Límites de seguridad ─────────────────────────────────────────────────────
-// Holgados para modelos reales (la cabecera de un Qwen ocupa ~6 MB), pero impiden que un archivo malicioso nos
-// haga reservar gigas de memoria o recorrer listas infinitas.
+// ─── Safety limits ────────────────────────────────────────────────────────────
+// Generous for real models (a Qwen header takes ~6 MB), but they stop a malicious file from making us allocate
+// gigabytes of memory or walk endless lists.
 
-/// Longitud máxima de un texto (claves, plantillas de chat…).
+/// Maximum length of a text (keys, chat templates…).
 const MAX_TEXTO: u64 = 64 * 1024 * 1024;
-/// Número máximo de pares clave-valor.
+/// Maximum number of key-value pairs.
 const MAX_METADATOS: u64 = 100_000;
-/// Número máximo de tensores.
+/// Maximum number of tensors.
 const MAX_TENSORES: u64 = 1_000_000;
-/// Número máximo de dimensiones de un tensor (llama.cpp usa 4).
+/// Maximum number of dimensions of a tensor (llama.cpp uses 4).
 const MAX_DIMENSIONES: u64 = 8;
-/// Número máximo de elementos de una lista (el vocabulario ronda los 150.000).
+/// Maximum number of elements in a list (the vocabulary is around 150,000).
 const MAX_ELEMENTOS_LISTA: u64 = 100_000_000;
-/// Profundidad máxima de listas dentro de listas.
+/// Maximum depth of lists inside lists.
 const MAX_PROFUNDIDAD: u32 = 4;
-/// Lo que se reserva de entrada para un texto (después crece según llegan los datos).
+/// What is allocated up front for a text (it then grows as the data arrives).
 const RESERVA_INICIAL_TEXTO: u64 = 64 * 1024;
 
-// ─── Tipos públicos ───────────────────────────────────────────────────────────
+// ─── Public types ─────────────────────────────────────────────────────────────
 
-/// Un valor de los metadatos.
+/// A metadata value.
 ///
-/// Las listas no guardan su contenido (el vocabulario ocupa varios MB): solo su tipo y su longitud.
+/// Lists do not keep their content (the vocabulary takes several MB): only their type and length.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Valor {
     U8(u8),
@@ -72,7 +72,7 @@ pub enum Valor {
 }
 
 impl Valor {
-    /// Devuelve el valor como número entero sin signo, si lo es (y no es negativo).
+    /// Returns the value as an unsigned integer, if it is one (and not negative).
     pub fn como_u64(&self) -> Option<u64> {
         match *self {
             Valor::U8(v) => Some(u64::from(v)),
@@ -87,7 +87,7 @@ impl Valor {
         }
     }
 
-    /// Devuelve el valor como texto, si lo es.
+    /// Returns the value as text, if it is text.
     pub fn como_texto(&self) -> Option<&str> {
         match self {
             Valor::Texto(t) => Some(t),
@@ -96,28 +96,28 @@ impl Valor {
     }
 }
 
-/// Lo que puede salir mal al leer una cabecera.
+/// What can go wrong when reading a header.
 #[derive(Debug)]
 pub enum ErrorGguf {
-    /// Error de lectura del sistema (archivo inexistente, sin permisos…).
+    /// System read error (file not found, no permissions…).
     Io(io::Error),
-    /// El archivo no empieza por `GGUF`.
+    /// The file does not start with `GGUF`.
     NoEsGguf,
-    /// Versión del formato distinta de la 3.
+    /// Format version other than 3.
     VersionNoSoportada(u32),
-    /// El archivo se acaba antes de lo que dice su propia cabecera.
+    /// The file ends earlier than its own header says.
     Truncado,
-    /// Un tipo de valor que no existe en el formato.
+    /// A value type that does not exist in the format.
     TipoDesconocido(u32),
-    /// Un texto que no es UTF-8 válido.
+    /// A text that is not valid UTF-8.
     TextoNoUtf8,
-    /// Una cantidad leída del archivo supera nuestros límites de seguridad.
+    /// A quantity read from the file exceeds our safety limits.
     FueraDeLimite {
         que: &'static str,
         valor: u64,
         maximo: u64,
     },
-    /// Listas anidadas más allá de lo razonable.
+    /// Lists nested beyond what is reasonable.
     ListaDemasiadoProfunda,
 }
 
@@ -157,7 +157,7 @@ impl std::error::Error for ErrorGguf {
 
 impl From<io::Error> for ErrorGguf {
     fn from(e: io::Error) -> Self {
-        // "Fin de archivo inesperado" significa, para nosotros, un archivo truncado.
+        // "Unexpected end of file" means, for us, a truncated file.
         if e.kind() == io::ErrorKind::UnexpectedEof {
             ErrorGguf::Truncado
         } else {
@@ -166,20 +166,20 @@ impl From<io::Error> for ErrorGguf {
     }
 }
 
-/// La cabecera de un modelo GGUF.
+/// The header of a GGUF model.
 #[derive(Debug, Clone)]
 pub struct Cabecera {
     pub version: u32,
     pub tensores: u64,
     pub metadatos: BTreeMap<String, Valor>,
-    /// Bytes que ocupa la cabecera completa (metadatos + descripción de tensores).
+    /// Bytes taken by the whole header (metadata + tensor descriptions).
     pub bytes_cabecera: u64,
-    /// Tipos de datos (cuantización) que usan los tensores, por su número en ggml (`ggml_type`).
-    /// Sirve para comprobar que el motor sabe leerlos.
+    /// Data types (quantization) used by the tensors, by their ggml number (`ggml_type`).
+    /// Used to check that the engine can read them.
     pub tipos_tensor: BTreeSet<u32>,
 }
 
-/// Los datos de la cabecera que más interesan a Locall.
+/// The header data Locall cares about most.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Resumen {
     pub arquitectura: Option<String>,
@@ -191,17 +191,17 @@ pub struct Resumen {
     pub dim_valor: Option<u64>,
     pub vocabulario: Option<u64>,
     pub plantilla_chat: bool,
-    /// Número de archivos si el modelo está dividido (`split.count`).
+    /// Number of files if the model is split (`split.count`).
     pub partes: Option<u64>,
 }
 
 impl Cabecera {
-    /// La arquitectura del modelo (`general.architecture`), por ejemplo `"qwen2"`.
+    /// The model architecture (`general.architecture`), for example `"qwen2"`.
     pub fn arquitectura(&self) -> Option<&str> {
         self.metadatos.get("general.architecture")?.como_texto()
     }
 
-    /// Lee un número de las claves propias de la arquitectura: `"<arquitectura>.<sufijo>"`.
+    /// Reads a number from the architecture's own keys: `"<architecture>.<suffix>"`.
     fn de_arquitectura(&self, sufijo: &str) -> Option<u64> {
         let arquitectura = self.arquitectura()?;
         self.metadatos
@@ -209,11 +209,11 @@ impl Cabecera {
             .como_u64()
     }
 
-    /// Reúne los datos principales en un [`Resumen`].
+    /// Gathers the main data into a [`Resumen`].
     pub fn resumen(&self) -> Resumen {
         let cabezas = self.de_arquitectura("attention.head_count");
         let embebido = self.de_arquitectura("embedding_length");
-        // Si el modelo no indica la dimensión de cada cabeza, se calcula: embebido / cabezas.
+        // If the model does not state the dimension of each head, it is computed: embedding / heads.
         let dim_calculada = match (embebido, cabezas) {
             (Some(e), Some(c)) if c > 0 => Some(e / c),
             _ => None,
@@ -239,11 +239,11 @@ impl Cabecera {
         }
     }
 
-    /// Estima los bytes de la caché KV para `contexto` tokens.
+    /// Estimates the KV cache bytes for `contexto` tokens.
     ///
-    /// Fórmula: contexto × capas × cabezas_kv × (dim_clave + dim_valor) × bytes_por_elemento.
-    /// Con la caché en `f16`, `bytes_por_elemento` es 2. Devuelve `None` si faltan datos o hay desbordamiento.
-    /// Es una aproximación: no contempla atención por ventana (SWA) ni modelos recurrentes.
+    /// Formula: context × layers × kv_heads × (key_dim + value_dim) × bytes_per_element.
+    /// With the cache in `f16`, `bytes_per_element` is 2. Returns `None` if data is missing or on overflow.
+    /// It is an approximation: it does not account for sliding-window attention (SWA) or recurrent models.
     pub fn cache_kv_bytes(&self, contexto: u64, bytes_por_elemento: u64) -> Option<u64> {
         let r = self.resumen();
         let capas = r.capas?;
@@ -257,9 +257,9 @@ impl Cabecera {
     }
 }
 
-// ─── Lectura ──────────────────────────────────────────────────────────────────
+// ─── Reading ──────────────────────────────────────────────────────────────────
 
-/// Lee una cabecera GGUF desde cualquier fuente de bytes (archivo, memoria, red…).
+/// Reads a GGUF header from any byte source (file, memory, network…).
 pub fn leer<R: Read>(fuente: R) -> Result<Cabecera, ErrorGguf> {
     let mut l = Lector {
         interno: fuente,
@@ -286,14 +286,14 @@ pub fn leer<R: Read>(fuente: R) -> Result<Cabecera, ErrorGguf> {
         metadatos.insert(clave, valor);
     }
 
-    // De la descripción de los tensores solo guardamos su tipo; hay que recorrerla entera para saber dónde acaba
-    // la cabecera y comprobar que el archivo está completo.
+    // Of the tensor descriptions we only keep their type; the whole list has to be walked to know where the header
+    // ends and to check that the file is complete.
     let mut tipos_tensor = BTreeSet::new();
     for _ in 0..tensores {
-        l.saltar_texto()?; // nombre
+        l.saltar_texto()?; // name
         let dimensiones = u64::from(l.u32()?);
         limite("dimensiones de un tensor", dimensiones, MAX_DIMENSIONES)?;
-        l.saltar(8 * dimensiones)?; // tamaño de cada dimensión (i64)
+        l.saltar(8 * dimensiones)?; // size of each dimension (i64)
         tipos_tensor.insert(l.u32()?);
         let _posicion = l.u64()?;
     }
@@ -307,13 +307,13 @@ pub fn leer<R: Read>(fuente: R) -> Result<Cabecera, ErrorGguf> {
     })
 }
 
-/// Abre un archivo y lee su cabecera.
+/// Opens a file and reads its header.
 pub fn leer_archivo(ruta: impl AsRef<Path>) -> Result<Cabecera, ErrorGguf> {
     let archivo = File::open(ruta)?;
     leer(BufReader::new(archivo))
 }
 
-/// Devuelve un error si `valor` supera `maximo`.
+/// Returns an error if `valor` exceeds `maximo`.
 fn limite(que: &'static str, valor: u64, maximo: u64) -> Result<(), ErrorGguf> {
     if valor > maximo {
         Err(ErrorGguf::FueraDeLimite { que, valor, maximo })
@@ -322,7 +322,7 @@ fn limite(que: &'static str, valor: u64, maximo: u64) -> Result<(), ErrorGguf> {
     }
 }
 
-/// Bytes que ocupa un elemento de tipo fijo (`None` para textos y listas, que tienen longitud variable).
+/// Bytes taken by a fixed-size element (`None` for texts and lists, which have variable length).
 fn tamano_fijo(tipo: u32) -> Option<u64> {
     match tipo {
         0 | 1 | 7 => Some(1), // u8, i8, bool
@@ -333,14 +333,14 @@ fn tamano_fijo(tipo: u32) -> Option<u64> {
     }
 }
 
-/// Envoltorio que lee de la fuente y cuenta cuántos bytes lleva leídos.
+/// Wrapper that reads from the source and counts how many bytes it has read.
 struct Lector<R> {
     interno: R,
     leidos: u64,
 }
 
 impl<R: Read> Lector<R> {
-    /// Lee exactamente `N` bytes. `const N: usize` es un parámetro que se fija al compilar.
+    /// Reads exactly `N` bytes. `const N: usize` is a parameter fixed at compile time.
     fn bytes<const N: usize>(&mut self) -> Result<[u8; N], ErrorGguf> {
         let mut buffer = [0u8; N];
         self.interno.read_exact(&mut buffer)?;
@@ -379,7 +379,7 @@ impl<R: Read> Lector<R> {
         Ok(f64::from_le_bytes(self.bytes::<8>()?))
     }
 
-    /// Avanza `n` bytes sin guardarlos (sin reservar memoria).
+    /// Skips `n` bytes without keeping them (without allocating memory).
     fn saltar(&mut self, n: u64) -> Result<(), ErrorGguf> {
         let copiados = io::copy(&mut (&mut self.interno).take(n), &mut io::sink())?;
         if copiados < n {
@@ -389,9 +389,9 @@ impl<R: Read> Lector<R> {
         Ok(())
     }
 
-    /// Lee un texto: longitud (`u64`) + bytes UTF-8. La longitud se limita, y la memoria se reserva **a medida que
-    /// llegan los datos**, no según la longitud que dice el archivo: un archivo de 100 bytes que diga «aquí viene un
-    /// texto de 64 MB» no hace reservar 64 MB (lo encontraron las pruebas de entradas basura, ADR 0026).
+    /// Reads a text: length (`u64`) + UTF-8 bytes. The length is limited, and memory is allocated **as the data
+    /// arrives**, not according to the length the file claims: a 100-byte file saying «a 64 MB text comes next» does
+    /// not make us allocate 64 MB (found by the malformed-input tests, ADR 0026).
     fn texto(&mut self) -> Result<String, ErrorGguf> {
         let longitud = self.u64()?;
         limite("longitud de un texto", longitud, MAX_TEXTO)?;
@@ -404,14 +404,14 @@ impl<R: Read> Lector<R> {
         String::from_utf8(bytes).map_err(|_| ErrorGguf::TextoNoUtf8)
     }
 
-    /// Salta un texto sin guardarlo (para los nombres de tensores y los textos de las listas).
+    /// Skips a text without keeping it (for tensor names and texts inside lists).
     fn saltar_texto(&mut self) -> Result<(), ErrorGguf> {
         let longitud = self.u64()?;
         limite("longitud de un texto", longitud, MAX_TEXTO)?;
         self.saltar(longitud)
     }
 
-    /// Lee un valor del tipo indicado.
+    /// Reads a value of the given type.
     fn valor(&mut self, tipo: u32, profundidad: u32) -> Result<Valor, ErrorGguf> {
         Ok(match tipo {
             0 => Valor::U8(self.u8()?),
@@ -431,8 +431,8 @@ impl<R: Read> Lector<R> {
         })
     }
 
-    /// Lee una lista: tipo de sus elementos (`u32`) + número de elementos (`u64`) + elementos.
-    /// Los elementos se saltan; solo se guarda el tipo y la longitud.
+    /// Reads a list: element type (`u32`) + number of elements (`u64`) + elements.
+    /// The elements are skipped; only the type and length are kept.
     fn lista(&mut self, profundidad: u32) -> Result<Valor, ErrorGguf> {
         if profundidad >= MAX_PROFUNDIDAD {
             return Err(ErrorGguf::ListaDemasiadoProfunda);
@@ -452,7 +452,7 @@ impl<R: Read> Lector<R> {
                 }
             }
             t => match tamano_fijo(t) {
-                // `longitud` ya está limitada, así que la multiplicación no puede desbordar.
+                // `longitud` is already limited, so the multiplication cannot overflow.
                 Some(tamano) => self.saltar(longitud * tamano)?,
                 None => return Err(ErrorGguf::TipoDesconocido(t)),
             },
@@ -461,13 +461,13 @@ impl<R: Read> Lector<R> {
     }
 }
 
-// ─── Pruebas unitarias ────────────────────────────────────────────────────────
+// ─── Unit tests ───────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod pruebas {
     use super::*;
 
-    /// Ayudante para construir archivos GGUF de prueba en memoria.
+    /// Helper to build test GGUF files in memory.
     #[derive(Default)]
     struct Constructor(Vec<u8>);
 
@@ -490,25 +490,25 @@ mod pruebas {
         }
     }
 
-    /// Un GGUF mínimo pero realista: los datos de Qwen2.5 1.5B y un tensor.
+    /// A minimal but realistic GGUF: the Qwen2.5 1.5B data and one tensor.
     fn gguf_minimo() -> Vec<u8> {
         let mut c = Constructor::default();
         c.0.extend_from_slice(b"GGUF");
-        c.u32(3).u64(1).u64(7); // versión, 1 tensor, 7 metadatos
+        c.u32(3).u64(1).u64(7); // version, 1 tensor, 7 metadata entries
         c.texto("general.architecture").u32(8).texto("qwen2");
         c.clave_u32("qwen2.block_count", 28);
         c.clave_u32("qwen2.context_length", 32_768);
         c.clave_u32("qwen2.attention.head_count", 12);
         c.clave_u32("qwen2.attention.head_count_kv", 2);
         c.clave_u32("qwen2.embedding_length", 1_536);
-        // Lista de 2 textos (un vocabulario en miniatura).
+        // A list of 2 texts (a tiny vocabulary).
         c.texto("tokenizer.ggml.tokens")
             .u32(9)
             .u32(8)
             .u64(2)
             .texto("ho")
             .texto("la");
-        // Un tensor: nombre, 1 dimensión de 16, tipo 0, posición 0.
+        // A tensor: name, 1 dimension of 16, type 0, offset 0.
         c.texto("t").u32(1).u64(16).u32(0).u64(0);
         c.0
     }
@@ -533,7 +533,7 @@ mod pruebas {
     #[test]
     fn estima_la_cache_kv() {
         let cabecera = leer(&gguf_minimo()[..]).unwrap();
-        // 4096 × 28 capas × 2 cabezas KV × (128 + 128) × 2 bytes = 112 MiB, igual que en la Fase 0.
+        // 4096 × 28 layers × 2 KV heads × (128 + 128) × 2 bytes = 112 MiB, same as in Phase 0.
         assert_eq!(cabecera.cache_kv_bytes(4_096, 2), Some(112 * 1024 * 1024));
     }
 
@@ -556,7 +556,7 @@ mod pruebas {
 
     #[test]
     fn detecta_archivos_cortados_en_cualquier_punto() {
-        // Cortamos el archivo en TODAS las posiciones posibles: nunca debe "explotar", siempre un error claro.
+        // We cut the file at EVERY possible position: it must never "blow up", always a clear error.
         let bytes = gguf_minimo();
         for corte in 0..bytes.len() {
             let resultado = leer(&bytes[..corte]);
@@ -569,7 +569,7 @@ mod pruebas {
 
     #[test]
     fn no_reserva_memoria_por_un_texto_gigante() {
-        // Un archivo que dice tener una clave de 18 trillones de bytes.
+        // A file that claims to have an 18-quintillion-byte key.
         let mut c = Constructor::default();
         c.0.extend_from_slice(b"GGUF");
         c.u32(3).u64(0).u64(1).u64(u64::MAX);
@@ -599,7 +599,7 @@ mod pruebas {
         c.0.extend_from_slice(b"GGUF");
         c.u32(3).u64(0).u64(1).texto("clave").u32(9);
         for _ in 0..10 {
-            c.u32(9).u64(1); // lista de listas de listas…
+            c.u32(9).u64(1); // list of lists of lists…
         }
         assert!(matches!(
             leer(&c.0[..]),

@@ -1,4 +1,4 @@
-//! Pruebas de los ajustes de Locall.
+//! Tests of Locall's settings.
 
 use std::path::PathBuf;
 use std::time::Duration;
@@ -25,7 +25,7 @@ impl Drop for CarpetaDePrueba {
     }
 }
 
-/// El mensaje de error de un texto de configuración.
+/// The error message for a configuration text.
 fn error_de(texto: &str) -> String {
     Config::desde_texto(texto).unwrap_err().to_string()
 }
@@ -57,7 +57,7 @@ fn lee_unos_ajustes_cambiados() {
 
 #[test]
 fn los_valores_no_validos_se_explican() {
-    // El fallo de la Fase 0: 246 hilos en un equipo de 12. Aquí, un número que ningún equipo tiene.
+    // The Phase 0 bug: far more threads than the machine had. Here, a number no computer has.
     let m = error_de("hilos = 100000");
     assert!(
         m.contains("línea 1") && m.contains("hilos") && m.contains("entre 1 y"),
@@ -139,7 +139,7 @@ fn las_rutas_cuelgan_de_la_carpeta_de_datos() {
 
 #[test]
 fn la_carpeta_por_defecto_esta_en_appdata_local() {
-    // Solo si la prueba no se ejecuta con LOCALL_DATOS (que la sustituye).
+    // Only if the test is not run with LOCALL_DATOS (which replaces it).
     if std::env::var_os("LOCALL_DATOS").is_some() {
         return;
     }
@@ -171,9 +171,9 @@ fn crea_el_archivo_pero_nunca_pisa_el_del_usuario() {
         ARCHIVO_POR_DEFECTO
     );
 
-    // El usuario lo cambia…
+    // The user changes it…
     std::fs::write(rutas.config(), "contexto = 2048\n").unwrap();
-    // …y Locall no lo vuelve a crear ni lo pisa.
+    // …and Locall neither recreates nor overwrites it.
     assert!(!Config::crear_si_no_existe(&rutas).unwrap());
     let (config, _) = Config::leer(&rutas.config()).unwrap();
     assert_eq!(config.contexto, 2048);
@@ -184,13 +184,13 @@ fn un_archivo_que_no_es_texto_se_explica() {
     let carpeta = CarpetaDePrueba::nueva("binario");
     std::fs::create_dir_all(&carpeta.0).unwrap();
     let ruta = carpeta.0.join("config.toml");
-    std::fs::write(&ruta, [0xFF, 0xFE, 0x00, 0x41]).unwrap(); // UTF-16, como guardan algunos editores
+    std::fs::write(&ruta, [0xFF, 0xFE, 0x00, 0x41]).unwrap(); // UTF-16, as some editors save it
     let error = Config::leer(&ruta).unwrap_err();
     assert!(matches!(error, ErrorConfig::Sintaxis { .. }), "{error:?}");
     assert!(error.to_string().contains("UTF-8"));
 }
 
-// ─── Guardar cambios ──────────────────────────────────────────────────────────
+// ─── Saving changes ───────────────────────────────────────────────────────────
 
 #[test]
 fn guardar_cambia_solo_esas_lineas_y_respeta_los_comentarios() {

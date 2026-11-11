@@ -1,10 +1,10 @@
-//! Entradas basura contra el lector GGUF (ADR 0026): cabeceras válidas estropeadas a propósito. Nunca debe cerrarse de
-//! golpe ni pedir de una vez más memoria de la razonable. (Los modelos vienen de cualquier autor de Hugging Face.)
+//! Malformed inputs against the GGUF reader (ADR 0026): valid headers deliberately broken. It must never crash nor
+//! request more memory than is reasonable at once. (Models come from any Hugging Face author.)
 
 #[global_allocator]
 static MEDIDOR: locall_mutador::MedidorDeMemoria = locall_mutador::MedidorDeMemoria;
 
-/// Constructor de cabeceras GGUF de prueba.
+/// Builder for test GGUF headers.
 #[derive(Default)]
 struct C(Vec<u8>);
 
@@ -24,7 +24,7 @@ impl C {
     }
 }
 
-/// Una cabecera con de todo: textos, números de todos los tipos, listas (también de listas) y varios tensores.
+/// A header with everything: texts, numbers of every type, lists (including lists of lists) and several tensors.
 fn completa() -> Vec<u8> {
     let mut c = C::default();
     c.0.extend_from_slice(b"GGUF");
@@ -70,7 +70,7 @@ fn completa() -> Vec<u8> {
     c.0
 }
 
-/// Sin metadatos ni tensores.
+/// No metadata and no tensors.
 fn minima() -> Vec<u8> {
     let mut c = C::default();
     c.0.extend_from_slice(b"GGUF");

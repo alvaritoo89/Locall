@@ -1,15 +1,15 @@
 //! # locall-system
 //!
-//! Lo que Locall necesita saber del equipo y del sistema operativo:
+//! What Locall needs to know about the computer and the operating system:
 //!
-//! - [`memoria`]: RAM total y disponible **de verdad** (la regla de memoria no se fía de lo que dice Vulkan en las
-//!   gráficas integradas, ADR 0007).
-//! - [`procesador`] e [`hilos_para_motor`]: nombre del procesador e hilos a usar (decisión D5), con validación
-//!   ([`validar_hilos`]) para que nunca se repita el error de los 246 hilos de la Fase 0.
-//! - [`memoria_de_proceso`]: cuánta RAM usa un proceso (por ejemplo, el motor), medido por el sistema.
-//! - [`Trabajo`]: el Job Object de Windows que garantiza que el motor muere si Locall muere (ADR 0003).
+//! - [`memoria`]: total and **truly** available RAM (the memory rule does not trust what Vulkan reports on integrated
+//!   GPUs, ADR 0007).
+//! - [`procesador`] and [`hilos_para_motor`]: processor name and threads to use (decision D5), with validation
+//!   ([`validar_hilos`]) so the Phase 0 bug of the 246 threads never happens again.
+//! - [`memoria_de_proceso`]: how much RAM a process (for example, the engine) uses, as measured by the system.
+//! - [`Trabajo`]: the Windows Job Object that guarantees the engine dies if Locall dies (ADR 0003).
 //!
-//! Toda la comunicación con Windows (`unsafe`) vive en el módulo privado `windows`.
+//! All communication with Windows (`unsafe`) lives in the private `windows` module.
 
 use std::fmt;
 use std::io;
@@ -18,17 +18,17 @@ use std::process::Child;
 #[cfg(windows)]
 mod windows;
 
-// ─── Memoria del equipo ───────────────────────────────────────────────────────
+// ─── Computer memory ──────────────────────────────────────────────────────────
 
-/// La memoria RAM del equipo, en bytes.
+/// The computer's RAM, in bytes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Memoria {
     pub total: u64,
-    /// Lo que se puede usar ahora mismo sin que Windows tenga que mover cosas al disco.
+    /// What can be used right now without Windows having to move things to disk.
     pub disponible: u64,
 }
 
-/// Consulta la RAM total y disponible.
+/// Queries total and available RAM.
 pub fn memoria() -> io::Result<Memoria> {
     #[cfg(windows)]
     {
@@ -40,18 +40,18 @@ pub fn memoria() -> io::Result<Memoria> {
     }
 }
 
-// ─── Procesador e hilos ───────────────────────────────────────────────────────
+// ─── Processor and threads ────────────────────────────────────────────────────
 
-/// El procesador del equipo.
+/// The computer's processor.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Procesador {
-    /// Nombre comercial, por ejemplo `Intel(R) Core(TM) …` o `AMD Ryzen …`, si se puede averiguar.
+    /// Commercial name, for example `Intel(R) Core(TM) …` or `AMD Ryzen …`, if it can be found out.
     pub nombre: Option<String>,
-    /// Hilos que puede ejecutar a la vez.
+    /// Threads it can run at once.
     pub hilos_logicos: usize,
 }
 
-/// Información del procesador.
+/// Processor information.
 pub fn procesador() -> Procesador {
     #[cfg(windows)]
     let nombre = windows::nombre_procesador();
@@ -63,18 +63,18 @@ pub fn procesador() -> Procesador {
     }
 }
 
-/// Hilos lógicos del equipo (al menos 1).
+/// Logical threads of the computer (at least 1).
 pub fn hilos_logicos() -> usize {
     std::thread::available_parallelism().map_or(1, |n| n.get())
 }
 
-/// Hilos que Locall da al motor por defecto: todos los lógicos (decisión D5 de la Fase 0: la lectura del prompt
-/// escala hasta 12 hilos y la escritura no empeora).
+/// Threads Locall gives the engine by default: all the logical ones (Phase 0 decision D5: prompt processing
+/// scales with the threads and generation does not get worse).
 pub fn hilos_para_motor() -> usize {
     hilos_logicos()
 }
 
-/// Error al pedir un número de hilos imposible.
+/// Error when asking for an impossible number of threads.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HilosInvalidos {
     pub pedidos: usize,
@@ -93,10 +93,10 @@ impl fmt::Display for HilosInvalidos {
 
 impl std::error::Error for HilosInvalidos {}
 
-/// Comprueba que un número de hilos pedido (por el usuario o la configuración) es posible en este equipo.
+/// Checks that a requested number of threads (by the user or the configuration) is possible on this computer.
 ///
-/// En la Fase 0, un fallo hizo que el motor arrancara con 246 hilos en un equipo de 12: la escritura cayó de
-/// ~33 a 2,1 tokens/s. Esta validación lo impide.
+/// In Phase 0, a bug made the engine start with 246 threads on a machine with far fewer: generation speed collapsed.
+/// This validation prevents it.
 pub fn validar_hilos(pedidos: usize) -> Result<usize, HilosInvalidos> {
     let maximo = hilos_logicos();
     if (1..=maximo).contains(&pedidos) {
@@ -106,9 +106,9 @@ pub fn validar_hilos(pedidos: usize) -> Result<usize, HilosInvalidos> {
     }
 }
 
-// ─── Memoria de un proceso ────────────────────────────────────────────────────
+// ─── Process memory ───────────────────────────────────────────────────────────
 
-/// RAM que usa ahora mismo un proceso (su "conjunto de trabajo"), en bytes.
+/// RAM a process is using right now (its "working set"), in bytes.
 pub fn memoria_de_proceso(pid: u32) -> io::Result<u64> {
     #[cfg(windows)]
     {
@@ -121,23 +121,22 @@ pub fn memoria_de_proceso(pid: u32) -> io::Result<u64> {
     }
 }
 
-// ─── Procesos en segundo plano ────────────────────────────────────────────────
+// ─── Background processes ─────────────────────────────────────────────────────
 
-/// Hace que los procesos que lancemos a partir de ahora **no hereden** nuestra entrada y salida estándar.
+/// Makes the processes we launch from now on **not inherit** our standard input and output.
 ///
-/// En Windows, un proceso hijo hereda los "tubos" de la consola del padre. Si la CLI lanza el núcleo en segundo
-/// plano y este hereda el tubo de salida, la terminal (o un programa que lea la salida de la CLI) se queda
-/// esperando a que el núcleo lo cierre, es decir, hasta que el núcleo termine. Pasaba en la Fase 4: `locall list`
-/// tardaba 90 s en "acabar".
+/// On Windows, a child process inherits the parent's console "pipes". If the CLI launches the core in the background
+/// and it inherits the output pipe, the terminal (or a program reading the CLI's output) keeps waiting for the core
+/// to close it, that is, until the core exits. It happened in Phase 4: `locall list` took 90 s to "finish".
 pub fn no_heredar_entrada_salida() {
     #[cfg(windows)]
     windows::no_heredar_entrada_salida();
 }
 
-// ─── Procesos ──────────────────────────────────────────────────────────────────
+// ─── Processes ────────────────────────────────────────────────────────────────
 
-/// ¿Sigue en marcha este proceso? Pregunta a Windows sin esperar, y sin necesitar acceso exclusivo al proceso (a
-/// diferencia de `Child::try_wait`), así que se puede usar con un motor compartido entre hilos.
+/// Is this process still running? Asks Windows without waiting, and without needing exclusive access to the process
+/// (unlike `Child::try_wait`), so it can be used with an engine shared between threads.
 pub fn proceso_vivo(proceso: &std::process::Child) -> bool {
     #[cfg(windows)]
     {
@@ -150,10 +149,10 @@ pub fn proceso_vivo(proceso: &std::process::Child) -> bool {
     }
 }
 
-// ─── Portapapeles ──────────────────────────────────────────────────────────────
+// ─── Clipboard ────────────────────────────────────────────────────────────────
 
-/// Pone `texto` en el portapapeles de Windows (lo usa el botón «Copiar» de la app). Solo escribe: Locall nunca lee
-/// el portapapeles.
+/// Puts `texto` on the Windows clipboard (used by the app's «Copiar» button). It only writes: Locall never reads
+/// the clipboard.
 pub fn copiar_al_portapapeles(texto: &str) -> io::Result<()> {
     #[cfg(windows)]
     {
@@ -168,11 +167,11 @@ pub fn copiar_al_portapapeles(texto: &str) -> io::Result<()> {
 
 // ─── Ctrl+C ───────────────────────────────────────────────────────────────────
 
-/// Se pone a `true` al pulsar Ctrl+C, si se ha llamado a [`capturar_ctrl_c`].
+/// Set to `true` when Ctrl+C is pressed, if [`capturar_ctrl_c`] has been called.
 pub(crate) static CTRL_C: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
-/// A partir de ahora, Ctrl+C **no cierra el programa**: solo levanta un aviso que se consulta con
-/// [`ctrl_c_pulsado`]. Lo usa `locall run` para cortar una respuesta sin salir del chat.
+/// From now on, Ctrl+C **does not close the program**: it only raises a flag that is checked with
+/// [`ctrl_c_pulsado`]. Used by `locall run` to cut an answer short without leaving the chat.
 pub fn capturar_ctrl_c() -> io::Result<()> {
     #[cfg(windows)]
     {
@@ -184,14 +183,14 @@ pub fn capturar_ctrl_c() -> io::Result<()> {
     }
 }
 
-/// ¿Se ha pulsado Ctrl+C desde la última vez que se preguntó? (Al preguntar, el aviso se baja.)
+/// Has Ctrl+C been pressed since the last time we asked? (Asking lowers the flag.)
 pub fn ctrl_c_pulsado() -> bool {
     CTRL_C.swap(false, std::sync::atomic::Ordering::SeqCst)
 }
 
-// ─── Fecha y hora ─────────────────────────────────────────────────────────────
+// ─── Date and time ────────────────────────────────────────────────────────────
 
-/// Una fecha y hora local (para los registros).
+/// A local date and time (for the logs).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct FechaHora {
     pub anio: u16,
@@ -225,7 +224,7 @@ impl fmt::Display for FechaHora {
     }
 }
 
-/// Fecha y hora local del equipo.
+/// The computer's local date and time.
 pub fn fecha_hora_local() -> io::Result<FechaHora> {
     #[cfg(windows)]
     {
@@ -239,17 +238,17 @@ pub fn fecha_hora_local() -> io::Result<FechaHora> {
 
 // ─── Job Object ───────────────────────────────────────────────────────────────
 
-/// Un grupo de procesos que Windows cierra entero cuando se suelta el `Trabajo` **o cuando muere Locall**,
-/// aunque sea de golpe (demostrado en la Fase 1: sin él, el motor quedaba huérfano con 1,21 GB).
+/// A group of processes that Windows closes entirely when the `Trabajo` is dropped **or when Locall dies**, even
+/// abruptly (shown in Phase 1: without it, the engine was left orphaned holding over 1 GB).
 ///
-/// Para que funcione, el `Trabajo` debe vivir tanto como los procesos que contiene.
+/// For it to work, the `Trabajo` must live as long as the processes it contains.
 pub struct Trabajo {
     #[cfg(windows)]
     interno: windows::Trabajo,
 }
 
 impl Trabajo {
-    /// Crea un trabajo vacío con la regla "matar a todos al cerrar".
+    /// Creates an empty job with the "kill everything on close" rule.
     pub fn nuevo() -> io::Result<Trabajo> {
         #[cfg(windows)]
         {
@@ -263,7 +262,7 @@ impl Trabajo {
         }
     }
 
-    /// Mete un proceso en el trabajo.
+    /// Puts a process into the job.
     pub fn asignar(&self, proceso: &Child) -> io::Result<()> {
         #[cfg(windows)]
         {
@@ -285,7 +284,7 @@ fn no_soportado() -> io::Error {
     )
 }
 
-// ─── Pruebas ──────────────────────────────────────────────────────────────────
+// ─── Tests ────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod pruebas {
@@ -345,7 +344,7 @@ mod pruebas {
         use std::process::{Command, Stdio};
         use std::time::{Duration, Instant};
 
-        // Un proceso que, por sí solo, tardaría ~30 s en terminar.
+        // A process that, on its own, would take ~30 s to finish.
         let mut hijo = Command::new("ping")
             .args(["-n", "30", "127.0.0.1"])
             .stdout(Stdio::null())
@@ -355,7 +354,7 @@ mod pruebas {
         trabajo.asignar(&hijo).unwrap();
         assert!(hijo.try_wait().unwrap().is_none(), "debería seguir vivo");
 
-        drop(trabajo); // soltar el trabajo = Windows cierra sus procesos
+        drop(trabajo); // dropping the job = Windows closes its processes
 
         let inicio = Instant::now();
         while hijo.try_wait().unwrap().is_none() {
@@ -370,8 +369,8 @@ mod pruebas {
 
 #[cfg(test)]
 mod pruebas_portapapeles {
-    /// Escribe en el portapapeles real del usuario: solo a mano (`cargo test -- --ignored`), y comprobándolo desde
-    /// fuera (por ejemplo con `Get-Clipboard` en PowerShell).
+    /// Writes to the user's real clipboard: only by hand (`cargo test -- --ignored`), checking it from outside (for
+    /// example with `Get-Clipboard` in PowerShell).
     #[test]
     #[ignore = "escribe en el portapapeles"]
     fn copia_texto_con_acentos_al_portapapeles() {

@@ -1,15 +1,15 @@
 //! # locall-catalogo
 //!
-//! El **catálogo de modelos compatibles** de Locall (ADR 0022): qué modelos recomienda Locall, de dónde se descargan
-//! exactamente (repositorio, commit fijado, archivos con su sha256) y para qué sirven.
+//! Locall's **catalog of compatible models** (ADR 0022): which models Locall recommends, exactly where they are
+//! downloaded from (repository, pinned commit, files with their sha256) and what they are for.
 //!
-//! - El catálogo es un JSON (`catalogo/catalogo.json` en el repositorio) **firmado con minisign** por quien publica
-//!   Locall (`catalogo.json.minisig`). La app y la CLI llevan dentro la clave pública ([`CLAVE_PUBLICA`]).
-//! - [`verificar`] comprueba **primero la firma** y solo después lee el contenido: nunca se interpreta un archivo
-//!   sin firmar. Después lo valida campo por campo, con límites de tamaño.
-//! - Estar en el catálogo significa **compatible**: se leyó la cabecera del archivo exacto (ese commit) y el motor que
-//!   indica `checked_engine` reconoce su arquitectura y sus tipos de datos. **No** significa que se haya probado a
-//!   conversar con él: la app y la web lo dicen así.
+//! - The catalog is a JSON file (`catalogo/catalogo.json` in the repository) **signed with minisign** by whoever
+//!   publishes Locall (`catalogo.json.minisig`). The app and the CLI ship the public key ([`CLAVE_PUBLICA`]).
+//! - [`verificar`] checks **the signature first** and only then reads the content: an unsigned file is never
+//!   interpreted. Then it validates field by field, with size limits.
+//! - Being in the catalog means **compatible**: the header of the exact file (that commit) was read and the engine
+//!   named in `checked_engine` recognizes its architecture and data types. It does **not** mean chatting with it was
+//!   tested: the app and the website say so.
 //!
 //! ```json
 //! {
@@ -27,8 +27,8 @@
 //! }
 //! ```
 //!
-//! Los campos que esta versión no conoce se ignoran (para que un catálogo nuevo con campos de más siga sirviendo),
-//! pero un `format` mayor que [`FORMATO`] es un error: ese catálogo necesita un Locall más nuevo.
+//! Fields this version does not know are ignored (so a newer catalog with extra fields still works), but a `format`
+//! greater than [`FORMATO`] is an error: that catalog needs a newer Locall.
 
 use std::collections::BTreeSet;
 use std::fmt;
@@ -36,13 +36,13 @@ use std::fmt;
 use minisign_verify::{PublicKey, Signature};
 use serde_json::{Map, Value};
 
-/// La versión del formato que entiende este Locall.
+/// The format version this Locall understands.
 pub const FORMATO: u64 = 1;
 
-/// La clave pública con la que se firma el catálogo oficial (minisign, id `5C09624CD1482FE0`).
+/// The public key the official catalog is signed with (minisign, id `5C09624CD1482FE0`).
 pub const CLAVE_PUBLICA: &str = "RWTgL0jRTGIJXDFqcD3bREOcjTX2CAHHzp1u+orTwHN5XscqH2mHvk3S";
 
-/// Tamaño máximo del catálogo: si alguien sirve un archivo enorme, se rechaza sin leerlo.
+/// Maximum catalog size: if someone serves a huge file, it is rejected without reading it.
 pub const TAMANO_MAX: usize = 4 * 1024 * 1024;
 
 const MODELOS_MAX: usize = 500;
@@ -53,69 +53,69 @@ const NOMBRE_MAX: usize = 48;
 const TEXTO_CORTO_MAX: usize = 120;
 const DESCRIPCION_MAX: usize = 2000;
 
-/// El catálogo, ya verificado y validado.
+/// The catalog, already verified and validated.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Catalogo {
-    /// Cuándo se publicó (segundos desde 1970). Sirve para no aceptar nunca uno más antiguo que el último aceptado.
+    /// When it was published (seconds since 1970). Used to never accept one older than the last one accepted.
     pub publicado: u64,
     pub modelos: Vec<ModeloCatalogo>,
 }
 
-/// Un modelo del catálogo.
+/// A catalog model.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModeloCatalogo {
-    /// Nombre corto, el que se escribe en `locall pull`: `qwen3-4b`.
+    /// Short name, the one typed in `locall pull`: `qwen3-4b`.
     pub nombre: String,
-    /// Nombre para mostrar: `Qwen3 4B`.
+    /// Display name: `Qwen3 4B`.
     pub titulo: String,
-    /// Quién lo publica: `Qwen`.
+    /// Who publishes it: `Qwen`.
     pub autor: String,
-    /// Para qué sirve, en español.
+    /// What it is for, in Spanish.
     pub descripcion: String,
-    /// Etiquetas para los filtros (`conversar`, `programar`…).
+    /// Tags for the filters (`conversar`, `programar`…).
     pub etiquetas: Vec<String>,
-    /// Licencia (`apache-2.0`, `mit`…).
+    /// License (`apache-2.0`, `mit`…).
     pub licencia: String,
-    /// Contexto máximo que admite el modelo, en tokens.
+    /// Maximum context the model supports, in tokens.
     pub contexto_max: u64,
-    /// Las variantes (cuantizaciones). Exactamente una es la de por defecto.
+    /// The variants (quantizations). Exactly one is the default.
     pub variantes: Vec<Variante>,
 }
 
-/// Una variante de un modelo: un archivo GGUF concreto (o varios, si está dividido).
+/// A variant of a model: one specific GGUF file (or several, if it is split).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Variante {
     /// `q4_k_m`, `q8_0`…
     pub nombre: String,
     pub por_defecto: bool,
-    /// Repositorio de Hugging Face: `Qwen/Qwen3-4B-GGUF`.
+    /// Hugging Face repository: `Qwen/Qwen3-4B-GGUF`.
     pub repo: String,
-    /// Commit exacto (40 caracteres hexadecimales, en minúsculas).
+    /// Exact commit (40 lowercase hexadecimal characters).
     pub commit: String,
-    /// Versión del motor con la que se comprobó la compatibilidad (`b12189`).
+    /// Engine version compatibility was checked with (`b12189`).
     pub motor_comprobado: String,
     pub archivos: Vec<ArchivoCatalogo>,
 }
 
-/// Un archivo de una variante.
+/// A file of a variant.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ArchivoCatalogo {
-    /// Ruta dentro del repositorio (puede tener carpetas).
+    /// Path inside the repository (may contain folders).
     pub ruta: String,
     pub bytes: u64,
-    /// sha256 en hexadecimal (64 caracteres, minúsculas).
+    /// sha256 in hexadecimal (64 lowercase characters).
     pub sha256: String,
 }
 
 impl Variante {
-    /// Lo que ocupa en el disco.
+    /// Space it takes on disk.
     pub fn bytes(&self) -> u64 {
         self.archivos.iter().map(|a| a.bytes).sum()
     }
 }
 
 impl ModeloCatalogo {
-    /// La variante de por defecto (siempre hay una: lo garantiza la validación).
+    /// The default variant (there is always one: validation guarantees it).
     pub fn por_defecto(&self) -> &Variante {
         self.variantes
             .iter()
@@ -125,8 +125,7 @@ impl ModeloCatalogo {
 }
 
 impl Catalogo {
-    /// Busca por lo que escribe la persona: `qwen3-4b` (la variante de por defecto) o `qwen3-4b:q8_0`. No distingue
-    /// mayúsculas.
+    /// Looks up what the person types: `qwen3-4b` (the default variant) or `qwen3-4b:q8_0`. Case-insensitive.
     pub fn resolver(&self, texto: &str) -> Option<(&ModeloCatalogo, &Variante)> {
         let texto = texto.trim().to_ascii_lowercase();
         let (nombre, variante) = match texto.split_once(':') {
@@ -142,25 +141,27 @@ impl Catalogo {
     }
 }
 
-// ─── El catálogo que va dentro de Locall ──────────────────────────────────────
+// ─── The catalog shipped inside Locall ────────────────────────────────────────
 
-/// El catálogo oficial tal como estaba al compilar este Locall (`catalogo/catalogo.json`), con su firma. Sirve sin
-/// internet y como punto de partida: la app lo sustituye por uno más nuevo si lo descarga y su firma es buena.
+/// The official catalog as it was when this Locall was built (`catalogo/catalogo.json`), with its signature. Works
+/// without internet and as a starting point: the app replaces it with a newer one if it downloads one with a valid
+/// signature.
 pub const CATALOGO_INCLUIDO: &[u8] = include_bytes!("../../../catalogo/catalogo.json");
-/// La firma de [`CATALOGO_INCLUIDO`].
+/// The signature of [`CATALOGO_INCLUIDO`].
 pub const FIRMA_INCLUIDA: &str = include_str!("../../../catalogo/catalogo.json.minisig");
 
-/// El catálogo que va dentro de Locall, verificado igual que uno descargado (con [`CLAVE_PUBLICA`]).
+/// The catalog shipped inside Locall, verified exactly like a downloaded one (with [`CLAVE_PUBLICA`]).
 pub fn incluido() -> Result<Catalogo, ErrorCatalogo> {
     verificar(CATALOGO_INCLUIDO, FIRMA_INCLUIDA, CLAVE_PUBLICA)
 }
 
-// ─── Verificar ────────────────────────────────────────────────────────────────
+// ─── Verifying ────────────────────────────────────────────────────────────────
 
-/// Comprueba la firma de `datos` con `clave_publica` (base64 de minisign) y, si es buena, lee y valida el catálogo.
+/// Checks the signature of `datos` with `clave_publica` (minisign base64) and, if valid, reads and validates the
+/// catalog.
 ///
-/// Solo se aceptan firmas del formato actual de minisign (con el archivo resumido con BLAKE2b, el que usa
-/// minisign 0.12 por defecto); las del formato antiguo se rechazan.
+/// Only signatures in minisign's current format are accepted (the file is hashed with BLAKE2b, minisign 0.12's
+/// default); legacy-format signatures are rejected.
 pub fn verificar(
     datos: &[u8],
     firma: &str,
@@ -174,12 +175,12 @@ pub fn verificar(
     clave
         .verify(datos, &firma, false)
         .map_err(|_| ErrorCatalogo::FirmaIncorrecta)?;
-    // A partir de aquí, el contenido es de quien tiene la clave privada.
+    // From here on, the content comes from whoever holds the private key.
     leer(datos)
 }
 
-/// Lee y valida un catálogo **sin comprobar la firma**. Solo para quien publica (preparar y revisar un catálogo antes
-/// de firmarlo) y para las pruebas; la app usa siempre [`verificar`].
+/// Reads and validates a catalog **without checking the signature**. Only for the publisher (preparing and reviewing
+/// a catalog before signing it) and for tests; the app always uses [`verificar`].
 pub fn leer(datos: &[u8]) -> Result<Catalogo, ErrorCatalogo> {
     if datos.len() > TAMANO_MAX {
         return Err(ErrorCatalogo::DemasiadoGrande(datos.len()));
@@ -341,9 +342,9 @@ fn leer_variante(valor: &Value, modelo: &str) -> Result<Variante, ErrorCatalogo>
     })
 }
 
-// ─── Reglas de cada campo ─────────────────────────────────────────────────────
+// ─── Field rules ──────────────────────────────────────────────────────────────
 
-/// Nombre corto: minúsculas, números, `-` y `.`; empieza por letra o número.
+/// Short name: lowercase letters, digits, `-` and `.`; starts with a letter or digit.
 fn nombre_valido(nombre: &str) -> bool {
     nombre
         .chars()
@@ -354,7 +355,7 @@ fn nombre_valido(nombre: &str) -> bool {
             .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, '-' | '.'))
 }
 
-/// `propietario/nombre` de Hugging Face (las mismas reglas que `locall-core`).
+/// Hugging Face `owner/name` (the same rules as `locall-core`).
 fn repo_valido(repo: &str) -> bool {
     let Some((dueno, nombre)) = repo.split_once('/') else {
         return false;
@@ -369,7 +370,7 @@ fn repo_valido(repo: &str) -> bool {
     })
 }
 
-/// Una ruta relativa a un `.gguf`, sin `..`, sin barras de Windows y sin empezar por `/`.
+/// A relative path to a `.gguf`, without `..`, without Windows backslashes and not starting with `/`.
 fn ruta_valida(ruta: &str) -> bool {
     ruta.ends_with(".gguf")
         && !ruta.starts_with('/')
@@ -387,7 +388,7 @@ fn hexadecimal(texto: &str, largo: usize) -> bool {
             .all(|c| c.is_ascii_digit() || ('a'..='f').contains(&c))
 }
 
-// ─── Lectura de JSON ──────────────────────────────────────────────────────────
+// ─── Reading JSON ─────────────────────────────────────────────────────────────
 
 fn invalido(donde: &str, que: &str) -> ErrorCatalogo {
     ErrorCatalogo::NoValido(format!("{donde}: {que}"))
@@ -449,24 +450,24 @@ fn lista<'a>(
     Ok(l)
 }
 
-// ─── Errores ──────────────────────────────────────────────────────────────────
+// ─── Errors ───────────────────────────────────────────────────────────────────
 
-/// Lo que puede salir mal al leer un catálogo.
+/// What can go wrong when reading a catalog.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ErrorCatalogo {
-    /// El archivo pasa de [`TAMANO_MAX`].
+    /// The file exceeds [`TAMANO_MAX`].
     DemasiadoGrande(usize),
-    /// La clave pública no es una clave de minisign válida.
+    /// The public key is not a valid minisign key.
     ClaveNoValida,
-    /// El archivo de firma no tiene el formato de minisign.
+    /// The signature file is not in minisign's format.
     FirmaIlegible,
-    /// La firma no corresponde a este catálogo con esta clave (modificado, firmado por otro o formato antiguo).
+    /// The signature does not match this catalog with this key (modified, signed by someone else, or legacy format).
     FirmaIncorrecta,
-    /// El JSON está mal escrito.
+    /// The JSON is malformed.
     Json(String),
-    /// Un formato más nuevo que el que entiende este Locall.
+    /// A newer format than this Locall understands.
     FormatoNuevo(u64),
-    /// Un campo no cumple las reglas.
+    /// A field does not follow the rules.
     NoValido(String),
 }
 

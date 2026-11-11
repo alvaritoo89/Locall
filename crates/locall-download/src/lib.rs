@@ -1,18 +1,19 @@
 //! # locall-download
 //!
-//! Descarga archivos de modelos **directamente al almacén** de Locall:
+//! Downloads model files **straight into Locall's store**:
 //!
-//! - **Huella obligatoria:** se calcula *mientras* se descarga; si no coincide, el archivo se descarta.
-//! - **Reanudable:** lo descargado se guarda en `tmp\sha256-<hex>.parcial`. Si la conexión se corta, si se pausa o si
-//!   se cierra Locall, la próxima vez continúa desde ese byte (petición `Range`).
-//! - **Detección de atascos:** si durante [`Opciones::espera_atasco`] no llega ni un byte, se corta y se reintenta.
-//! - **Progreso fiable:** contado con los bytes que escribe el propio descargador (nunca con el tamaño que muestra el
-//!   sistema de archivos: lección de la Fase 0).
-//! - **Reintentos** con esperas crecientes; ante un `429` (demasiadas peticiones) espera lo que pide el servidor.
-//! - **HTTPS** con el TLS de Windows y sus certificados (ADR 0010).
+//! - **Mandatory hash:** computed *while* downloading; if it does not match, the file is discarded.
+//! - **Resumable:** what has been downloaded is kept in `tmp\sha256-<hex>.parcial`. If the connection drops, the
+//!   download is paused or Locall is closed, the next run continues from that byte (`Range` request).
+//! - **Stall detection:** if not a single byte arrives during [`Opciones::espera_atasco`], the connection is cut and
+//!   retried.
+//! - **Reliable progress:** counted with the bytes the downloader itself writes (never with the size the file system
+//!   reports: a Phase 0 lesson).
+//! - **Retries** with growing waits; on a `429` (too many requests) it waits as long as the server asks.
+//! - **HTTPS** with Windows' TLS and its certificates (ADR 0010).
 //!
-//! El descargador es *bloqueante*: hay que llamarlo desde un hilo propio. Para pausar o cancelar, otro hilo pone a
-//! `true` el `AtomicBool` que recibe [`Descargador::descargar`].
+//! The downloader is *blocking*: it must be called from its own thread. To pause or cancel, another thread sets to
+//! `true` the `AtomicBool` that [`Descargador::descargar`] receives.
 
 use std::fmt;
 use std::fs::{File, OpenOptions};
@@ -25,44 +26,44 @@ use locall_store::{Almacen, ErrorAlmacen, Huella};
 use sha2::{Digest, Sha256};
 use ureq::tls::{RootCerts, TlsConfig, TlsProvider};
 
-/// Tamaño de los trozos que se leen de la red (256 KiB).
+/// Size of the chunks read from the network (256 KiB).
 const TROZO: usize = 256 * 1024;
 
-/// Máxima espera que aceptamos de un `Retry-After` (un servidor no puede tenernos parados una hora).
+/// Longest `Retry-After` wait we accept (a server cannot keep us stopped for an hour).
 const MAX_ESPERA_SERVIDOR: Duration = Duration::from_secs(120);
 
-// ─── Tipos públicos ───────────────────────────────────────────────────────────
+// ─── Public types ─────────────────────────────────────────────────────────────
 
-/// Qué descargar.
+/// What to download.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Pedido {
-    /// URL fija del archivo, con la revisión exacta (p. ej. `https://huggingface.co/<repo>/resolve/<commit>/<archivo>`).
+    /// Pinned URL of the file, with the exact revision (e.g. `https://huggingface.co/<repo>/resolve/<commit>/<file>`).
     pub url: String,
-    /// Huella esperada (obligatoria).
+    /// Expected hash (mandatory).
     pub huella: Huella,
-    /// Tamaño esperado en bytes.
+    /// Expected size in bytes.
     pub bytes: u64,
 }
 
-/// Progreso de una descarga.
+/// Progress of a download.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Progreso {
     pub descargados: u64,
     pub total: u64,
 }
 
-/// Ajustes del descargador.
+/// Downloader settings.
 #[derive(Debug, Clone)]
 pub struct Opciones {
-    /// Fallos seguidos (sin recibir datos entre ellos) antes de rendirse.
+    /// Consecutive failures (with no data received in between) before giving up.
     pub fallos_seguidos_max: u32,
-    /// Si no llega ningún byte durante este tiempo, la conexión se da por atascada.
+    /// If no byte arrives during this time, the connection is considered stalled.
     pub espera_atasco: Duration,
-    /// Tiempo máximo para conectar.
+    /// Maximum time to connect.
     pub espera_conexion: Duration,
-    /// Primera espera entre reintentos (se duplica en cada fallo seguido, hasta 30 s).
+    /// First wait between retries (doubles on each consecutive failure, up to 30 s).
     pub espera_base: Duration,
-    /// Cómo se identifica Locall ante el servidor.
+    /// How Locall identifies itself to the server.
     pub agente_usuario: String,
 }
 
@@ -78,22 +79,22 @@ impl Default for Opciones {
     }
 }
 
-/// Lo que puede salir mal.
+/// What can go wrong.
 #[derive(Debug)]
 pub enum ErrorDescarga {
-    /// Problema del almacén (espacio insuficiente, permisos…).
+    /// Store problem (not enough space, permissions…).
     Almacen(ErrorAlmacen),
-    /// Error escribiendo el archivo parcial.
+    /// Error writing the partial file.
     Io(io::Error),
-    /// El servidor respondió con un error que no se arregla reintentando (404, 403…).
+    /// The server answered with an error that retrying does not fix (404, 403…).
     Http { estado: u16 },
-    /// Se agotaron los reintentos; incluye el último error.
+    /// Retries ran out; includes the last error.
     IntentosAgotados { ultimo: String },
-    /// Pausada o cancelada a petición: lo descargado se conserva para reanudar.
+    /// Paused or cancelled on request: what was downloaded is kept for resuming.
     Cancelada,
-    /// El contenido no coincide con la huella esperada; se ha descartado.
+    /// The content does not match the expected hash; it was discarded.
     HuellaNoCoincide { esperada: Huella, obtenida: Huella },
-    /// El servidor envió más datos de los esperados; se ha descartado.
+    /// The server sent more data than expected; it was discarded.
     DemasiadosDatos { esperados: u64 },
 }
 
@@ -147,20 +148,20 @@ impl From<io::Error> for ErrorDescarga {
     }
 }
 
-// ─── El descargador ───────────────────────────────────────────────────────────
+// ─── The downloader ───────────────────────────────────────────────────────────
 
-/// Resultado de un intento de descarga.
+/// Result of one download attempt.
 enum Intento {
-    /// Se recibió todo lo esperado.
+    /// Everything expected was received.
     Completo,
-    /// Fallo recuperable: reintentar (tras esperar lo indicado, si lo hay).
+    /// Recoverable failure: retry (after waiting as indicated, if anything).
     Reintentar {
         motivo: String,
         esperar: Option<Duration>,
     },
 }
 
-/// Descargador reutilizable (mantiene las conexiones abiertas entre descargas).
+/// Reusable downloader (keeps connections open between downloads).
 pub struct Descargador {
     agente: ureq::Agent,
     opciones: Opciones,
@@ -170,13 +171,13 @@ impl Descargador {
     pub fn nuevo(opciones: Opciones) -> Descargador {
         let tls = TlsConfig::builder()
             .provider(TlsProvider::NativeTls)
-            .root_certs(RootCerts::PlatformVerifier) // los certificados de Windows
+            .root_certs(RootCerts::PlatformVerifier) // Windows' certificates
             .build();
         let config = ureq::Agent::config_builder()
             .tls_config(tls)
-            .http_status_as_error(false) // los códigos de error los tratamos nosotros
+            .http_status_as_error(false) // we handle the error codes ourselves
             .timeout_connect(Some(opciones.espera_conexion))
-            .timeout_per_read(Some(opciones.espera_atasco)) // detección de atascos
+            .timeout_per_read(Some(opciones.espera_atasco)) // stall detection
             .user_agent(opciones.agente_usuario.as_str())
             .build();
         Descargador {
@@ -185,12 +186,13 @@ impl Descargador {
         }
     }
 
-    /// Descarga `pedido` al almacén y devuelve su huella cuando está verificado y en `blobs\`.
+    /// Downloads `pedido` into the store and returns its hash once it is verified and in `blobs\`.
     ///
-    /// - Si el archivo ya está en el almacén, no descarga nada.
-    /// - Si hay una descarga a medias, continúa desde donde se quedó.
-    /// - `cancelar`: si otro hilo lo pone a `true`, se detiene y conserva lo descargado ([`ErrorDescarga::Cancelada`]).
-    /// - `progreso`: se llama cada vez que llegan datos.
+    /// - If the file is already in the store, nothing is downloaded.
+    /// - If there is a half-finished download, it continues where it left off.
+    /// - `cancelar`: if another thread sets it to `true`, it stops and keeps what was downloaded
+    ///   ([`ErrorDescarga::Cancelada`]).
+    /// - `progreso`: called every time data arrives.
     pub fn descargar(
         &self,
         almacen: &Almacen,
@@ -215,15 +217,15 @@ impl Descargador {
         let mut archivo = OpenOptions::new()
             .create(true)
             .read(true)
-            .write(true) // no "append": Windows no deja truncar un archivo abierto así
+            .write(true) // not "append": Windows does not allow truncating a file opened that way
             .truncate(false)
             .open(&ruta)?;
 
-        // Reanudación: volver a calcular la huella de lo que ya teníamos (el cursor queda al final, listo para seguir).
+        // Resuming: recompute the hash of what we already had (the cursor ends at the end, ready to continue).
         let mut calculadora = Sha256::new();
         let mut descargados = huella_de_lo_existente(&mut archivo, &mut calculadora)?;
         if descargados > total {
-            // Una parcial más grande de lo esperado no es de este archivo: empezar de cero.
+            // A partial file bigger than expected does not belong to this file: start from scratch.
             reiniciar(&mut archivo, &mut calculadora, &mut descargados)?;
         }
         almacen.comprobar_espacio(total - descargados)?;
@@ -264,7 +266,7 @@ impl Descargador {
                 }
                 Err(e) => return Err(e),
             };
-            // Si en este intento llegaron datos, el contador de fallos seguidos vuelve a cero.
+            // If data arrived in this attempt, the consecutive-failure counter goes back to zero.
             fallos_seguidos = if descargados > antes {
                 1
             } else {
@@ -283,7 +285,7 @@ impl Descargador {
             dormir_salvo_cancelacion(espera, cancelar);
         }
 
-        // Verificación final.
+        // Final check.
         archivo.sync_all()?;
         drop(archivo);
         let obtenida = Huella::desde_sha256(&calculadora.finalize())?;
@@ -306,7 +308,7 @@ impl Descargador {
         Ok(obtenida)
     }
 
-    /// Un intento: una petición HTTP y la lectura de su cuerpo.
+    /// One attempt: an HTTP request and reading its body.
     fn intento(
         &self,
         pedido: &Pedido,
@@ -333,7 +335,7 @@ impl Descargador {
         let estado = respuesta.status().as_u16();
         match estado {
             206 => {
-                // Comprobar que el servidor continúa exactamente donde le pedimos.
+                // Check that the server continues exactly where we asked.
                 let rango = respuesta
                     .headers()
                     .get("content-range")
@@ -348,7 +350,7 @@ impl Descargador {
                 }
             }
             200 => {
-                // El servidor ignora la reanudación y envía el archivo entero: empezar de cero.
+                // The server ignores the resume and sends the whole file: start from scratch.
                 if *descargados > 0 {
                     reiniciar(archivo, calculadora, descargados)?;
                     progreso(Progreso {
@@ -358,7 +360,7 @@ impl Descargador {
                 }
             }
             416 => {
-                // "Rango no satisfacible": lo que tenemos no encaja con el archivo del servidor.
+                // "Range not satisfiable": what we have does not fit the server's file.
                 reiniciar(archivo, calculadora, descargados)?;
                 return Ok(Intento::Reintentar {
                     motivo: "rango no satisfacible; se empieza de cero".into(),
@@ -380,7 +382,7 @@ impl Descargador {
             _ => return Err(ErrorDescarga::Http { estado }),
         }
 
-        // Leer el cuerpo por trozos.
+        // Read the body in chunks.
         let mut lector = respuesta.into_body().into_reader();
         let mut buffer = vec![0u8; TROZO];
         loop {
@@ -389,10 +391,10 @@ impl Descargador {
                 return Err(ErrorDescarga::Cancelada);
             }
             let leidos = match lector.read(&mut buffer) {
-                Ok(0) => break, // fin del cuerpo
+                Ok(0) => break, // end of the body
                 Ok(n) => n,
                 Err(e) => {
-                    // Corte o atasco: lo recibido ya está guardado; se reanudará.
+                    // Connection drop or stall: what was received is already saved; it will resume.
                     archivo.flush()?;
                     return Ok(Intento::Reintentar {
                         motivo: format!("lectura: {e}"),
@@ -428,16 +430,16 @@ impl Descargador {
         }
     }
 
-    /// 1 s, 2 s, 4 s… hasta 30 s (con la espera base por defecto).
+    /// 1 s, 2 s, 4 s… up to 30 s (with the default base wait).
     fn espera_creciente(&self, fallos: u32) -> Duration {
         let factor = 1u32 << fallos.saturating_sub(1).min(5);
         (self.opciones.espera_base * factor).min(Duration::from_secs(30))
     }
 }
 
-// ─── Ayudantes ────────────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-/// Lee lo que ya hay en el archivo parcial y lo pasa por la calculadora de la huella. Devuelve los bytes leídos.
+/// Reads what is already in the partial file and feeds it to the hash calculator. Returns the bytes read.
 fn huella_de_lo_existente(archivo: &mut File, calculadora: &mut Sha256) -> io::Result<u64> {
     use std::io::{Seek, SeekFrom};
     archivo.seek(SeekFrom::Start(0))?;
@@ -454,7 +456,7 @@ fn huella_de_lo_existente(archivo: &mut File, calculadora: &mut Sha256) -> io::R
     Ok(total)
 }
 
-/// Vacía el archivo parcial y la calculadora para empezar de cero.
+/// Empties the partial file and the calculator to start from scratch.
 fn reiniciar(
     archivo: &mut File,
     calculadora: &mut Sha256,
@@ -468,7 +470,7 @@ fn reiniciar(
     Ok(())
 }
 
-/// Lo que el servidor pide esperar en `Retry-After` (en segundos), con un tope. Si no lo dice, 10 s.
+/// What the server asks us to wait in `Retry-After` (in seconds), capped. If it does not say, 10 s.
 fn espera_pedida<B>(respuesta: &ureq::http::Response<B>) -> Duration {
     respuesta
         .headers()
@@ -479,7 +481,7 @@ fn espera_pedida<B>(respuesta: &ureq::http::Response<B>) -> Duration {
         .min(MAX_ESPERA_SERVIDOR)
 }
 
-/// Duerme, pero se despierta enseguida si se pide cancelar.
+/// Sleeps, but wakes up right away if cancellation is requested.
 fn dormir_salvo_cancelacion(espera: Duration, cancelar: &AtomicBool) {
     let paso = Duration::from_millis(100);
     let mut restante = espera;

@@ -1,12 +1,12 @@
 //! # locall-config
 //!
-//! Dónde guarda Locall sus datos y los ajustes del usuario (`config.toml`).
+//! Where Locall keeps its data and the user's settings (`config.toml`).
 //!
-//! - **Carpeta de datos:** `%LOCALAPPDATA%\Locall` (en el equipo, no en la parte "Roaming" que Windows puede
-//!   sincronizar: los modelos ocupan gigas). Con la variable `LOCALL_DATOS` se puede usar otra.
-//! - **Ajustes:** un archivo de texto `clave = valor` (subconjunto de TOML, ver [`lector`]). Si no existe, se usan
-//!   los valores por defecto. Cada valor se **valida** y los errores dicen la línea. Una clave desconocida es un
-//!   [`Aviso`], no un error, para que un archivo de una versión más nueva no impida arrancar a una más antigua.
+//! - **Data folder:** `%LOCALAPPDATA%\Locall` (on the computer, not in the "Roaming" part Windows may sync: models
+//!   take gigabytes). Another one can be used with the `LOCALL_DATOS` variable.
+//! - **Settings:** a `key = value` text file (a subset of TOML, see [`lector`]). If it does not exist, the defaults
+//!   are used. Every value is **validated** and errors give the line. An unknown key is an [`Aviso`], not an error,
+//!   so a file from a newer version does not stop an older one from starting.
 
 use std::fmt;
 use std::io;
@@ -18,16 +18,16 @@ pub mod registros;
 
 use lector::{Entrada, Valor};
 
-// ─── Carpetas ─────────────────────────────────────────────────────────────────
+// ─── Folders ──────────────────────────────────────────────────────────────────
 
-/// Las carpetas y archivos de Locall.
+/// Locall's folders and files.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Rutas {
     datos: PathBuf,
 }
 
 impl Rutas {
-    /// `LOCALL_DATOS` si está definida; si no, `%LOCALAPPDATA%\Locall`.
+    /// `LOCALL_DATOS` if it is set; otherwise `%LOCALAPPDATA%\Locall`.
     pub fn por_defecto() -> Result<Rutas, ErrorConfig> {
         let elegida = std::env::var_os("LOCALL_DATOS")
             .filter(|v| !v.is_empty())
@@ -41,7 +41,7 @@ impl Rutas {
         Ok(Rutas::en(elegida))
     }
 
-    /// Usa `datos` como carpeta de datos.
+    /// Uses `datos` as the data folder.
     pub fn en(datos: impl Into<PathBuf>) -> Rutas {
         Rutas {
             datos: datos.into(),
@@ -52,66 +52,66 @@ impl Rutas {
         &self.datos
     }
 
-    /// El archivo de ajustes.
+    /// The settings file.
     pub fn config(&self) -> PathBuf {
         self.datos.join("config.toml")
     }
 
-    /// El registro de modelos instalados (SQLite).
+    /// The registry of installed models (SQLite).
     pub fn base_de_datos(&self) -> PathBuf {
         self.datos.join("locall.db")
     }
 
-    /// El token de la API local (solo lo puede leer el usuario de Windows: está en su carpeta personal).
+    /// The local API token (only the Windows user can read it: it is in their personal folder).
     pub fn token(&self) -> PathBuf {
         self.datos.join("token")
     }
 
-    /// Carpeta de los registros (parte 10b).
+    /// Logs folder (part 10b).
     pub fn registros(&self) -> PathBuf {
         self.datos.join("registros")
     }
 
-    /// Carpeta del catálogo de modelos descargado (con su firma).
+    /// Folder of the downloaded model catalog (with its signature).
     pub fn catalogo(&self) -> PathBuf {
         self.datos.join("catalogo")
     }
 
-    /// Carpeta del almacén de modelos si el usuario no elige otra.
+    /// Model store folder if the user does not choose another one.
     pub fn modelos_por_defecto(&self) -> PathBuf {
         self.datos.join("modelos")
     }
 }
 
-// ─── Ajustes ──────────────────────────────────────────────────────────────────
+// ─── Settings ─────────────────────────────────────────────────────────────────
 
-/// Hilos del procesador para el motor.
+/// Processor threads for the engine.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Hilos {
-    /// Todos los del equipo (D5).
+    /// All of the computer's (D5).
     Auto,
-    /// Un número concreto (ya validado contra los del equipo).
+    /// A specific number (already validated against the computer's).
     Numero(usize),
 }
 
-/// Los ajustes del usuario.
+/// The user's settings.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Config {
-    /// Carpeta del almacén de modelos. `None` = la de por defecto ([`Rutas::modelos_por_defecto`]).
+    /// Model store folder. `None` = the default one ([`Rutas::modelos_por_defecto`]).
     pub carpeta_modelos: Option<PathBuf>,
     pub hilos: Hilos,
-    /// Contexto por defecto, en tokens.
+    /// Default context, in tokens.
     pub contexto: u32,
-    /// Minutos sin uso antes de descargar el modelo (0 = nunca).
+    /// Idle minutes before unloading the model (0 = never).
     pub inactividad_minutos: u32,
-    /// Conversaciones a la vez por modelo (ADR 0012).
+    /// Simultaneous conversations per model (ADR 0012).
     pub paralelo: u32,
-    /// Días que se guardan los registros.
+    /// Days the logs are kept.
     pub registros_dias: u32,
-    /// Puerto de la API local (solo en 127.0.0.1).
+    /// Local API port (only on 127.0.0.1).
     pub puerto: u16,
-    /// Minutos sin uso tras los que Locall se cierra solo (0 = nunca). La CLI y la app lo vuelven a abrir cuando
-    /// haga falta (ADR 0015).
+    /// Idle minutes after which Locall closes by itself (0 = never). The CLI and the app open it again when needed
+    /// (ADR 0015).
     pub cierre_inactividad_minutos: u32,
 }
 
@@ -130,8 +130,8 @@ impl Default for Config {
     }
 }
 
-/// El archivo que se crea la primera vez: los valores por defecto, explicados.
-/// (Una prueba comprueba que, al leerlo, da exactamente [`Config::default`].)
+/// The file created the first time: the defaults, explained.
+/// (A test checks that reading it gives exactly [`Config::default`].)
 pub const ARCHIVO_POR_DEFECTO: &str = r#"# Ajustes de Locall.
 # Si borras una línea, se usa el valor por defecto. Las rutas, entre comillas simples: 'D:\Modelos'
 
@@ -160,18 +160,18 @@ puerto = 11470
 cierre_inactividad_minutos = 30
 "#;
 
-/// Puerto de la API por defecto. Elegido para no coincidir con los de Ollama (11434), LM Studio (1234) ni Jan (1337).
+/// Default API port. Chosen not to clash with Ollama's (11434), LM Studio's (1234) or Jan's (1337).
 pub const PUERTO_POR_DEFECTO: u16 = 11470;
 
-/// Límites de cada ajuste numérico: (mínimo, máximo).
+/// Limits of each numeric setting: (minimum, maximum).
 const LIMITES_CONTEXTO: (i64, i64) = (256, 1_048_576);
-const LIMITES_INACTIVIDAD: (i64, i64) = (0, 7 * 24 * 60); // hasta una semana
+const LIMITES_INACTIVIDAD: (i64, i64) = (0, 7 * 24 * 60); // up to one week
 const LIMITES_PARALELO: (i64, i64) = (1, 16);
 const LIMITES_REGISTROS: (i64, i64) = (1, 365);
-const LIMITES_PUERTO: (i64, i64) = (1024, 65535); // por debajo de 1024 hacen falta permisos de administrador
+const LIMITES_PUERTO: (i64, i64) = (1024, 65535); // below 1024 administrator permissions are needed
 
 impl Config {
-    /// Lee los ajustes de un texto. Devuelve también los avisos (claves desconocidas).
+    /// Reads the settings from a text. Also returns the warnings (unknown keys).
     pub fn desde_texto(texto: &str) -> Result<(Config, Vec<Aviso>), ErrorConfig> {
         let entradas = lector::leer(texto).map_err(|e| ErrorConfig::Sintaxis {
             linea: e.linea,
@@ -205,7 +205,7 @@ impl Config {
         Ok((config, avisos))
     }
 
-    /// Lee el archivo de ajustes. Si no existe, devuelve los valores por defecto (sin crearlo).
+    /// Reads the settings file. If it does not exist, returns the defaults (without creating it).
     pub fn leer(ruta: &Path) -> Result<(Config, Vec<Aviso>), ErrorConfig> {
         match std::fs::read_to_string(ruta) {
             Ok(texto) => Config::desde_texto(&texto),
@@ -221,8 +221,8 @@ impl Config {
         }
     }
 
-    /// Crea el archivo de ajustes con los valores por defecto **si no existe** (nunca sobrescribe el del usuario).
-    /// Devuelve si lo ha creado.
+    /// Creates the settings file with the defaults **if it does not exist** (never overwrites the user's).
+    /// Returns whether it was created.
     pub fn crear_si_no_existe(rutas: &Rutas) -> Result<bool, ErrorConfig> {
         let ruta = rutas.config();
         let io = |error| ErrorConfig::Io {
@@ -230,7 +230,7 @@ impl Config {
             error,
         };
         std::fs::create_dir_all(rutas.datos()).map_err(io)?;
-        // `create_new` falla si ya existe: así no hay forma de pisar el archivo del usuario.
+        // `create_new` fails if it already exists: this way there is no way to overwrite the user's file.
         match std::fs::OpenOptions::new()
             .write(true)
             .create_new(true)
@@ -248,14 +248,14 @@ impl Config {
         }
     }
 
-    /// Guarda estos cambios en el archivo de ajustes (lo crea si no existe) y devuelve los ajustes guardados.
+    /// Saves these changes to the settings file (creates it if it does not exist) and returns the saved settings.
     ///
-    /// - Solo se pueden cambiar los ajustes de [`EDITABLES`].
-    /// - Se reescriben **solo las líneas** de esos ajustes (si un ajuste no está en el archivo, se añade al final): los
-    ///   comentarios y el resto del archivo se quedan como estaban.
-    /// - El resultado se **valida antes de escribirlo**, y se escribe en un archivo temporal que después sustituye al
-    ///   original: un corte a mitad nunca deja un `config.toml` roto.
-    /// - Los cambios se aplican la próxima vez que se abra Locall.
+    /// - Only the settings in [`EDITABLES`] can be changed.
+    /// - **Only the lines** of those settings are rewritten (if a setting is not in the file, it is appended): comments
+    ///   and the rest of the file stay as they were.
+    /// - The result is **validated before writing it**, and it is written to a temporary file that then replaces the
+    ///   original: an interruption halfway never leaves a broken `config.toml`.
+    /// - Changes take effect the next time Locall is opened.
     pub fn guardar_cambios(
         rutas: &Rutas,
         cambios: &[(&str, Valor)],
@@ -275,7 +275,7 @@ impl Config {
         };
         std::fs::create_dir_all(rutas.datos()).map_err(io)?;
         std::fs::write(&temporal, nuevo.as_bytes()).map_err(io)?;
-        // En Windows, `rename` sustituye el archivo de destino si ya existe (MoveFileEx con REPLACE_EXISTING).
+        // On Windows, `rename` replaces the target file if it already exists (MoveFileEx with REPLACE_EXISTING).
         if let Err(e) = std::fs::rename(&temporal, &ruta) {
             let _ = std::fs::remove_file(&temporal);
             return Err(io(e));
@@ -283,7 +283,7 @@ impl Config {
         Ok(config)
     }
 
-    /// Hilos que se darán al motor.
+    /// Threads that will be given to the engine.
     pub fn hilos_para_motor(&self) -> usize {
         match self.hilos {
             Hilos::Auto => locall_system::hilos_para_motor(),
@@ -291,30 +291,30 @@ impl Config {
         }
     }
 
-    /// Carpeta del almacén de modelos.
+    /// Model store folder.
     pub fn carpeta_modelos(&self, rutas: &Rutas) -> PathBuf {
         self.carpeta_modelos
             .clone()
             .unwrap_or_else(|| rutas.modelos_por_defecto())
     }
 
-    /// Tiempo sin uso tras el que Locall se cierra solo (`None` = nunca).
+    /// Idle time after which Locall closes by itself (`None` = never).
     pub fn cierre_inactividad(&self) -> Option<Duration> {
         (self.cierre_inactividad_minutos > 0)
             .then(|| Duration::from_secs(u64::from(self.cierre_inactividad_minutos) * 60))
     }
 
-    /// Tiempo de inactividad para el planificador (`None` = no descargar nunca).
+    /// Idle time for the scheduler (`None` = never unload).
     pub fn inactividad(&self) -> Option<Duration> {
         (self.inactividad_minutos > 0)
             .then(|| Duration::from_secs(u64::from(self.inactividad_minutos) * 60))
     }
 }
 
-// ─── Cambiar ajustes ──────────────────────────────────────────────────────────
+// ─── Changing settings ────────────────────────────────────────────────────────
 
-/// Los ajustes que se pueden cambiar desde la app. Los demás (carpeta de modelos, puerto, paralelo) solo a mano en
-/// `config.toml`: cambiarlos con Locall abierto tiene consecuencias que la app aún no gestiona (ADR 0020).
+/// The settings that can be changed from the app. The others (models folder, port, parallel) only by hand in
+/// `config.toml`: changing them with Locall open has consequences the app does not handle yet (ADR 0020).
 pub const EDITABLES: [&str; 5] = [
     "contexto",
     "hilos",
@@ -323,7 +323,7 @@ pub const EDITABLES: [&str; 5] = [
     "registros_dias",
 ];
 
-/// El texto del archivo con estos cambios (sin validar los valores: eso lo hace [`Config::desde_texto`]).
+/// The file text with these changes (without validating the values: [`Config::desde_texto`] does that).
 pub fn texto_con_cambios(texto: &str, cambios: &[(&str, Valor)]) -> Result<String, ErrorConfig> {
     let entradas = lector::leer(texto).map_err(|e| ErrorConfig::Sintaxis {
         linea: e.linea,
@@ -348,7 +348,7 @@ pub fn texto_con_cambios(texto: &str, cambios: &[(&str, Valor)]) -> Result<Strin
     Ok(resultado)
 }
 
-/// Un valor como se escribe en el archivo. Los textos van entre comillas dobles, con `\` y `"` escapados.
+/// A value as it is written in the file. Texts go in double quotes, with `\` and `"` escaped.
 fn escribir(valor: &Valor) -> String {
     match valor {
         Valor::Entero(n) => n.to_string(),
@@ -356,7 +356,7 @@ fn escribir(valor: &Valor) -> String {
     }
 }
 
-// ─── Validación de cada ajuste ───────────────────────────────────────────────
+// ─── Validation of each setting ───────────────────────────────────────────────
 
 fn error_valor(entrada: &Entrada, mensaje: impl Into<String>) -> ErrorConfig {
     ErrorConfig::Valor {
@@ -417,12 +417,12 @@ fn carpeta(entrada: &Entrada) -> Result<Option<PathBuf>, ErrorConfig> {
     }
 }
 
-// ─── Errores y avisos ─────────────────────────────────────────────────────────
+// ─── Errors and warnings ──────────────────────────────────────────────────────
 
-/// Algo que no impide arrancar pero conviene decir.
+/// Something that does not prevent starting but is worth reporting.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Aviso {
-    /// Un ajuste que esta versión no conoce (quizá de una versión más nueva, o una errata). Se ignora.
+    /// A setting this version does not know (maybe from a newer version, or a typo). It is ignored.
     ClaveDesconocida { linea: usize, clave: String },
 }
 
@@ -437,22 +437,22 @@ impl fmt::Display for Aviso {
     }
 }
 
-/// Lo que puede salir mal con la configuración.
+/// What can go wrong with the configuration.
 #[derive(Debug)]
 pub enum ErrorConfig {
-    /// No se sabe dónde guardar los datos (sin `LOCALL_DATOS` ni `LOCALAPPDATA`).
+    /// It is unknown where to keep the data (no `LOCALL_DATOS` nor `LOCALAPPDATA`).
     SinCarpetaDeDatos,
-    /// El archivo está mal escrito.
+    /// The file is malformed.
     Sintaxis { linea: usize, mensaje: String },
-    /// Un ajuste tiene un valor no válido.
+    /// A setting has an invalid value.
     Valor {
         linea: usize,
         clave: String,
         mensaje: String,
     },
-    /// No se pudo leer o escribir el archivo.
+    /// The file could not be read or written.
     Io { ruta: PathBuf, error: io::Error },
-    /// Se intentó cambiar desde la app un ajuste que no está en [`EDITABLES`].
+    /// An attempt was made to change from the app a setting that is not in [`EDITABLES`].
     NoEditable(String),
 }
 

@@ -44,7 +44,7 @@ fn modelo_7b_dividido() -> ModeloNuevo {
         arquitectura: Some("qwen2".into()),
         contexto_max: Some(131_072),
         verificado: true,
-        // Desordenados a propósito.
+        // Deliberately out of order.
         archivos: vec![
             archivo(
                 "qwen2.5-7b-instruct-q4_k_m-00002-of-00002.gguf",
@@ -114,7 +114,7 @@ fn rechaza_duplicados_y_modelos_sin_archivos() {
 fn una_transaccion_fallida_no_deja_nada() {
     let mut r = Registro::en_memoria().unwrap();
     let mut roto = modelo_4b();
-    // Dos archivos con el mismo nombre: el segundo INSERT falla a mitad de la transacción.
+    // Two files with the same name: the second INSERT fails halfway through the transaction.
     roto.archivos.push(archivo("Qwen3-4B-Q4_K_M.gguf", 'b', 1));
     assert!(r.registrar(&roto, 1).is_err());
     assert_eq!(
@@ -156,7 +156,7 @@ fn eliminar_devuelve_las_huellas_y_borra_sus_archivos() {
     ));
 }
 
-/// Archivo de base de datos temporal que se borra al terminar (junto con los de WAL).
+/// Temporary database file that is deleted at the end (together with the WAL ones).
 struct BaseDeDatosDePrueba(PathBuf);
 
 impl BaseDeDatosDePrueba {
@@ -191,8 +191,8 @@ fn los_datos_persisten_al_cerrar_y_abrir() {
         let mut r = Registro::abrir(&db.0).unwrap();
         assert_eq!(r.version_esquema().unwrap(), VERSION_ESQUEMA);
         r.registrar(&modelo_4b(), 1).unwrap();
-    } // se cierra
-    let r = Registro::abrir(&db.0).unwrap(); // abrir otra vez NO repite las migraciones
+    } // it gets closed
+    let r = Registro::abrir(&db.0).unwrap(); // opening it again does NOT repeat the migrations
     assert_eq!(r.version_esquema().unwrap(), VERSION_ESQUEMA);
     assert_eq!(r.listar().unwrap().len(), 1);
 }
@@ -214,7 +214,7 @@ fn no_toca_una_base_de_datos_de_una_version_futura() {
 fn detecta_datos_manipulados() {
     let mut r = Registro::en_memoria().unwrap();
     r.registrar(&modelo_4b(), 1).unwrap();
-    // Alguien cambia la huella a mano por 64 caracteres que no son hexadecimales.
+    // Someone changes the hash by hand to 64 characters that are not hexadecimal.
     r.conexion
         .execute("UPDATE archivos SET huella = ?1", [&"z".repeat(64)])
         .unwrap();
@@ -224,7 +224,7 @@ fn detecta_datos_manipulados() {
     ));
 }
 
-// ─── Conversaciones (esquema v2) ─────────────────────────────────────────────
+// ─── Conversations (schema v2) ────────────────────────────────────────────────
 
 fn respuesta(texto: &str) -> MensajeNuevo {
     MensajeNuevo {
@@ -242,7 +242,7 @@ fn respuesta(texto: &str) -> MensajeNuevo {
 fn una_base_de_datos_v1_se_actualiza_a_v2_sin_perder_nada() {
     let db = BaseDeDatosDePrueba::nueva("v1-a-v2");
     {
-        // Una base de datos como la de la Fase 2: solo la migración 1, con un modelo dentro.
+        // A database like the Phase 2 one: only migration 1, with one model inside.
         let mut c = Connection::open(&db.0).unwrap();
         let tx = c.transaction().unwrap();
         tx.execute_batch(MIGRACIONES[0]).unwrap();
@@ -256,7 +256,7 @@ fn una_base_de_datos_v1_se_actualiza_a_v2_sin_perder_nada() {
         tx.pragma_update(None, "user_version", 1).unwrap();
         tx.commit().unwrap();
     }
-    // Al abrirla con esta versión de Locall, se aplica la migración 2.
+    // When it is opened with this version of Locall, migration 2 is applied.
     let mut r = Registro::abrir(&db.0).unwrap();
     assert_eq!(r.version_esquema().unwrap(), 2);
     assert_eq!(r.listar().unwrap().len(), 1, "el modelo sigue ahí");
@@ -319,7 +319,7 @@ fn ordena_por_la_mas_reciente_y_quita_el_ultimo_mensaje() {
     let ids: Vec<i64> = r.conversaciones().unwrap().iter().map(|c| c.id).collect();
     assert_eq!(ids, [nueva.id, vieja.id]);
 
-    // Escribir en la vieja la sube arriba.
+    // Writing to the old one moves it to the top.
     r.anadir_mensaje(vieja.id, &MensajeNuevo::del_usuario("hola"), 30)
         .unwrap();
     assert_eq!(r.conversaciones().unwrap()[0].id, vieja.id);
@@ -358,7 +358,7 @@ fn los_titulos_largos_se_recortan() {
     assert!(t.ends_with('…'));
 }
 
-/// ¿Aparece `texto` en alguno de los archivos de la base de datos (el principal y el registro de cambios)?
+/// Does `texto` appear in any of the database files (the main one and the change log)?
 fn esta_en_los_archivos(db: &BaseDeDatosDePrueba, texto: &str) -> bool {
     ["", "-wal"].iter().any(|sufijo| {
         let mut ruta = db.0.clone().into_os_string();
@@ -373,7 +373,7 @@ fn eliminar_una_conversacion_la_borra_de_verdad_del_disco() {
     const SECRETO: &str = "ZANAHORIA-SECRETA-777";
     let db = BaseDeDatosDePrueba::nueva("borrado-real");
     let mut r = Registro::abrir(&db.0).unwrap();
-    // Otra conversación que se queda, para que la base de datos no quede vacía.
+    // Another conversation that stays, so the database is not left empty.
     let otra = r.crear_conversacion("Se queda", 1).unwrap();
     r.anadir_mensaje(otra.id, &MensajeNuevo::del_usuario("hola"), 2)
         .unwrap();

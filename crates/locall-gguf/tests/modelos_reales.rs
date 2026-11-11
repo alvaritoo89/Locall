@@ -1,8 +1,9 @@
-//! Pruebas con los modelos reales de la Fase 0.
+//! Tests with the real Phase 0 models.
 //!
-//! Los modelos pesan gigas y no están en el repositorio. Se buscan en la carpeta indicada por la variable de entorno
-//! `LOCALL_MODELOS` o, si no existe, en `C:\Locall-poc\modelos`. Si no están, la prueba se salta avisando.
-//! Los valores esperados son los que midió el script de Python de la Fase 0 (y coinciden con Hugging Face).
+//! The models weigh gigabytes and are not in the repository. They are looked up in the folder given by the
+//! `LOCALL_MODELOS` environment variable or, if it is not set, in `C:\Locall-poc\modelos`. If they are not there, the
+//! test is skipped with a notice. The expected values are the ones measured by the Phase 0 Python script (and they
+//! match Hugging Face).
 
 use std::path::PathBuf;
 

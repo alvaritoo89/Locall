@@ -1,20 +1,21 @@
-//! Lector de un subconjunto pequeño de TOML: líneas `clave = valor` y comentarios `#`.
+//! Reader for a small subset of TOML: `key = value` lines and `#` comments.
 //!
-//! Lo que entiende (y es TOML válido, así que un día se puede cambiar al crate `toml` sin tocar los archivos):
+//! What it understands (and it is valid TOML, so one day it can be switched to the `toml` crate without touching the
+//! files):
 //!
 //! ```toml
-//! # comentario
-//! contexto = 4096          # números enteros (se admite 4_096)
-//! hilos = "auto"           # textos entre comillas dobles (con \\ \" \n \t)
-//! carpeta = 'C:\Modelos'   # textos entre comillas simples: tal cual, ideal para rutas de Windows
+//! # comment
+//! contexto = 4096          # integers (4_096 is accepted)
+//! hilos = "auto"           # texts in double quotes (with \\ \" \n \t)
+//! carpeta = 'C:\Modelos'   # texts in single quotes: taken as is, ideal for Windows paths
 //! ```
 //!
-//! Lo que NO entiende (y lo dice con el número de línea): secciones `[...]`, listas, tablas, fechas, decimales,
-//! textos de varias líneas. Locall no los necesita todavía.
+//! What it does NOT understand (and it says so with the line number): `[...]` sections, arrays, tables, dates,
+//! decimals, multi-line texts. Locall does not need them yet.
 
 use std::fmt;
 
-/// Un valor leído.
+/// A value that was read.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Valor {
     Texto(String),
@@ -30,7 +31,7 @@ impl fmt::Display for Valor {
     }
 }
 
-/// Una línea `clave = valor`, con su número de línea (empezando en 1) para los mensajes.
+/// A `key = value` line, with its line number (starting at 1) for the messages.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Entrada {
     pub linea: usize,
@@ -38,24 +39,24 @@ pub struct Entrada {
     pub valor: Valor,
 }
 
-/// Error de sintaxis, con el número de línea.
+/// Syntax error, with the line number.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ErrorSintaxis {
     pub linea: usize,
     pub mensaje: String,
 }
 
-/// Lee todas las entradas del texto, en orden. Una clave repetida es un error (también lo es en TOML).
+/// Reads all the entries of the text, in order. A repeated key is an error (it is in TOML too).
 pub fn leer(texto: &str) -> Result<Vec<Entrada>, ErrorSintaxis> {
     let mut entradas: Vec<Entrada> = Vec::new();
-    // `lines()` acepta finales de línea de Windows (\r\n) y de Linux (\n).
+    // `lines()` accepts Windows (\r\n) and Linux (\n) line endings.
     for (i, linea) in texto.lines().enumerate() {
         let numero = i + 1;
         let error = |mensaje: String| ErrorSintaxis {
             linea: numero,
             mensaje,
         };
-        // El bloc de notas de Windows a veces pone una "marca de orden de bytes" (BOM) al principio.
+        // Windows Notepad sometimes puts a "byte order mark" (BOM) at the start.
         let linea = if numero == 1 {
             linea.trim_start_matches('\u{feff}')
         } else {
@@ -92,14 +93,14 @@ pub fn leer(texto: &str) -> Result<Vec<Entrada>, ErrorSintaxis> {
     Ok(entradas)
 }
 
-/// Lee el valor (lo que va tras el `=`), con un posible comentario al final.
+/// Reads the value (what comes after the `=`), with an optional comment at the end.
 fn leer_valor(texto: &str) -> Result<Valor, String> {
     let (valor, resto) = match texto.chars().next() {
         None => return Err("falta el valor tras el «=»".into()),
         Some('\'') => texto_literal(texto)?,
         Some('"') => texto_basico(texto)?,
         Some(_) => {
-            // Sin comillas: un número. Termina en un espacio o en un comentario.
+            // No quotes: a number. It ends at a space or a comment.
             let fin = texto.find(['#', ' ', '\t']).unwrap_or(texto.len());
             (entero(&texto[..fin])?, &texto[fin..])
         }
@@ -111,7 +112,7 @@ fn leer_valor(texto: &str) -> Result<Valor, String> {
     Ok(valor)
 }
 
-/// `'...'`: el contenido tal cual, sin secuencias de escape.
+/// `'...'`: the content as is, without escape sequences.
 fn texto_literal(texto: &str) -> Result<(Valor, &str), String> {
     let cuerpo = &texto[1..];
     let fin = cuerpo
@@ -120,7 +121,7 @@ fn texto_literal(texto: &str) -> Result<(Valor, &str), String> {
     Ok((Valor::Texto(cuerpo[..fin].to_owned()), &cuerpo[fin + 1..]))
 }
 
-/// `"..."`: admite `\\`, `\"`, `\n` y `\t`.
+/// `"..."`: accepts `\\`, `\"`, `\n` and `\t`.
 fn texto_basico(texto: &str) -> Result<(Valor, &str), String> {
     let mut resultado = String::new();
     let mut caracteres = texto[1..].char_indices();
@@ -146,7 +147,7 @@ fn texto_basico(texto: &str) -> Result<(Valor, &str), String> {
     Err("falta la comilla doble de cierre".into())
 }
 
-/// Un entero, con signo opcional y `_` entre cifras (`4_096`).
+/// An integer, with an optional sign and `_` between digits (`4_096`).
 fn entero(texto: &str) -> Result<Valor, String> {
     let sin_guiones: String = texto.chars().filter(|&c| c != '_').collect();
     let valido = !texto.starts_with('_') && !texto.ends_with('_') && !texto.contains("__");
@@ -191,7 +192,7 @@ mod pruebas {
         assert_eq!(entradas.len(), 2);
         assert_eq!(entradas[0].linea, 3);
         assert_eq!(entradas[1].linea, 4);
-        // Un # dentro de un texto no es un comentario.
+        // A # inside a text is not a comment.
         assert_eq!(una("nombre = 'a#b'").valor, Valor::Texto("a#b".into()));
     }
 

@@ -1,4 +1,4 @@
-//! El catálogo oficial del repositorio (`catalogo/catalogo.json`): que sea válido y que su firma sea buena.
+//! The repository's official catalog (`catalogo/catalogo.json`): it must be valid and its signature must be valid.
 
 const CATALOGO: &[u8] = include_bytes!("../../../catalogo/catalogo.json");
 
@@ -15,13 +15,13 @@ fn el_catalogo_del_repositorio_es_valido() {
             m.nombre
         );
     }
-    // Lo que escribirá la gente en `locall pull`.
+    // What people will type in `locall pull`.
     assert!(c.resolver("qwen3-4b").is_some());
 }
 
 #[test]
 fn el_catalogo_incluido_tiene_una_firma_oficial_buena() {
-    // Si esto falla, el catálogo se editó después de firmarlo: hay que volver a firmarlo (ADR 0022).
+    // If this fails, the catalog was edited after signing it: it must be signed again (ADR 0022).
     let c = locall_catalogo::incluido().unwrap();
     assert_eq!(c, locall_catalogo::leer(CATALOGO).unwrap());
     assert_eq!(c.modelos.len(), 12);

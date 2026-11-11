@@ -1,6 +1,6 @@
-//! Ejemplo: lo que Locall sabe de tu equipo.
+//! Example: what Locall knows about your computer.
 //!
-//! Uso:  cargo run -p locall-system --example equipo
+//! Usage:  cargo run -p locall-system --example equipo
 
 fn main() {
     let p = locall_system::procesador();

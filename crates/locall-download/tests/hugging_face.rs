@@ -1,13 +1,13 @@
-//! Pruebas **reales** contra Hugging Face (HTTPS con el TLS de Windows, redirecciones a su CDN, `Range`…).
+//! **Real** tests against Hugging Face (HTTPS with Windows' TLS, redirects to its CDN, `Range`…).
 //!
-//! Usan internet, así que están marcadas `#[ignore]`: `cargo test` normal no las ejecuta. Para lanzarlas:
+//! They use the internet, so they are marked `#[ignore]`: a normal `cargo test` does not run them. To run them:
 //!
 //! ```text
 //! cargo test -p locall-download --test hugging_face -- --ignored
 //! ```
 //!
-//! Descargan modelos diminutos (1,2 MB y 19 MB) de `ggml-org/tiny-llamas` (licencia MIT), fijados por revisión y
-//! huella, a una carpeta temporal que se borra al terminar.
+//! They download tiny models (1.2 MB and 19 MB) from `ggml-org/tiny-llamas` (MIT license), pinned by revision and
+//! hash, into a temporary folder that is deleted at the end.
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -74,7 +74,7 @@ fn pausa_y_reanuda_un_modelo_real() {
         19_077_344,
     );
 
-    // 1) Pausar al pasar de 5 MB.
+    // 1) Pause after passing 5 MB.
     let cancelar = AtomicBool::new(false);
     let error = Descargador::nuevo(Opciones::default())
         .descargar(&almacen, &pedido, &cancelar, |p| {
@@ -89,7 +89,7 @@ fn pausa_y_reanuda_un_modelo_real() {
         .len();
     assert!((5_000_000..19_077_344).contains(&guardados), "{guardados}");
 
-    // 2) Reanudar: el primer aviso de progreso debe partir de lo ya guardado (no de cero).
+    // 2) Resume: the first progress report must start from what was already saved (not from zero).
     let mut primero = None;
     let huella = Descargador::nuevo(Opciones::default())
         .descargar(&almacen, &pedido, &AtomicBool::new(false), |p| {

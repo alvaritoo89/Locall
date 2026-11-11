@@ -1,6 +1,6 @@
-//! Ejemplo: muestra la "etiqueta" de un modelo GGUF.
+//! Example: shows the "label" of a GGUF model.
 //!
-//! Uso:  cargo run -p locall-gguf --example leer -- <ruta del archivo .gguf>
+//! Usage:  cargo run -p locall-gguf --example leer -- <path to the .gguf file>
 
 use std::process::ExitCode;
 

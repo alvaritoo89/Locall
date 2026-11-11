@@ -1,5 +1,5 @@
-//! La firma del catálogo, con archivos firmados de verdad por minisign 0.12 con **claves de prueba** (sus claves
-//! privadas no están en el repositorio y no sirven para nada más).
+//! The catalog signature, with files really signed by minisign 0.12 using **test keys** (their private keys are not
+//! in the repository and serve no other purpose).
 
 use locall_catalogo::{CLAVE_PUBLICA, ErrorCatalogo, verificar};
 
@@ -8,7 +8,7 @@ const FIRMA: &str = include_str!("datos/catalogo.json.minisig");
 const FIRMA_OTRA_CLAVE: &str = include_str!("datos/firmado-por-otra.minisig");
 const FIRMA_FORMATO_ANTIGUO: &str = include_str!("datos/formato-antiguo.minisig");
 
-/// La clave pública de prueba (la segunda línea de `prueba.pub`).
+/// The test public key (the second line of `prueba.pub`).
 fn clave(archivo: &str) -> String {
     archivo.lines().nth(1).unwrap().trim().to_owned()
 }
@@ -27,7 +27,7 @@ fn un_catalogo_bien_firmado_se_acepta() {
 #[test]
 fn un_byte_cambiado_invalida_la_firma() {
     let mut cambiado = CATALOGO.to_vec();
-    // Cambiar el tamaño de un archivo (por ejemplo, para colar otro): 1000000 → 1000001.
+    // Change a file's size (for example, to sneak in another one): 1000000 → 1000001.
     let pos = cambiado.windows(7).position(|w| w == b"1000000").unwrap();
     cambiado[pos + 6] = b'1';
     assert_eq!(
@@ -38,7 +38,7 @@ fn un_byte_cambiado_invalida_la_firma() {
 
 #[test]
 fn los_saltos_de_linea_de_windows_tambien_invalidan_la_firma() {
-    // Por eso .gitattributes guarda estos archivos byte a byte.
+    // That is why .gitattributes stores these files byte for byte.
     let crlf = String::from_utf8(CATALOGO.to_vec())
         .unwrap()
         .replace('\n', "\r\n");
@@ -51,7 +51,7 @@ fn los_saltos_de_linea_de_windows_tambien_invalidan_la_firma() {
 #[test]
 fn firmado_con_otra_clave_no_se_acepta() {
     assert!(verificar(CATALOGO, FIRMA_OTRA_CLAVE, &clave_de_prueba()).is_err());
-    // Y con la clave que sí lo firmó, sí: la firma es buena, pero no es de quien esperamos.
+    // And with the key that did sign it, it passes: the signature is valid, but not from whom we expect.
     assert!(
         verificar(
             CATALOGO,
@@ -98,7 +98,7 @@ fn un_archivo_enorme_se_rechaza_sin_leerlo() {
 
 #[test]
 fn la_clave_oficial_es_una_clave_valida() {
-    // Si alguien estropea la constante, la app no podría verificar nunca el catálogo oficial.
+    // If someone breaks the constant, the app could never verify the official catalog.
     let error = verificar(CATALOGO, FIRMA, CLAVE_PUBLICA).unwrap_err();
     assert_ne!(error, ErrorCatalogo::ClaveNoValida);
 }

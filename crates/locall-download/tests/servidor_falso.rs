@@ -1,8 +1,8 @@
-//! Pruebas del descargador contra un **servidor HTTP falso** local (127.0.0.1).
+//! Downloader tests against a local **fake HTTP server** (127.0.0.1).
 //!
-//! Así podemos provocar a voluntad lo que en Internet pasa de vez en cuando: cortes a mitad, conexiones atascadas,
-//! "demasiadas peticiones" (429), servidores que ignoran la reanudación, contenido adulterado…
-//! No usan la red ni descargan nada de fuera.
+//! This way we can trigger at will what happens on the Internet now and then: drops halfway, stalled connections,
+//! "too many requests" (429), servers that ignore resuming, tampered content…
+//! They do not use the network or download anything from outside.
 
 use std::io::{BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
@@ -15,12 +15,12 @@ use std::time::{Duration, Instant};
 use locall_download::{Descargador, ErrorDescarga, Opciones, Pedido};
 use locall_store::{Almacen, huella_de_bytes};
 
-// ─── Servidor falso ───────────────────────────────────────────────────────────
+// ─── Fake server ──────────────────────────────────────────────────────────────
 
-/// Un servidor que atiende cada conexión con la función `manejar(número_de_petición, rango_pedido, conexión)`.
+/// A server that handles each connection with the function `manejar(request_number, requested_range, connection)`.
 struct Servidor {
     url: String,
-    /// El inicio del `Range` de cada petición recibida (`None` = pidió el archivo entero).
+    /// The `Range` start of each request received (`None` = it asked for the whole file).
     peticiones: Arc<Mutex<Vec<Option<u64>>>>,
 }
 
@@ -38,7 +38,7 @@ where
             let Ok(mut conexion) = conexion else { continue };
             let manejar = Arc::clone(&manejar);
             let registro = Arc::clone(&registro);
-            // Un hilo por conexión: una conexión "atascada" no debe bloquear las siguientes.
+            // One thread per connection: a "stalled" connection must not block the next ones.
             thread::spawn(move || {
                 let desde = leer_peticion(&conexion);
                 let numero = {
@@ -53,7 +53,7 @@ where
     Servidor { url, peticiones }
 }
 
-/// Lee la cabecera de la petición y devuelve el inicio del `Range` (si lo hay).
+/// Reads the request header and returns the `Range` start (if any).
 fn leer_peticion(conexion: &TcpStream) -> Option<u64> {
     let mut lector = BufReader::new(conexion);
     let mut desde = None;
@@ -70,7 +70,7 @@ fn leer_peticion(conexion: &TcpStream) -> Option<u64> {
     desde
 }
 
-/// Escribe una cabecera de respuesta. `longitud` es el `Content-Length` que se anuncia.
+/// Writes a response header. `longitud` is the announced `Content-Length`.
 fn cabecera(conexion: &mut TcpStream, estado: &str, longitud: usize, extra: &str) {
     let texto = format!(
         "HTTP/1.1 {estado}\r\nContent-Length: {longitud}\r\nConnection: close\r\n{extra}\r\n"
@@ -78,7 +78,7 @@ fn cabecera(conexion: &mut TcpStream, estado: &str, longitud: usize, extra: &str
     let _ = conexion.write_all(texto.as_bytes());
 }
 
-/// Responde como un servidor correcto: 206 si se pidió un rango, 200 si no.
+/// Answers like a correct server: 206 if a range was requested, 200 otherwise.
 fn responder_bien(conexion: &mut TcpStream, datos: &[u8], desde: Option<u64>) {
     match desde {
         Some(d) => {
@@ -98,16 +98,16 @@ fn responder_bien(conexion: &mut TcpStream, datos: &[u8], desde: Option<u64>) {
     }
 }
 
-/// Anuncia el archivo entero pero solo envía hasta `hasta` y cierra (un corte de conexión).
+/// Announces the whole file but only sends up to `hasta` and closes (a dropped connection).
 fn responder_cortado(conexion: &mut TcpStream, datos: &[u8], hasta: usize) {
     cabecera(conexion, "200 OK", datos.len(), "");
     let _ = conexion.write_all(&datos[..hasta]);
     let _ = conexion.flush();
 }
 
-// ─── Ayudantes de las pruebas ────────────────────────────────────────────────
+// ─── Test helpers ─────────────────────────────────────────────────────────────
 
-/// 300 KB de datos de prueba (más que un trozo de lectura, para que haya varias lecturas).
+/// 300 KB of test data (more than one read chunk, so there are several reads).
 fn datos_de_prueba() -> Arc<Vec<u8>> {
     Arc::new((0..300_000u32).map(|i| (i * 31 % 251) as u8).collect())
 }
@@ -133,7 +133,7 @@ impl Drop for CarpetaDePrueba {
     }
 }
 
-/// Opciones rápidas para pruebas: atasco a los 0,5 s y esperas de 10 ms entre reintentos.
+/// Fast options for tests: stall after 0.5 s and 10 ms waits between retries.
 fn opciones_rapidas() -> Opciones {
     Opciones {
         fallos_seguidos_max: 3,
@@ -161,7 +161,7 @@ fn descargar(almacen: &Almacen, pedido: &Pedido) -> Result<locall_store::Huella,
     )
 }
 
-// ─── Pruebas ──────────────────────────────────────────────────────────────────
+// ─── Tests ────────────────────────────────────────────────────────────────────
 
 #[test]
 fn descarga_normal() {
@@ -189,7 +189,7 @@ fn descarga_normal() {
     let ultimo = ultimo.unwrap();
     assert_eq!(ultimo.descargados, ultimo.total);
 
-    // Si ya está en el almacén, no se vuelve a pedir nada al servidor.
+    // If it is already in the store, nothing is requested from the server again.
     descargar(&almacen, &pedido).unwrap();
     assert_eq!(srv.peticiones.lock().unwrap().len(), 1);
 }
@@ -210,7 +210,7 @@ fn se_reanuda_tras_un_corte() {
 
     descargar(&almacen, &pedido(&srv, &datos)).unwrap();
 
-    // La segunda petición continúa exactamente donde se cortó la primera.
+    // The second request continues exactly where the first one was cut.
     assert_eq!(*srv.peticiones.lock().unwrap(), vec![None, Some(100_000)]);
 }
 
@@ -220,7 +220,7 @@ fn detecta_una_conexion_atascada() {
     let d = Arc::clone(&datos);
     let srv = servidor(move |n, desde, c| {
         if n == 0 {
-            // Envía un tercio y se queda callado sin cerrar la conexión.
+            // Sends a third and goes quiet without closing the connection.
             cabecera(c, "200 OK", d.len(), "");
             let _ = c.write_all(&d[..100_000]);
             let _ = c.flush();
@@ -235,7 +235,7 @@ fn detecta_una_conexion_atascada() {
     let inicio = Instant::now();
     descargar(&almacen, &pedido(&srv, &datos)).unwrap();
 
-    // No esperó a que el servidor cerrase (5 s): detectó el atasco a los 0,5 s y reanudó.
+    // It did not wait for the server to close (5 s): it detected the stall at 0.5 s and resumed.
     assert!(
         inicio.elapsed() < Duration::from_secs(4),
         "tardó {:?}",
@@ -261,7 +261,7 @@ fn respeta_el_retry_after_de_un_429() {
     let inicio = Instant::now();
     descargar(&almacen, &pedido(&srv, &datos)).unwrap();
 
-    // Esperó el segundo que pidió el servidor (y no los 10 ms de la espera normal).
+    // It waited the second the server asked for (and not the normal 10 ms wait).
     assert!(
         inicio.elapsed() >= Duration::from_millis(950),
         "tardó {:?}",
@@ -278,7 +278,7 @@ fn empieza_de_cero_si_el_servidor_ignora_la_reanudacion() {
         if n == 0 {
             responder_cortado(c, &d, 100_000);
         } else {
-            // Ignora el Range y envía siempre el archivo entero con 200.
+            // Ignores the Range and always sends the whole file with 200.
             responder_bien(c, &d, None);
         }
     });
@@ -287,7 +287,7 @@ fn empieza_de_cero_si_el_servidor_ignora_la_reanudacion() {
 
     let huella = descargar(&almacen, &pedido(&srv, &datos)).unwrap();
 
-    // Si se hubiera añadido el archivo entero tras lo ya descargado, la huella no coincidiría.
+    // If the whole file had been appended after what was already downloaded, the hash would not match.
     assert_eq!(std::fs::read(almacen.ruta_blob(&huella)).unwrap(), *datos);
 }
 
@@ -295,7 +295,7 @@ fn empieza_de_cero_si_el_servidor_ignora_la_reanudacion() {
 fn descarta_un_contenido_adulterado() {
     let datos = datos_de_prueba();
     let mut adulterado = (*datos).clone();
-    adulterado[1234] ^= 0xFF; // un solo byte cambiado
+    adulterado[1234] ^= 0xFF; // a single byte changed
     let srv = servidor(move |_, desde, c| responder_bien(c, &adulterado, desde));
     let carpeta = CarpetaDePrueba::nueva("adulterado");
     let almacen = carpeta.almacen();
@@ -360,7 +360,7 @@ fn se_rinde_tras_varios_errores_seguidos_del_servidor() {
         matches!(error, ErrorDescarga::IntentosAgotados { .. }),
         "{error:?}"
     );
-    // 1 intento + 3 reintentos (fallos_seguidos_max = 3).
+    // 1 attempt + 3 retries (fallos_seguidos_max = 3).
     assert_eq!(srv.peticiones.lock().unwrap().len(), 4);
 }
 
@@ -368,7 +368,7 @@ fn se_rinde_tras_varios_errores_seguidos_del_servidor() {
 fn se_pausa_y_se_reanuda() {
     let datos = datos_de_prueba();
     let d = Arc::clone(&datos);
-    // Un servidor lento: 16 KB cada 20 ms.
+    // A slow server: 16 KB every 20 ms.
     let srv = servidor(move |_, desde, c| {
         let inicio = desde.unwrap_or(0) as usize;
         match desde {
@@ -384,7 +384,7 @@ fn se_pausa_y_se_reanuda() {
         }
         for trozo in d[inicio..].chunks(16 * 1024) {
             if c.write_all(trozo).is_err() {
-                return; // el cliente se fue (pausa)
+                return; // the client went away (pause)
             }
             let _ = c.flush();
             thread::sleep(Duration::from_millis(20));
@@ -395,7 +395,7 @@ fn se_pausa_y_se_reanuda() {
     let pedido = pedido(&srv, &datos);
     let descargador = Descargador::nuevo(opciones_rapidas());
 
-    // 1) Se pausa al pasar de 64 KB.
+    // 1) It pauses after passing 64 KB.
     let cancelar = AtomicBool::new(false);
     let error = descargador
         .descargar(&almacen, &pedido, &cancelar, |p| {
@@ -411,11 +411,11 @@ fn se_pausa_y_se_reanuda() {
         guardados >= 64 * 1024 && guardados < datos.len() as u64,
         "{guardados}"
     );
-    // Limpiar temporales no borra una descarga pausada.
+    // Cleaning temporary files does not delete a paused download.
     almacen.limpiar_temporales().unwrap();
     assert!(parcial.exists());
 
-    // 2) Se reanuda (como si fuese otra sesión: un descargador nuevo) desde lo guardado.
+    // 2) It resumes (as if it were another session: a new downloader) from what was saved.
     let huella = Descargador::nuevo(opciones_rapidas())
         .descargar(&almacen, &pedido, &AtomicBool::new(false), |_| {})
         .unwrap();

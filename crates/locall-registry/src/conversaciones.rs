@@ -1,18 +1,18 @@
-//! Conversaciones guardadas (esquema v2). Viven en el núcleo para que la app y la CLI las compartan (decisión
-//! ratificada en la investigación).
+//! Saved conversations (schema v2). They live in the core so the app and the CLI share them (decision confirmed
+//! during research).
 //!
-//! **Borrado real (privacidad):** SQLite, al borrar, no sobrescribe los datos: el texto se quedaría en el archivo hasta
-//! reutilizar ese espacio, y en el registro de cambios (`-wal`). Por eso la conexión usa `secure_delete` (rellena con
-//! ceros lo borrado) y, al eliminar una conversación, se vacía el `-wal` (`wal_checkpoint(TRUNCATE)`).
+//! **Real deletion (privacy):** when deleting, SQLite does not overwrite the data: the text would stay in the file
+//! until that space is reused, and in the change log (`-wal`). That is why the connection uses `secure_delete` (fills
+//! deleted data with zeros) and, when a conversation is deleted, the `-wal` is emptied (`wal_checkpoint(TRUNCATE)`).
 
 use rusqlite::{OptionalExtension, Row, params};
 
 use crate::{ErrorRegistro, Registro, Resultado, a_i64, a_u64, invalido};
 
-/// Longitud máxima de un título (en caracteres).
+/// Maximum length of a title (in characters).
 pub const TITULO_MAX: usize = 120;
 
-/// Quién escribió un mensaje.
+/// Who wrote a message.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Autor {
     Usuario,
@@ -36,14 +36,14 @@ impl Autor {
     }
 }
 
-/// Una conversación (sin sus mensajes).
+/// A conversation (without its messages).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Conversacion {
     pub id: i64,
     pub titulo: String,
-    /// El último modelo usado (puede haberse eliminado después).
+    /// The last model used (it may have been removed since).
     pub modelo: Option<String>,
-    /// Instrucciones del sistema.
+    /// System instructions.
     pub sistema: String,
     pub temperatura: Option<f64>,
     pub creada: u64,
@@ -51,23 +51,23 @@ pub struct Conversacion {
     pub mensajes: u64,
 }
 
-/// Un mensaje guardado.
+/// A saved message.
 #[derive(Debug, Clone, PartialEq)]
 pub struct MensajeGuardado {
     pub orden: u64,
     pub autor: Autor,
     pub contenido: String,
     pub razonamiento: String,
-    /// En las respuestas: el modelo que respondió y sus cifras.
+    /// In answers: the model that answered and its figures.
     pub modelo: Option<String>,
     pub tokens: Option<u64>,
     pub velocidad: Option<f64>,
-    /// La respuesta se paró antes de terminar.
+    /// The answer was stopped before it finished.
     pub cortada: bool,
     pub creado: u64,
 }
 
-/// Los datos de un mensaje nuevo.
+/// The data of a new message.
 #[derive(Debug, Clone, PartialEq)]
 pub struct MensajeNuevo {
     pub autor: Autor,
@@ -80,7 +80,7 @@ pub struct MensajeNuevo {
 }
 
 impl MensajeNuevo {
-    /// Un mensaje del usuario.
+    /// A user message.
     pub fn del_usuario(contenido: impl Into<String>) -> MensajeNuevo {
         MensajeNuevo {
             autor: Autor::Usuario,
@@ -94,7 +94,7 @@ impl MensajeNuevo {
     }
 }
 
-/// Recorta un título a [`TITULO_MAX`] caracteres, en una sola línea.
+/// Trims a title to [`TITULO_MAX`] characters, on a single line.
 pub fn titulo_valido(texto: &str) -> String {
     let linea = texto.split_whitespace().collect::<Vec<_>>().join(" ");
     let mut titulo: String = linea.chars().take(TITULO_MAX).collect();
@@ -108,7 +108,7 @@ const COLUMNAS_CONVERSACION: &str =
     "c.id, c.titulo, c.modelo, c.sistema, c.temperatura, c.creada, c.actualizada,
      (SELECT count(*) FROM mensajes m WHERE m.conversacion_id = c.id)";
 
-/// Una fila de conversación tal como sale de SQLite (id, título, modelo, sistema, temperatura, fechas, mensajes).
+/// A conversation row as it comes out of SQLite (id, title, model, system, temperature, dates, messages).
 type Fila = (
     i64,
     String,
@@ -153,7 +153,7 @@ fn no_encontrada(id: i64) -> ErrorRegistro {
 }
 
 impl Registro {
-    /// Crea una conversación vacía.
+    /// Creates an empty conversation.
     pub fn crear_conversacion(&mut self, titulo: &str, ahora: u64) -> Resultado<Conversacion> {
         let momento = a_i64(ahora, "conversaciones.creada")?;
         self.conexion.execute(
@@ -164,7 +164,7 @@ impl Registro {
         self.conversacion(id)?.ok_or_else(|| no_encontrada(id))
     }
 
-    /// Las conversaciones, de la más reciente a la más antigua.
+    /// The conversations, from the most recent to the oldest.
     pub fn conversaciones(&self) -> Resultado<Vec<Conversacion>> {
         let mut consulta = self.conexion.prepare(&format!(
             "SELECT {COLUMNAS_CONVERSACION} FROM conversaciones c ORDER BY c.actualizada DESC, c.id DESC"
@@ -173,7 +173,7 @@ impl Registro {
         filas.map(|f| convertir(f?)).collect()
     }
 
-    /// Una conversación (sin sus mensajes).
+    /// A conversation (without its messages).
     pub fn conversacion(&self, id: i64) -> Resultado<Option<Conversacion>> {
         let fila = self
             .conexion
@@ -186,7 +186,7 @@ impl Registro {
         fila.map(convertir).transpose()
     }
 
-    /// Los mensajes de una conversación, en orden.
+    /// The messages of a conversation, in order.
     pub fn mensajes(&self, id: i64) -> Resultado<Vec<MensajeGuardado>> {
         let mut consulta = self.conexion.prepare(
             "SELECT orden, rol, contenido, razonamiento, modelo, tokens, velocidad, cortada, creado
@@ -233,7 +233,7 @@ impl Registro {
             .collect()
     }
 
-    /// Cambia el título.
+    /// Changes the title.
     pub fn renombrar_conversacion(&mut self, id: i64, titulo: &str) -> Resultado<()> {
         let cambiadas = self.conexion.execute(
             "UPDATE conversaciones SET titulo = ?2 WHERE id = ?1",
@@ -245,7 +245,7 @@ impl Registro {
         Ok(())
     }
 
-    /// Guarda el modelo, las instrucciones del sistema y la temperatura con que se está usando la conversación.
+    /// Saves the model, system instructions and temperature the conversation is being used with.
     pub fn ajustar_conversacion(
         &mut self,
         id: i64,
@@ -263,7 +263,7 @@ impl Registro {
         Ok(())
     }
 
-    /// Añade un mensaje al final y marca la conversación como actualizada. Devuelve el mensaje guardado.
+    /// Appends a message at the end and marks the conversation as updated. Returns the saved message.
     pub fn anadir_mensaje(
         &mut self,
         id: i64,
@@ -321,7 +321,7 @@ impl Registro {
         })
     }
 
-    /// Quita el último mensaje (por ejemplo, una pregunta que no obtuvo respuesta por un error).
+    /// Removes the last message (for example, a question that got no answer because of an error).
     pub fn quitar_ultimo_mensaje(&mut self, id: i64) -> Resultado<()> {
         self.conexion.execute(
             "DELETE FROM mensajes WHERE conversacion_id = ?1
@@ -331,7 +331,7 @@ impl Registro {
         Ok(())
     }
 
-    /// Elimina una conversación y sus mensajes **de verdad** (ver el inicio de este módulo).
+    /// Deletes a conversation and its messages **for real** (see the top of this module).
     pub fn eliminar_conversacion(&mut self, id: i64) -> Resultado<()> {
         let borradas = self
             .conexion
@@ -343,8 +343,8 @@ impl Registro {
         Ok(())
     }
 
-    /// Pasa el registro de cambios (`-wal`) al archivo principal y lo deja vacío, para que no quede ahí una copia de
-    /// lo borrado. (En una base de datos en memoria no hace nada.)
+    /// Moves the change log (`-wal`) into the main file and leaves it empty, so no copy of the deleted data stays there.
+    /// (It does nothing on an in-memory database.)
     fn vaciar_registro_de_cambios(&self) -> Resultado<()> {
         self.conexion
             .query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |_| Ok(()))

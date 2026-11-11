@@ -1,4 +1,4 @@
-//! Llamadas a Windows. Es el único archivo de `locall-system` con `unsafe`: cada bloque explica por qué es seguro.
+//! Windows calls. This is the only file in `locall-system` with `unsafe`: each block explains why it is safe.
 
 use std::io;
 use std::os::windows::io::AsRawHandle;
@@ -32,29 +32,29 @@ use windows_sys::Win32::System::Threading::{
 
 use crate::{FechaHora, Memoria};
 
-/// Convierte un texto a UTF-16 terminado en 0, como lo quiere Windows.
+/// Converts a text to 0-terminated UTF-16, as Windows wants it.
 fn ancho(texto: &str) -> Vec<u16> {
     texto.encode_utf16().chain([0]).collect()
 }
 
-/// `WAIT_TIMEOUT`: el proceso no ha terminado (la espera de 0 ms se agotó).
+/// `WAIT_TIMEOUT`: the process has not finished (the 0 ms wait ran out).
 const SIGUE_EN_MARCHA: u32 = 0x102;
 
 pub fn proceso_vivo(proceso: &Child) -> bool {
-    // SAFETY: el identificador del proceso es válido mientras `proceso` exista (lo tenemos prestado); esperar 0 ms
-    // solo pregunta si ha terminado, sin bloquear ni cambiar nada.
+    // SAFETY: the process handle is valid while `proceso` exists (we borrow it); waiting 0 ms only asks whether it has
+    // finished, without blocking or changing anything.
     unsafe { WaitForSingleObject(proceso.as_raw_handle() as _, 0) == SIGUE_EN_MARCHA }
 }
 
-/// Formato del portapapeles para texto UTF-16 (`CF_UNICODETEXT`).
+/// Clipboard format for UTF-16 text (`CF_UNICODETEXT`).
 const TEXTO_UNICODE: u32 = 13;
 
 pub fn copiar_al_portapapeles(texto: &str) -> io::Result<()> {
     let utf16 = ancho(texto);
-    // Otro programa puede tener el portapapeles abierto un instante: se reintenta un poco.
+    // Another program may hold the clipboard open for an instant: retry a little.
     let mut abierto = false;
     for _ in 0..10 {
-        // SAFETY: un HWND nulo es válido (el portapapeles queda asociado a esta tarea).
+        // SAFETY: a null HWND is valid (the clipboard gets associated with this task).
         if unsafe { OpenClipboard(std::ptr::null_mut()) } != 0 {
             abierto = true;
             break;
@@ -65,49 +65,49 @@ pub fn copiar_al_portapapeles(texto: &str) -> io::Result<()> {
         return Err(io::Error::last_os_error());
     }
     let resultado = (|| {
-        // SAFETY: el portapapeles está abierto por nosotros (OpenClipboard tuvo éxito).
+        // SAFETY: the clipboard is opened by us (OpenClipboard succeeded).
         if unsafe { EmptyClipboard() } == 0 {
             return Err(io::Error::last_os_error());
         }
         let bytes = utf16.len() * std::mem::size_of::<u16>();
-        // SAFETY: pedir memoria movible de `bytes` bytes; se comprueba que no sea nula.
+        // SAFETY: request movable memory of `bytes` bytes; it is checked not to be null.
         let memoria = unsafe { GlobalAlloc(GMEM_MOVEABLE, bytes) };
         if memoria.is_null() {
             return Err(io::Error::last_os_error());
         }
-        // SAFETY: `memoria` es un bloque válido recién pedido; GlobalLock da un puntero a sus `bytes` bytes.
+        // SAFETY: `memoria` is a valid, freshly requested block; GlobalLock gives a pointer to its `bytes` bytes.
         let destino = unsafe { GlobalLock(memoria) }.cast::<u16>();
         if destino.is_null() {
             let error = io::Error::last_os_error();
-            // SAFETY: el bloque es nuestro y no se ha entregado a nadie.
+            // SAFETY: the block is ours and has not been handed to anyone.
             unsafe { GlobalFree(memoria) };
             return Err(error);
         }
-        // SAFETY: `destino` apunta a `utf16.len()` u16 (el bloque mide exactamente eso) y no se solapa con `utf16`.
+        // SAFETY: `destino` points to `utf16.len()` u16 (the block is exactly that size) and does not overlap `utf16`.
         unsafe {
             std::ptr::copy_nonoverlapping(utf16.as_ptr(), destino, utf16.len());
             GlobalUnlock(memoria);
         }
-        // SAFETY: el bloque contiene texto UTF-16 terminado en 0. Si SetClipboardData tiene éxito, el bloque pasa a
-        // ser del sistema y NO se debe liberar; si falla, sigue siendo nuestro y se libera.
+        // SAFETY: the block holds 0-terminated UTF-16 text. If SetClipboardData succeeds, the block belongs to the system
+        // and must NOT be freed; if it fails, it is still ours and is freed.
         if unsafe { SetClipboardData(TEXTO_UNICODE, memoria) }.is_null() {
             let error = io::Error::last_os_error();
-            // SAFETY: SetClipboardData falló: el bloque sigue siendo nuestro.
+            // SAFETY: SetClipboardData failed: the block is still ours.
             unsafe { GlobalFree(memoria) };
             return Err(error);
         }
         Ok(())
     })();
-    // SAFETY: lo abrimos nosotros arriba.
+    // SAFETY: we opened it above.
     unsafe { CloseClipboard() };
     resultado
 }
 
 pub fn memoria() -> io::Result<Memoria> {
-    // SAFETY: MEMORYSTATUSEX es una estructura de solo números: llenarla de ceros es válido.
+    // SAFETY: MEMORYSTATUSEX is a numbers-only struct: filling it with zeros is valid.
     let mut estado: MEMORYSTATUSEX = unsafe { std::mem::zeroed() };
-    estado.dwLength = std::mem::size_of::<MEMORYSTATUSEX>() as u32; // Windows exige indicar el tamaño
-    // SAFETY: `estado` es válida, con dwLength correcto, y vive durante la llamada.
+    estado.dwLength = std::mem::size_of::<MEMORYSTATUSEX>() as u32; // Windows requires the size to be set
+    // SAFETY: `estado` is valid, with a correct dwLength, and lives during the call.
     let ok = unsafe { GlobalMemoryStatusEx(&mut estado) };
     if ok == 0 {
         return Err(io::Error::last_os_error());
@@ -118,15 +118,15 @@ pub fn memoria() -> io::Result<Memoria> {
     })
 }
 
-/// Lee el nombre del procesador del registro de Windows
+/// Reads the processor name from the Windows registry
 /// (`HKLM\HARDWARE\DESCRIPTION\System\CentralProcessor\0\ProcessorNameString`).
 pub fn nombre_procesador() -> Option<String> {
     let subclave = ancho(r"HARDWARE\DESCRIPTION\System\CentralProcessor\0");
     let valor = ancho("ProcessorNameString");
     let mut buffer = [0u16; 256];
     let mut bytes = std::mem::size_of_val(&buffer) as u32;
-    // SAFETY: las cadenas son UTF-16 terminadas en 0 y viven durante la llamada; `buffer` tiene `bytes` bytes;
-    // el puntero de tipo puede ser nulo según la documentación de RegGetValueW.
+    // SAFETY: the strings are 0-terminated UTF-16 and live during the call; `buffer` has `bytes` bytes; the type pointer
+    // may be null according to the RegGetValueW documentation.
     let resultado = unsafe {
         RegGetValueW(
             HKEY_LOCAL_MACHINE,
@@ -148,14 +148,14 @@ pub fn nombre_procesador() -> Option<String> {
 }
 
 pub fn memoria_de_proceso(pid: u32) -> io::Result<u64> {
-    // SAFETY: OpenProcess solo recibe números; devuelve nulo si falla (comprobado abajo).
+    // SAFETY: OpenProcess only receives numbers; it returns null on failure (checked below).
     let proceso = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
     if proceso.is_null() {
         return Err(io::Error::last_os_error());
     }
-    // SAFETY: estructura de solo números, ceros válidos.
+    // SAFETY: numbers-only struct, zeros are valid.
     let mut contadores: PROCESS_MEMORY_COUNTERS = unsafe { std::mem::zeroed() };
-    // SAFETY: `proceso` es un asa válida recién abierta; `contadores` es válida y se indica su tamaño.
+    // SAFETY: `proceso` is a valid, freshly opened handle; `contadores` is valid and its size is given.
     let ok = unsafe {
         K32GetProcessMemoryInfo(
             proceso,
@@ -164,7 +164,7 @@ pub fn memoria_de_proceso(pid: u32) -> io::Result<u64> {
         )
     };
     let error = io::Error::last_os_error();
-    // SAFETY: cerramos el asa que abrimos, una sola vez.
+    // SAFETY: we close the handle we opened, exactly once.
     unsafe { CloseHandle(proceso) };
     if ok == 0 {
         return Err(error);
@@ -172,25 +172,25 @@ pub fn memoria_de_proceso(pid: u32) -> io::Result<u64> {
     Ok(contadores.WorkingSetSize as u64)
 }
 
-/// El Job Object (asa de Windows). Al soltarlo se cierra el asa y Windows termina sus procesos.
+/// The Job Object (Windows handle). Dropping it closes the handle and Windows terminates its processes.
 pub struct Trabajo(HANDLE);
 
-// El asa de un Job Object se puede usar desde cualquier hilo.
+// A Job Object handle can be used from any thread.
 unsafe impl Send for Trabajo {}
 unsafe impl Sync for Trabajo {}
 
 impl Trabajo {
     pub fn nuevo() -> io::Result<Trabajo> {
-        // SAFETY: punteros nulos permitidos (sin atributos de seguridad ni nombre).
+        // SAFETY: null pointers are allowed (no security attributes or name).
         let asa = unsafe { CreateJobObjectW(std::ptr::null(), std::ptr::null()) };
         if asa.is_null() {
             return Err(io::Error::last_os_error());
         }
-        let trabajo = Trabajo(asa); // a partir de aquí, Drop lo cierra pase lo que pase
-        // SAFETY: estructura de solo números, ceros válidos.
+        let trabajo = Trabajo(asa); // from here on, Drop closes it no matter what
+        // SAFETY: numbers-only struct, zeros are valid.
         let mut info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = unsafe { std::mem::zeroed() };
         info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
-        // SAFETY: `asa` es válida; `info` es válida y se indica su tamaño exacto.
+        // SAFETY: `asa` is valid; `info` is valid and its exact size is given.
         let ok = unsafe {
             SetInformationJobObject(
                 trabajo.0,
@@ -206,7 +206,7 @@ impl Trabajo {
     }
 
     pub fn asignar(&self, proceso: &Child) -> io::Result<()> {
-        // SAFETY: ambas asas son válidas mientras dure la llamada (`proceso` está prestado).
+        // SAFETY: both handles are valid for the duration of the call (`proceso` is borrowed).
         let ok = unsafe { AssignProcessToJobObject(self.0, proceso.as_raw_handle()) };
         if ok == 0 {
             return Err(io::Error::last_os_error());
@@ -217,15 +217,14 @@ impl Trabajo {
 
 impl Drop for Trabajo {
     fn drop(&mut self) {
-        // SAFETY: cerramos el asa que creamos, una sola vez.
+        // SAFETY: we close the handle we created, exactly once.
         unsafe { CloseHandle(self.0) };
     }
 }
 
-/// Fecha y hora local del equipo (con la zona horaria y el horario de verano que tenga configurados).
+/// The computer's local date and time (with its configured time zone and daylight saving time).
 pub fn fecha_hora_local() -> FechaHora {
-    // SAFETY: GetLocalTime solo escribe en la estructura que le pasamos, que es nuestra y del tamaño correcto;
-    // no puede fallar.
+    // SAFETY: GetLocalTime only writes to the struct we pass, which is ours and of the right size; it cannot fail.
     let t: SYSTEMTIME = unsafe {
         let mut t = std::mem::zeroed();
         GetLocalTime(&mut t);
@@ -242,11 +241,11 @@ pub fn fecha_hora_local() -> FechaHora {
     }
 }
 
-/// Marca la entrada y salida estándar de este proceso como **no heredables**.
+/// Marks this process's standard input and output as **non-inheritable**.
 pub fn no_heredar_entrada_salida() {
     for cual in [STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, STD_ERROR_HANDLE] {
-        // SAFETY: GetStdHandle solo consulta qué asa tiene el proceso para ese canal (puede ser nula o no válida,
-        // y entonces no se toca). SetHandleInformation solo cambia el indicador "heredable" de un asa nuestra.
+        // SAFETY: GetStdHandle only queries which handle the process has for that channel (it may be null or invalid, and
+        // then it is left alone). SetHandleInformation only changes the "inheritable" flag of a handle of ours.
         unsafe {
             let asa = GetStdHandle(cual);
             if !asa.is_null() && asa != INVALID_HANDLE_VALUE {
@@ -256,20 +255,20 @@ pub fn no_heredar_entrada_salida() {
     }
 }
 
-/// Lo llama Windows (en un hilo suyo) cuando se pulsa Ctrl+C o Ctrl+Pausa en la consola.
+/// Called by Windows (on one of its threads) when Ctrl+C or Ctrl+Break is pressed in the console.
 unsafe extern "system" fn al_pulsar_ctrl_c(tipo: u32) -> windows_sys::core::BOOL {
     if tipo == CTRL_C_EVENT || tipo == CTRL_BREAK_EVENT {
         crate::CTRL_C.store(true, std::sync::atomic::Ordering::SeqCst);
-        1 // atendido: no cerrar el programa
+        1 // handled: do not close the program
     } else {
-        0 // cerrar la ventana, apagar el equipo…: lo de siempre
+        0 // closing the window, shutting down…: the usual
     }
 }
 
-/// Registra el manejador de Ctrl+C.
+/// Registers the Ctrl+C handler.
 pub fn capturar_ctrl_c() -> io::Result<()> {
-    // SAFETY: `al_pulsar_ctrl_c` es una función `extern "system"` que vive todo el programa y solo toca un
-    // `AtomicBool` (seguro desde cualquier hilo, como exige Windows).
+    // SAFETY: `al_pulsar_ctrl_c` is an `extern "system"` function that lives for the whole program and only touches an
+    // `AtomicBool` (safe from any thread, as Windows requires).
     let ok = unsafe { SetConsoleCtrlHandler(Some(al_pulsar_ctrl_c), 1) };
     if ok == 0 {
         Err(io::Error::last_os_error())
