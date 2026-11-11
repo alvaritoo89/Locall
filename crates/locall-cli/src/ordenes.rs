@@ -1,15 +1,15 @@
-//! Interpretar la línea de comandos con `lexopt`. La ayuda y todos los errores son nuestros, en español.
+//! Parsing the command line with `lexopt`. The help and all errors are ours, in Spanish.
 
 use std::ffi::OsString;
 
 use crate::cliente::ErrorCli;
 
-/// Lo que ha pedido el usuario.
+/// What the user asked for.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Orden {
     Ayuda,
     Version,
-    /// `locall serve` (lo atiende el programa, que tiene el servidor).
+    /// `locall serve` (handled by the program, which has the server).
     Servir,
     /// `locall status`
     Estado,
@@ -19,18 +19,18 @@ pub enum Orden {
     Mostrar(String),
     /// `locall stop`
     Parar,
-    /// `locall pull <repo> [archivo] [--revision R] [--id ID]`. Sin archivo, lista los GGUF del repositorio.
+    /// `locall pull <repo> [file] [--revision R] [--id ID]`. Without a file, lists the repository's GGUFs.
     Instalar {
         repo: String,
         archivo: Option<String>,
         revision: Option<String>,
         id: Option<String>,
     },
-    /// `locall pull <nombre>`: un modelo del catálogo (`qwen3-4b`, `qwen3-4b:q8_0`).
+    /// `locall pull <name>`: a catalog model (`qwen3-4b`, `qwen3-4b:q8_0`).
     InstalarCatalogo(String),
     /// `locall catalog`
     Catalogo,
-    /// `locall import <ruta> [--id ID]`
+    /// `locall import <path> [--id ID]`
     Importar {
         ruta: String,
         id: Option<String>,
@@ -40,7 +40,7 @@ pub enum Orden {
         id: String,
         sin_preguntar: bool,
     },
-    /// `locall run <id> [pregunta…]`
+    /// `locall run <id> [question…]`
     Conversar {
         id: String,
         pregunta: Option<String>,
@@ -87,7 +87,7 @@ Variables de entorno:
   LOCALL_HUGGING_FACE   Dirección de Hugging Face (por defecto https://huggingface.co; para espejos)
 ";
 
-/// Interpreta los argumentos (sin el nombre del programa).
+/// Parses the arguments (without the program name).
 pub fn interpretar(argumentos: impl IntoIterator<Item = OsString>) -> Result<Orden, ErrorCli> {
     use lexopt::prelude::*;
 
@@ -125,7 +125,7 @@ pub fn interpretar(argumentos: impl IntoIterator<Item = OsString>) -> Result<Ord
     let Some(orden) = orden else {
         return Ok(Orden::Ayuda);
     };
-    // Cada opción solo vale para algunas órdenes.
+    // Each option is only valid for some commands.
     let permitidas: &[&str] = match orden.as_str() {
         "pull" => &["--revision", "--id"],
         "import" => &["--id"],
@@ -152,7 +152,7 @@ pub fn interpretar(argumentos: impl IntoIterator<Item = OsString>) -> Result<Ord
             )))
         }
     };
-    // Exactamente un argumento (el modelo, la ruta…).
+    // Exactly one argument (the model, the path…).
     let uno = |falta: &str| match resto.as_slice() {
         [x] => Ok(x.clone()),
         [] => Err(ErrorCli::Uso(format!("falta {falta}"))),
@@ -179,7 +179,7 @@ pub fn interpretar(argumentos: impl IntoIterator<Item = OsString>) -> Result<Ord
                 id: id.clone(),
                 pregunta: None,
             }),
-            // La pregunta puede ir entre comillas o no: las palabras se juntan.
+            // The question may be quoted or not: the words are joined.
             [id, palabras @ ..] => Ok(Orden::Conversar {
                 id: id.clone(),
                 pregunta: Some(palabras.join(" ")),
@@ -190,7 +190,7 @@ pub fn interpretar(argumentos: impl IntoIterator<Item = OsString>) -> Result<Ord
             id,
         }),
         "pull" => match resto.as_slice() {
-            // Sin «/»: un nombre del catálogo.
+            // Without «/»: a catalog name.
             [nombre] if !nombre.contains('/') => {
                 if revision.is_some() || id.is_some() {
                     return Err(ErrorCli::Uso(format!(
@@ -223,7 +223,7 @@ pub fn interpretar(argumentos: impl IntoIterator<Item = OsString>) -> Result<Ord
     }
 }
 
-/// Los errores de `lexopt`, en español.
+/// `lexopt`'s errors, in Spanish.
 fn traducir(error: lexopt::Error) -> ErrorCli {
     ErrorCli::Uso(match error {
         lexopt::Error::MissingValue { option: Some(o) } => format!("a «{o}» le falta su valor"),

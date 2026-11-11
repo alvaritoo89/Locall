@@ -1,6 +1,6 @@
-//! Cómo se muestran las cosas en la terminal: tamaños, tiempos y tablas.
+//! How things are shown in the terminal: sizes, times and tables.
 
-/// `1185376` → `1.2 MB`. Unidades decimales (1 GB = 1000 MB), las mismas que usa Hugging Face para los modelos.
+/// `1185376` → `1.2 MB`. Decimal units (1 GB = 1000 MB), the same Hugging Face uses for models.
 pub fn tamano(bytes: u64) -> String {
     const UNIDADES: [&str; 5] = ["B", "KB", "MB", "GB", "TB"];
     let mut valor = bytes as f64;
@@ -16,7 +16,7 @@ pub fn tamano(bytes: u64) -> String {
     }
 }
 
-/// Cuánto hace de `momento` (segundos desde 1970) visto desde `ahora`.
+/// How long ago `momento` (seconds since 1970) was, seen from `ahora`.
 pub fn hace(momento: Option<u64>, ahora: u64) -> String {
     let Some(momento) = momento else {
         return "nunca".into();
@@ -31,14 +31,14 @@ pub fn hace(momento: Option<u64>, ahora: u64) -> String {
     }
 }
 
-/// Segundos desde 1970 ahora mismo.
+/// Seconds since 1970 right now.
 pub fn ahora() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_secs())
 }
 
-/// Una tabla de texto con columnas alineadas a la izquierda.
+/// A text table with left-aligned columns.
 pub fn tabla(cabecera: &[&str], filas: &[Vec<String>]) -> String {
     let mut anchos: Vec<usize> = cabecera.iter().map(|c| c.chars().count()).collect();
     for fila in filas {
@@ -50,7 +50,7 @@ pub fn tabla(cabecera: &[&str], filas: &[Vec<String>]) -> String {
         let mut texto = String::new();
         for (i, celda) in celdas.iter().enumerate() {
             if i + 1 == celdas.len() {
-                texto.push_str(celda); // la última columna, sin espacios de relleno al final
+                texto.push_str(celda); // the last column, without trailing padding
             } else {
                 let relleno = anchos[i] - celda.chars().count();
                 texto.push_str(celda);

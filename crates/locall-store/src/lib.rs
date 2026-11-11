@@ -1,22 +1,22 @@
 //! # locall-store
 //!
-//! El **almacén de modelos** de Locall.
+//! Locall's **model store**.
 //!
-//! Cada archivo de modelo se guarda **una sola vez**, con su huella sha256 como nombre, y solo después de comprobar
-//! que su contenido coincide con la huella esperada:
+//! Each model file is stored **only once**, named after its sha256 hash, and only after checking that its content
+//! matches the expected hash:
 //!
 //! ```text
-//! <raíz>\
-//! ├── blobs\sha256-<64 caracteres hexadecimales>   ← el contenido, verificado
-//! ├── snapshots\<modelo>\<revisión>\<nombre original>   ← enlaces duros a los blobs (0 bytes extra)
-//! └── tmp\                                          ← archivos a medio guardar
+//! <root>\
+//! ├── blobs\sha256-<64 hexadecimal characters>   ← the content, verified
+//! ├── snapshots\<model>\<revision>\<original name>   ← hard links to the blobs (0 extra bytes)
+//! └── tmp\                                          ← half-saved files
 //! ```
 //!
-//! Guardar es **atómico**: el archivo se escribe en `tmp\`, se verifica y solo entonces se mueve a `blobs\`.
-//! Si algo falla a mitad, en `blobs\` nunca queda un archivo incompleto.
+//! Saving is **atomic**: the file is written to `tmp\`, verified and only then moved to `blobs\`.
+//! If something fails halfway, an incomplete file is never left in `blobs\`.
 //!
-//! Las **carpetas snapshot** existen porque llama.cpp encuentra las partes de un modelo dividido por su nombre
-//! (`…-00001-of-00002.gguf`): ahí cada archivo aparece con su nombre original, como enlace duro al blob.
+//! **Snapshot folders** exist because llama.cpp finds the parts of a split model by their name
+//! (`…-00001-of-00002.gguf`): there each file appears with its original name, as a hard link to the blob.
 
 mod mantenimiento;
 mod nombres;
@@ -35,21 +35,21 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use sha2::{Digest, Sha256};
 
-/// Tamaño de los trozos con los que se lee y copia (1 MiB).
+/// Size of the chunks used to read and copy (1 MiB).
 const TROZO: usize = 1024 * 1024;
 
-// ─── Huella ───────────────────────────────────────────────────────────────────
+// ─── Hash ─────────────────────────────────────────────────────────────────────
 
-/// Una huella sha256 **válida**: exactamente 64 caracteres hexadecimales en minúscula.
+/// A **valid** sha256 hash: exactly 64 lowercase hexadecimal characters.
 ///
-/// Es un *newtype*: un tipo propio que envuelve un `String`. Como el `String` interior es privado, la única forma
-/// de obtener una `Huella` es con [`Huella::desde_hex`] (que valida) o calculándola. Así es **imposible** que una
-/// huella contenga `..`, `\` u otros caracteres con los que construir una ruta fuera del almacén.
+/// It is a *newtype*: a type of our own wrapping a `String`. Since the inner `String` is private, the only way to get
+/// a `Huella` is with [`Huella::desde_hex`] (which validates) or by computing it. That makes it **impossible** for a
+/// hash to contain `..`, `\` or other characters that could build a path outside the store.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Huella(String);
 
 impl Huella {
-    /// Crea una huella a partir de texto. Admite el prefijo `sha256:` y mayúsculas (se pasan a minúscula).
+    /// Creates a hash from text. Accepts the `sha256:` prefix and upper case (converted to lower case).
     pub fn desde_hex(texto: &str) -> Result<Huella, ErrorAlmacen> {
         let hex = texto.strip_prefix("sha256:").unwrap_or(texto);
         if hex.len() == 64 && hex.bytes().all(|b| b.is_ascii_hexdigit()) {
@@ -59,23 +59,23 @@ impl Huella {
         }
     }
 
-    /// Los 64 caracteres hexadecimales.
+    /// The 64 hexadecimal characters.
     pub fn hex(&self) -> &str {
         &self.0
     }
 
-    /// El nombre del archivo en `blobs\`: `sha256-<hex>`.
+    /// The file name in `blobs\`: `sha256-<hex>`.
     pub fn nombre_blob(&self) -> String {
         format!("sha256-{}", self.0)
     }
 
-    /// Construye la huella a partir del resultado de sha256 (32 bytes).
+    /// Builds the hash from the sha256 result (32 bytes).
     fn desde_bytes(bytes: &[u8]) -> Huella {
         Huella(bytes.iter().map(|b| format!("{b:02x}")).collect())
     }
 
-    /// Construye la huella a partir de un resultado de sha256 calculado fuera del almacén (por ejemplo, por el
-    /// descargador mientras descarga). Exige exactamente 32 bytes.
+    /// Builds the hash from a sha256 result computed outside the store (for example, by the downloader while it
+    /// downloads). Requires exactly 32 bytes.
     pub fn desde_sha256(resultado: &[u8]) -> Result<Huella, ErrorAlmacen> {
         if resultado.len() == 32 {
             Ok(Huella::desde_bytes(resultado))
@@ -94,29 +94,29 @@ impl fmt::Display for Huella {
     }
 }
 
-// ─── Errores ──────────────────────────────────────────────────────────────────
+// ─── Errors ───────────────────────────────────────────────────────────────────
 
-/// Lo que puede salir mal en el almacén.
+/// What can go wrong in the store.
 #[derive(Debug)]
 pub enum ErrorAlmacen {
-    /// Error del sistema de archivos, con una descripción de lo que se intentaba hacer.
+    /// File system error, with a description of what was being attempted.
     Io { contexto: String, error: io::Error },
-    /// El texto no es una huella sha256 válida.
+    /// The text is not a valid sha256 hash.
     HuellaInvalida(String),
-    /// El contenido no coincide con la huella esperada: el archivo está dañado o no es el que debía ser.
+    /// The content does not match the expected hash: the file is damaged or is not the one it should be.
     HuellaNoCoincide { esperada: Huella, obtenida: Huella },
-    /// Un nombre de archivo o de carpeta no es seguro (rutas, caracteres prohibidos, nombres reservados…).
+    /// A file or folder name is not safe (paths, forbidden characters, reserved names…).
     NombreInvalido {
         nombre: String,
         motivo: &'static str,
     },
-    /// Se pidió usar un archivo que no está en el almacén.
+    /// A file that is not in the store was requested.
     BlobNoEncontrado(Huella),
-    /// Una carpeta snapshot sin archivos.
+    /// A snapshot folder with no files.
     SnapshotVacio,
-    /// No hay espacio suficiente en el disco (contando el margen de seguridad).
+    /// Not enough disk space (counting the safety margin).
     EspacioInsuficiente { necesarios: u64, disponibles: u64 },
-    /// Se intentó borrar un archivo que todavía usa algún modelo.
+    /// An attempt was made to delete a file some model still uses.
     BlobEnUso(Huella),
 }
 
@@ -159,7 +159,7 @@ impl std::error::Error for ErrorAlmacen {
     }
 }
 
-/// Añade contexto a los errores de E/S: `.contexto("abrir el archivo")`.
+/// Adds context to I/O errors: `.contexto("abrir el archivo")`.
 trait ConContexto<T> {
     fn contexto(self, que: impl FnOnce() -> String) -> Result<T, ErrorAlmacen>;
 }
@@ -173,9 +173,9 @@ impl<T> ConContexto<T> for io::Result<T> {
     }
 }
 
-// ─── Almacén ──────────────────────────────────────────────────────────────────
+// ─── Store ────────────────────────────────────────────────────────────────────
 
-/// El almacén de modelos, en una carpeta raíz.
+/// The model store, in a root folder.
 #[derive(Debug, Clone)]
 pub struct Almacen {
     raiz: PathBuf,
@@ -184,11 +184,11 @@ pub struct Almacen {
     tmp: PathBuf,
 }
 
-/// Contador para dar nombres únicos a los archivos temporales.
+/// Counter to give temporary files unique names.
 static CONTADOR_TMP: AtomicU64 = AtomicU64::new(0);
 
 impl Almacen {
-    /// Abre (y crea si no existe) un almacén en `raiz`.
+    /// Opens (and creates if missing) a store at `raiz`.
     pub fn abrir(raiz: impl Into<PathBuf>) -> Result<Almacen, ErrorAlmacen> {
         let raiz = raiz.into();
         let blobs = raiz.join("blobs");
@@ -206,11 +206,11 @@ impl Almacen {
         })
     }
 
-    /// Incorpora al almacén un archivo que **ya está en este mismo disco**, sin copiarlo: verifica su huella y crea
-    /// un enlace duro en `blobs\`. Útil para importar modelos ya descargados sin gastar el doble de espacio.
+    /// Brings into the store a file that is **already on this same disk**, without copying it: verifies its hash and
+    /// creates a hard link in `blobs\`. Useful to import already downloaded models without using twice the space.
     ///
-    /// Importante: el blob y el archivo original pasan a ser **el mismo archivo**. Si alguien modificara el
-    /// original, el blob también cambiaría; por eso Locall solo debe adoptar archivos que no se vayan a tocar.
+    /// Important: the blob and the original file become **the same file**. If someone modified the original, the blob
+    /// would change too; that is why Locall should only adopt files that will not be touched.
     pub fn adoptar_archivo(
         &self,
         origen: &Path,
@@ -237,29 +237,29 @@ impl Almacen {
         Ok(huella)
     }
 
-    /// La carpeta raíz del almacén.
+    /// The store's root folder.
     pub fn raiz(&self) -> &Path {
         &self.raiz
     }
 
-    /// Dónde está (o estaría) el archivo con esta huella.
+    /// Where the file with this hash is (or would be).
     pub fn ruta_blob(&self, huella: &Huella) -> PathBuf {
         self.blobs.join(huella.nombre_blob())
     }
 
-    /// ¿Ya tenemos un archivo con esta huella?
+    /// Do we already have a file with this hash?
     pub fn contiene(&self, huella: &Huella) -> bool {
         self.ruta_blob(huella).is_file()
     }
 
-    /// Dónde se guarda una descarga a medias del archivo con esta huella: `tmp\sha256-<hex>.parcial`.
-    /// Al usar la huella como nombre, una descarga interrumpida se reanuda sola la próxima vez.
+    /// Where a half-finished download of the file with this hash is kept: `tmp\sha256-<hex>.parcial`.
+    /// Using the hash as the name, an interrupted download resumes by itself the next time.
     pub fn ruta_parcial(&self, huella: &Huella) -> PathBuf {
         self.tmp.join(format!("{}.parcial", huella.nombre_blob()))
     }
 
-    /// Pasa a `blobs\` una descarga ya completa **y verificada por quien la descargó**. Es instantáneo (mover dentro
-    /// del mismo disco) y atómico. Si el blob ya existía, se descarta la copia descargada.
+    /// Moves into `blobs\` a download that is already complete **and verified by whoever downloaded it**. It is instant
+    /// (a move within the same disk) and atomic. If the blob already existed, the downloaded copy is discarded.
     pub fn confirmar_parcial(&self, huella: &Huella) -> Result<(), ErrorAlmacen> {
         let origen = self.ruta_parcial(huella);
         let destino = self.ruta_blob(huella);
@@ -270,17 +270,17 @@ impl Almacen {
         fs::rename(&origen, &destino).contexto(|| format!("mover a {}", destino.display()))
     }
 
-    /// Guarda una copia del archivo `origen` en el almacén y devuelve su huella.
+    /// Stores a copy of the `origen` file in the store and returns its hash.
     ///
-    /// Si se indica `esperada` y el contenido no coincide, no se guarda nada y se devuelve
-    /// [`ErrorAlmacen::HuellaNoCoincide`]. Si el archivo ya estaba guardado, no se duplica.
+    /// If `esperada` is given and the content does not match, nothing is stored and
+    /// [`ErrorAlmacen::HuellaNoCoincide`] is returned. If the file was already stored, it is not duplicated.
     pub fn guardar_archivo(
         &self,
         origen: &Path,
         esperada: Option<&Huella>,
     ) -> Result<Huella, ErrorAlmacen> {
         let archivo = File::open(origen).contexto(|| format!("abrir {}", origen.display()))?;
-        // Sabemos cuánto ocupa: comprobamos el espacio ANTES de empezar a copiar gigas.
+        // We know its size: we check the space BEFORE starting to copy gigabytes.
         let tamano = archivo
             .metadata()
             .contexto(|| format!("consultar {}", origen.display()))?
@@ -289,13 +289,13 @@ impl Almacen {
         self.guardar_desde(archivo, esperada)
     }
 
-    /// Guarda en el almacén todo lo que se lea de `fuente` (un archivo, una descarga…).
+    /// Stores everything read from `fuente` (a file, a download…) in the store.
     pub fn guardar_desde(
         &self,
         mut fuente: impl Read,
         esperada: Option<&Huella>,
     ) -> Result<Huella, ErrorAlmacen> {
-        // 1. Copiar a un archivo temporal mientras se calcula la huella (una sola lectura).
+        // 1. Copy to a temporary file while computing the hash (a single read).
         let temporal = Temporal::nuevo(&self.tmp)?;
         let huella = {
             let mut destino = File::create(temporal.ruta())
@@ -314,25 +314,25 @@ impl Almacen {
                     .write_all(&buffer[..leidos])
                     .contexto(|| "escribir el archivo temporal".into())?;
             }
-            // Asegura que los datos están en el disco antes de darlos por buenos.
+            // Makes sure the data is on disk before accepting it.
             destino
                 .sync_all()
                 .contexto(|| "guardar en disco el archivo temporal".into())?;
             Huella::desde_bytes(&calculadora.finalize())
-        }; // aquí se cierra `destino` (Drop), antes de mover el archivo
+        }; // `destino` is closed here (Drop), before moving the file
 
-        // 2. Verificar.
+        // 2. Verify.
         if let Some(esperada) = esperada
             && *esperada != huella
         {
-            // `temporal` se borra solo al salir (Drop).
+            // `temporal` deletes itself on leaving (Drop).
             return Err(ErrorAlmacen::HuellaNoCoincide {
                 esperada: esperada.clone(),
                 obtenida: huella,
             });
         }
 
-        // 3. Mover a `blobs\` (o descartar si ya existía: mismo contenido, misma huella).
+        // 3. Move to `blobs\` (or discard if it already existed: same content, same hash).
         let destino = self.ruta_blob(&huella);
         if !destino.is_file() {
             temporal.mover_a(&destino)?;
@@ -341,12 +341,12 @@ impl Almacen {
     }
 }
 
-/// Calcula la huella sha256 de unos bytes en memoria.
+/// Computes the sha256 hash of some bytes in memory.
 pub fn huella_de_bytes(datos: &[u8]) -> Huella {
     Huella::desde_bytes(&Sha256::digest(datos))
 }
 
-/// Calcula la huella sha256 de un archivo sin copiarlo (por ejemplo, para verificar un modelo ya descargado).
+/// Computes the sha256 hash of a file without copying it (for example, to verify an already downloaded model).
 pub fn huella_de_archivo(ruta: &Path) -> Result<Huella, ErrorAlmacen> {
     let mut archivo = File::open(ruta).contexto(|| format!("abrir {}", ruta.display()))?;
     let mut calculadora = Sha256::new();
@@ -363,9 +363,9 @@ pub fn huella_de_archivo(ruta: &Path) -> Result<Huella, ErrorAlmacen> {
     Ok(Huella::desde_bytes(&calculadora.finalize()))
 }
 
-// ─── Archivo temporal que se borra solo ───────────────────────────────────────
+// ─── Self-deleting temporary file ─────────────────────────────────────────────
 
-/// Un archivo en `tmp\` que se borra automáticamente al dejar de usarse, salvo que se mueva a su destino.
+/// A file in `tmp\` that is deleted automatically once no longer used, unless it is moved to its destination.
 struct Temporal {
     ruta: Option<PathBuf>,
 }
@@ -385,7 +385,7 @@ impl Temporal {
             .expect("la ruta solo desaparece al mover el archivo")
     }
 
-    /// Mueve el archivo a su destino definitivo. Después de esto ya no se borra al soltarlo.
+    /// Moves the file to its final destination. After this it is no longer deleted when dropped.
     fn mover_a(mut self, destino: &Path) -> Result<(), ErrorAlmacen> {
         let origen = self
             .ruta
@@ -399,21 +399,21 @@ impl Temporal {
 impl Drop for Temporal {
     fn drop(&mut self) {
         if let Some(ruta) = &self.ruta {
-            let _ = fs::remove_file(ruta); // si no existe, no pasa nada
+            let _ = fs::remove_file(ruta); // if it does not exist, nothing happens
         }
     }
 }
 
-// ─── Pruebas unitarias ────────────────────────────────────────────────────────
+// ─── Unit tests ───────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod pruebas {
     use super::*;
 
-    /// sha256("abc"), el vector de prueba oficial del estándar (FIPS 180-2).
+    /// sha256("abc"), the standard's official test vector (FIPS 180-2).
     const HUELLA_ABC: &str = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
 
-    /// Una carpeta temporal para cada prueba, que se borra sola al terminar.
+    /// A temporary folder for each test, deleted by itself at the end.
     struct CarpetaDePrueba(PathBuf);
 
     impl CarpetaDePrueba {
@@ -455,7 +455,7 @@ mod pruebas {
                 "debería rechazar «{mala}»"
             );
         }
-        // Intentos de escaparse de la carpeta: imposibles con este tipo.
+        // Attempts to escape the folder: impossible with this type.
         let escape = format!("..\\..\\{}", &HUELLA_ABC[6..]);
         assert!(Huella::desde_hex(&escape).is_err());
     }
@@ -507,7 +507,7 @@ mod pruebas {
     fn guarda_un_archivo_del_disco() {
         let carpeta = CarpetaDePrueba::nueva("disco");
         let origen = carpeta.0.join("origen.bin");
-        let contenido: Vec<u8> = (0..3 * TROZO + 123).map(|i| (i % 251) as u8).collect(); // varios trozos
+        let contenido: Vec<u8> = (0..3 * TROZO + 123).map(|i| (i % 251) as u8).collect(); // several chunks
         fs::write(&origen, &contenido).unwrap();
         let almacen = Almacen::abrir(carpeta.0.join("almacen")).unwrap();
 

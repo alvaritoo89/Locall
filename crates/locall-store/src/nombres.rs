@@ -1,20 +1,20 @@
-//! Nombres seguros para archivos y carpetas del almacén.
+//! Safe names for the store's files and folders.
 //!
-//! Igual que [`crate::Huella`], son *newtypes*: solo existen si son válidos. Así ningún nombre que venga de fuera
-//! (del catálogo, de Hugging Face, del usuario…) puede escaparse de la carpeta del almacén ni chocar con las reglas
-//! de Windows.
+//! Like [`crate::Huella`], they are *newtypes*: they only exist if they are valid. This way no name coming from
+//! outside (from the catalog, from Hugging Face, from the user…) can escape the store folder or clash with Windows'
+//! rules.
 
 use std::fmt;
 
 use crate::ErrorAlmacen;
 
-/// Nombres que Windows reserva para dispositivos y que no se pueden usar como archivo (ni con extensión).
+/// Names Windows reserves for devices, which cannot be used as file names (not even with an extension).
 const RESERVADOS_WINDOWS: [&str; 22] = [
     "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8",
     "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
 ];
 
-/// Longitud máxima de un nombre (Windows admite 255 caracteres por componente de ruta).
+/// Maximum length of a name (Windows allows 255 characters per path component).
 const MAX_LONGITUD: usize = 200;
 
 fn invalido(nombre: &str, motivo: &'static str) -> ErrorAlmacen {
@@ -24,7 +24,7 @@ fn invalido(nombre: &str, motivo: &'static str) -> ErrorAlmacen {
     }
 }
 
-/// Comprobaciones comunes a cualquier nombre de archivo o carpeta en Windows.
+/// Checks common to any file or folder name on Windows.
 fn validar_componente(nombre: &str) -> Result<(), ErrorAlmacen> {
     if nombre.is_empty() {
         return Err(invalido(nombre, "está vacío"));
@@ -58,8 +58,8 @@ fn validar_componente(nombre: &str) -> Result<(), ErrorAlmacen> {
 
 // ─── NombreArchivo ────────────────────────────────────────────────────────────
 
-/// El nombre original de un archivo de modelo, por ejemplo `Qwen3-4B-Q4_K_M.gguf`.
-/// Debe ser un único componente (sin carpetas) y terminar en `.gguf` (ADR 0004).
+/// The original name of a model file, for example `Qwen3-4B-Q4_K_M.gguf`.
+/// It must be a single component (no folders) and end in `.gguf` (ADR 0004).
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct NombreArchivo(String);
 
@@ -85,10 +85,10 @@ impl fmt::Display for NombreArchivo {
 
 // ─── Segmento ─────────────────────────────────────────────────────────────────
 
-/// Un nombre de carpeta del almacén: el identificador del modelo (`qwen3-4b`) o la revisión (`bc640142`).
+/// A store folder name: the model identifier (`qwen3-4b`) or the revision (`bc640142`).
 ///
-/// Más estricto que [`NombreArchivo`]: solo letras minúsculas, números, `-`, `_` y `.` (sin empezar por punto),
-/// para que sea igual de válido en Windows, Linux y macOS.
+/// Stricter than [`NombreArchivo`]: only lowercase letters, digits, `-`, `_` and `.` (not starting with a dot), so it
+/// is equally valid on Windows, Linux and macOS.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Segmento(String);
 

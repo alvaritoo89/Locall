@@ -1,5 +1,5 @@
-//! Arranque **bajo demanda** (decisión ratificada): si no hay ningún Locall abierto, la CLI arranca `locall serve`
-//! en segundo plano y espera a que responda. Después, el núcleo se cierra solo por inactividad.
+//! **On-demand** startup (confirmed decision): if no Locall is open, the CLI starts `locall serve` in the background
+//! and waits for it to answer. Afterwards, the core closes by itself when idle.
 
 use std::path::Path;
 use std::process::{Command, Stdio};
@@ -9,27 +9,27 @@ use locall_config::{Config, Rutas};
 
 use crate::cliente::{Cliente, ErrorCli, leer_token};
 
-/// Tiempo máximo que se espera a que el núcleo recién arrancado responda.
+/// Maximum time to wait for the freshly started core to answer.
 const ESPERA_ARRANQUE: Duration = Duration::from_secs(20);
 
-/// Un cliente para el Locall que ya está abierto, o `None` si no hay ninguno.
+/// A client for the Locall that is already open, or `None` if there is none.
 pub fn conectar(rutas: &Rutas) -> Result<Option<Cliente>, ErrorCli> {
     let (config, _) = Config::leer(&rutas.config()).map_err(|e| ErrorCli::Config(e.to_string()))?;
     let base = format!("http://127.0.0.1:{}", config.puerto);
     let Some(token) = leer_token(&rutas.token()) else {
-        return Ok(None); // sin token, nunca se ha abierto (o no es nuestro)
+        return Ok(None); // no token: it has never been opened (or it is not ours)
     };
     let cliente = Cliente::nuevo(base, token);
     Ok(cliente.responde().then_some(cliente))
 }
 
-/// Un cliente para Locall, arrancándolo en segundo plano si no está abierto.
+/// A client for Locall, starting it in the background if it is not open.
 pub fn conectar_o_arrancar(rutas: &Rutas, ejecutable: &Path) -> Result<Cliente, ErrorCli> {
     if let Some(cliente) = conectar(rutas)? {
         return Ok(cliente);
     }
-    // Avisar (por la salida de errores, para no ensuciar la salida normal): así el usuario sabe que Locall queda
-    // abierto un rato y en qué carpeta. (Sin este aviso, en la Fase 4 abrimos uno en otra carpeta sin darnos cuenta.)
+    // Tell the user (on the error output, to keep the normal output clean): this way they know Locall stays open for a
+    // while and in which folder. (Without this notice, in Phase 4 we opened one in another folder without noticing.)
     {
         use std::io::Write;
         let _ = writeln!(
@@ -44,7 +44,7 @@ pub fn conectar_o_arrancar(rutas: &Rutas, ejecutable: &Path) -> Result<Cliente, 
         if let Some(cliente) = conectar(rutas)? {
             return Ok(cliente);
         }
-        // Si el núcleo terminó (por ejemplo, el puerto lo usa otro programa), no tiene sentido seguir esperando.
+        // If the core exited (for example, another program uses the port), there is no point waiting any longer.
         if let Ok(Some(estado)) = hijo.try_wait() {
             return Err(ErrorCli::Arranque(format!(
                 "se cerró al arrancar ({estado}); los detalles están en {}",
@@ -62,14 +62,14 @@ pub fn conectar_o_arrancar(rutas: &Rutas, ejecutable: &Path) -> Result<Cliente, 
     }
 }
 
-/// Lanza `locall serve` sin ventana y separado de esta consola: así sigue vivo cuando la CLI termina, y un Ctrl+C en
-/// la consola no le llega.
+/// Launches `locall serve` without a window and detached from this console: this way it stays alive when the CLI
+/// exits, and a Ctrl+C in the console does not reach it.
 fn lanzar_en_segundo_plano(
     ejecutable: &Path,
     rutas: &Rutas,
 ) -> Result<std::process::Child, ErrorCli> {
-    // Que no herede la salida de esta consola: si no, quien espere a que la CLI termine (la terminal, un script)
-    // esperaría también al núcleo.
+    // It must not inherit this console's output: otherwise whoever waits for the CLI to finish (the terminal, a script)
+    // would wait for the core too.
     locall_system::no_heredar_entrada_salida();
     let mut orden = Command::new(ejecutable);
     orden
@@ -81,10 +81,10 @@ fn lanzar_en_segundo_plano(
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
-        // DETACHED_PROCESS: sin consola. CREATE_NEW_PROCESS_GROUP: los Ctrl+C de esta consola no le llegan.
+        // DETACHED_PROCESS: no console. CREATE_NEW_PROCESS_GROUP: this console's Ctrl+C does not reach it.
         const SEPARADO: u32 = 0x0000_0008 | 0x0000_0200;
-        // CREATE_BREAKAWAY_FROM_JOB: si la terminal mete sus procesos en un Job Object que los mata al cerrarse
-        // (algunas lo hacen), el núcleo se sale de él. Si el Job no lo permite, se intenta sin salirse.
+        // CREATE_BREAKAWAY_FROM_JOB: if the terminal puts its processes in a Job Object that kills them when it closes
+        // (some do), the core breaks away from it. If the Job does not allow it, it is tried without breaking away.
         const FUERA_DEL_JOB: u32 = 0x0100_0000;
         orden.creation_flags(SEPARADO | FUERA_DEL_JOB);
         if let Ok(hijo) = orden.spawn() {

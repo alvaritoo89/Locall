@@ -1,10 +1,9 @@
-//! La barra de progreso de las descargas.
+//! The download progress bar.
 //!
-//! - En una terminal, una sola línea que se va redibujando (`\r`): barra, porcentaje, tamaño, velocidad y tiempo
-//!   que queda.
-//! - Si la salida no es una terminal (un archivo, otro programa), una línea cada 10 %, para no llenarla de basura.
+//! - In a terminal, a single line that keeps being redrawn (`\r`): bar, percentage, size, speed and time left.
+//! - If the output is not a terminal (a file, another program), one line every 10 %, so it is not filled with junk.
 //!
-//! Se escribe en la salida de errores (stderr), así la salida normal (stdout) solo lleva el resultado.
+//! It is written to the error output (stderr), so the normal output (stdout) only carries the result.
 
 use std::io::{IsTerminal, Write};
 use std::time::Instant;
@@ -15,7 +14,7 @@ const ANCHO: usize = 24;
 
 pub struct Barra {
     inicio: Instant,
-    /// Bytes que ya había al empezar (al continuar una descarga): no cuentan para la velocidad.
+    /// Bytes already present at the start (when continuing a download): they do not count towards the speed.
     base: Option<u64>,
     terminal: bool,
     ultimo_decimo: Option<u64>,
@@ -64,7 +63,7 @@ impl Barra {
         }
     }
 
-    /// Termina la línea de la barra (para que lo siguiente no se escriba encima).
+    /// Ends the bar's line (so what comes next is not written over it).
     pub fn terminar(&mut self) {
         if self.terminal && self.dibujada {
             let _ = writeln!(std::io::stderr());
@@ -80,11 +79,11 @@ impl Drop for Barra {
 }
 
 fn porcentaje(parte: u64, total: u64) -> u64 {
-    // Sin total conocido (0), se da por completo.
+    // With no known total (0), it is considered complete.
     (parte.min(total) * 100).checked_div(total).unwrap_or(100)
 }
 
-/// Una línea de progreso, sin depender del reloj (para poder probarla).
+/// A progress line, independent of the clock (so it can be tested).
 pub fn linea(
     descargados: u64,
     total: u64,
@@ -141,12 +140,12 @@ mod pruebas {
             linea(500_000_000, 1_000_000_000, 1, 1, 0, 10.0),
             "████████████░░░░░░░░░░░░  50 %  500.0 MB de 1.0 GB  50.0 MB/s  quedan 10 s"
         );
-        // Al empezar, sin velocidad todavía; con varias partes, se dice cuál.
+        // At the start, no speed yet; with several parts, it says which one.
         assert_eq!(
             linea(0, 2_000, 2, 3, 0, 0.0),
             "Parte 2/3 ░░░░░░░░░░░░░░░░░░░░░░░░   0 %  0 B de 2.0 KB"
         );
-        // Al continuar, la velocidad solo cuenta lo nuevo.
+        // When continuing, the speed only counts the new data.
         assert!(linea(600, 1000, 1, 1, 500, 1.0).contains("100 B/s"));
     }
 

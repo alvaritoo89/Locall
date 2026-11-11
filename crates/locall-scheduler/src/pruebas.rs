@@ -1,4 +1,4 @@
-//! Pruebas de la comprobación previa que necesitan funciones internas.
+//! Tests of the pre-load check that need internal functions.
 
 use std::path::{Path, PathBuf};
 
@@ -25,7 +25,7 @@ fn carga_de(modelo: &Path, contexto: u32) -> Carga {
     }
 }
 
-/// El modelo 1,5B de la Fase 0, o `None` si no está.
+/// The Phase 0 1.5B model, or `None` if it is not there.
 fn modelo_pequeno() -> Option<PathBuf> {
     let ruta = std::env::var_os("LOCALL_MODELOS")
         .map_or_else(|| PathBuf::from(r"C:\Locall-poc\modelos"), PathBuf::from)
@@ -49,7 +49,7 @@ fn deduce_las_partes_de_un_modelo_dividido() {
             PathBuf::from(r"C:\m\qwen-7b-q4-00003-of-00003.gguf"),
         ]
     );
-    // Sin dividir, o con un nombre que no sigue el formato: solo el principal.
+    // Not split, or with a name that does not follow the format: only the main one.
     let solo = Path::new(r"C:\m\qwen.gguf");
     assert_eq!(archivos_del_modelo(solo, None), [solo.to_path_buf()]);
     assert_eq!(archivos_del_modelo(solo, Some(1)), [solo.to_path_buf()]);
@@ -63,7 +63,7 @@ fn no_deja_cargar_si_no_cabe() {
     };
     let carga = carga_de(&modelo, 4096);
 
-    // Con 1 GB libre, el 1,5B (≈1,2 GB) no cabe.
+    // With 1 GB free, the 1.5B (≈1.2 GB) does not fit.
     let evaluacion = evaluar_con_memoria(&carga, GB).unwrap();
     assert_eq!(evaluacion.encaje, Encaje::NoCabe);
     let error = decidir(&evaluacion, GB).unwrap_err();
@@ -79,7 +79,7 @@ fn no_deja_cargar_si_no_cabe() {
     let mensaje = error_no_cabe(necesarios).to_string();
     assert!(mensaje.contains("1.0 GB libres"), "{mensaje}");
 
-    // Con 8 GB libres, sí.
+    // With 8 GB free, it does.
     let evaluacion = evaluar_con_memoria(&carga, 8 * GB).unwrap();
     assert!(decidir(&evaluacion, 8 * GB).is_ok());
 }
@@ -97,7 +97,7 @@ fn justo_si_deja_cargar() {
         return;
     };
     let carga = carga_de(&modelo, 4096);
-    // ≈1,3 GB necesarios con 4 GB libres: por debajo del umbral de 4 GB de margen → "justo", pero se permite (D7).
+    // ≈1.3 GB needed with 4 GB free: below the 4 GB margin threshold → "tight", but allowed (D7).
     let evaluacion = evaluar_con_memoria(&carga, 4 * GB).unwrap();
     assert_eq!(evaluacion.encaje, Encaje::Justo);
     assert!(decidir(&evaluacion, 4 * GB).is_ok());

@@ -1,10 +1,10 @@
-//! Comprobación **antes de cargar** (parte 9c): ¿el motor sabe ejecutar este modelo y cabe en la memoria?
+//! Check **before loading** (part 9c): can the engine run this model and does it fit in memory?
 //!
-//! Así se avisa con un mensaje claro en un instante, en vez de esperar segundos a que el motor falle (o, peor, a que
-//! Windows empiece a usar el disco como memoria y todo el equipo vaya a trompicones).
+//! This way a clear message is shown instantly, instead of waiting seconds for the engine to fail (or, worse, for
+//! Windows to start using the disk as memory and the whole computer to stutter).
 //!
-//! Solo se lee la cabecera del modelo (unos MB, aunque el modelo ocupe varios GB) con `locall-gguf`, y se evalúa con
-//! `locall-compat` frente a la RAM disponible que mide `locall-system`.
+//! Only the model header is read (a few MB, even if the model takes several GB) with `locall-gguf`, and it is
+//! evaluated with `locall-compat` against the available RAM measured by `locall-system`.
 
 use std::fmt;
 use std::io;
@@ -16,27 +16,27 @@ use locall_gguf::ErrorGguf;
 
 use crate::Carga;
 
-/// Lo que puede impedir cargar un modelo con el arrancador real.
+/// What can prevent loading a model with the real starter.
 #[derive(Debug)]
 pub enum ErrorCarga {
-    /// No se pudo leer la cabecera del modelo (dañado, no es GGUF…).
+    /// The model header could not be read (damaged, not GGUF…).
     Cabecera(ErrorGguf),
-    /// Falta una de las partes de un modelo dividido.
+    /// One of the parts of a split model is missing.
     FaltaParte(PathBuf),
-    /// El motor no sabe ejecutar este modelo.
+    /// The engine cannot run this model.
     Incompatible(Vec<Problema>),
-    /// No cabe en la memoria disponible.
+    /// It does not fit in the available memory.
     NoCabe { necesarios: u64, disponibles: u64 },
-    /// No se pudo consultar el sistema (memoria, tamaño de archivos).
+    /// The system could not be queried (memory, file sizes).
     Sistema(io::Error),
-    /// El motor no pudo arrancar.
+    /// The engine could not start.
     Motor(ErrorMotor),
 }
 
 impl fmt::Display for ErrorCarga {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            // El detalle técnico (`ErrorGguf`) queda en `source()`, para los registros.
+            // The technical detail (`ErrorGguf`) stays in `source()`, for the logs.
             ErrorCarga::Cabecera(_) => write!(
                 f,
                 "el archivo del modelo no es válido o está incompleto; vuelve a descargarlo"
@@ -91,13 +91,13 @@ impl From<ErrorMotor> for ErrorCarga {
     }
 }
 
-/// "4.9 GB" (en GB decimales, como los muestra Windows en la mayoría de sitios).
+/// "4.9 GB" (in decimal GB, as Windows shows them in most places).
 fn gb(bytes: u64) -> String {
     format!("{:.1} GB", bytes as f64 / 1e9)
 }
 
-/// Evalúa la carga con la RAM disponible **ahora**. Sirve también para que la app avise antes de pedirla
-/// (por ejemplo, mostrar "irá justo" con [`Encaje::Justo`]).
+/// Evaluates the load with the RAM available **now**. Also lets the app warn before requesting it (for example,
+/// showing "it will be tight" with [`Encaje::Justo`]).
 pub fn evaluar_carga(carga: &Carga) -> Result<Evaluacion, ErrorCarga> {
     let disponibles = locall_system::memoria()
         .map_err(ErrorCarga::Sistema)?
@@ -105,7 +105,7 @@ pub fn evaluar_carga(carga: &Carga) -> Result<Evaluacion, ErrorCarga> {
     evaluar_con_memoria(carga, disponibles)
 }
 
-/// Como [`evaluar_carga`], con la memoria disponible indicada (para poder probar el caso "no cabe").
+/// Like [`evaluar_carga`], with the given available memory (so the "does not fit" case can be tested).
 pub(crate) fn evaluar_con_memoria(
     carga: &Carga,
     disponibles: u64,
@@ -131,8 +131,8 @@ pub(crate) fn evaluar_con_memoria(
     ))
 }
 
-/// Decide si se puede cargar según la evaluación: los problemas de compatibilidad y [`Encaje::NoCabe`] lo impiden.
-/// [`Encaje::Justo`] se permite (D7: el 7B en 16 GB "al límite" es una opción válida que el usuario elige).
+/// Decides whether it can be loaded according to the evaluation: compatibility problems and [`Encaje::NoCabe`]
+/// prevent it. [`Encaje::Justo`] is allowed (D7: a model that only just fits is a valid option the user chooses).
 pub(crate) fn decidir(evaluacion: &Evaluacion, disponibles: u64) -> Result<(), ErrorCarga> {
     if !evaluacion.comprobacion.es_compatible() {
         return Err(ErrorCarga::Incompatible(
@@ -148,8 +148,8 @@ pub(crate) fn decidir(evaluacion: &Evaluacion, disponibles: u64) -> Result<(), E
     Ok(())
 }
 
-/// Todos los archivos de un modelo. Si está dividido (`partes` > 1) y el nombre sigue el formato oficial de
-/// llama.cpp (`nombre-00001-of-00003.gguf`), se deducen las demás partes; si no, solo el principal.
+/// All the files of a model. If it is split (`partes` > 1) and the name follows llama.cpp's official format
+/// (`name-00001-of-00003.gguf`), the other parts are deduced; otherwise, only the main one.
 pub(crate) fn archivos_del_modelo(principal: &Path, partes: Option<u64>) -> Vec<PathBuf> {
     let unico = vec![principal.to_path_buf()];
     let Some(n) = partes.filter(|&n| n > 1) else {

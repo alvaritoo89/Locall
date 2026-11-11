@@ -1,8 +1,8 @@
-//! Mantenimiento del almacén: espacio libre, aviso de OneDrive y limpieza.
+//! Store maintenance: free space, OneDrive warning and cleanup.
 //!
-//! Regla 14 del proyecto: nada se borra sin autorización. Por eso la limpieza se hace en dos pasos: primero se
-//! **lista** lo que se podría borrar ([`Almacen::blobs_sin_usar`]) y después se borra **uno a uno** lo que el
-//! usuario apruebe ([`Almacen::eliminar_blob`]), comprobándolo de nuevo justo antes.
+//! Project rule 14: nothing is deleted without authorization. That is why cleanup happens in two steps: first what
+//! could be deleted is **listed** ([`Almacen::blobs_sin_usar`]) and then what the user approves is deleted **one by
+//! one** ([`Almacen::eliminar_blob`]), checking it again right before.
 
 use std::ffi::OsString;
 use std::fs;
@@ -11,13 +11,13 @@ use std::time::{Duration, SystemTime};
 
 use crate::{Almacen, ConContexto, ErrorAlmacen, Huella, sistema};
 
-/// Margen de espacio libre que siempre se deja en el disco (1 GiB), para no llenarlo del todo.
+/// Free space margin always left on the disk (1 GiB), so it is never filled completely.
 pub const MARGEN_ESPACIO: u64 = 1024 * 1024 * 1024;
 
-/// Antigüedad a partir de la cual un temporal se considera abandonado (por ejemplo, tras un corte de luz).
+/// Age after which a temporary file is considered abandoned (for example, after a power cut).
 const TEMPORAL_ABANDONADO: Duration = Duration::from_secs(60 * 60);
 
-/// Un archivo del almacén que ningún modelo usa y que se podría borrar.
+/// A store file that no model uses and that could be deleted.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BlobSinUsar {
     pub huella: Huella,
@@ -25,13 +25,13 @@ pub struct BlobSinUsar {
 }
 
 impl Almacen {
-    /// Bytes libres en el disco del almacén.
+    /// Free bytes on the store's disk.
     pub fn espacio_libre(&self) -> Result<u64, ErrorAlmacen> {
         sistema::espacio_libre(&self.raiz)
             .contexto(|| format!("consultar el espacio libre de {}", self.raiz.display()))
     }
 
-    /// Comprueba que caben `necesarios` bytes dejando el margen de seguridad ([`MARGEN_ESPACIO`]).
+    /// Checks that `necesarios` bytes fit while leaving the safety margin ([`MARGEN_ESPACIO`]).
     pub fn comprobar_espacio(&self, necesarios: u64) -> Result<(), ErrorAlmacen> {
         let disponibles = self.espacio_libre()?;
         if disponibles < necesarios.saturating_add(MARGEN_ESPACIO) {
@@ -43,8 +43,8 @@ impl Almacen {
         Ok(())
     }
 
-    /// ¿Está la carpeta del almacén dentro de OneDrive? Si es así, la app debe avisar: OneDrive intentaría subir
-    /// gigas de modelos a la nube.
+    /// Is the store folder inside OneDrive? If so, the app must warn: OneDrive would try to upload gigabytes of models
+    /// to the cloud.
     pub fn esta_en_onedrive(&self) -> bool {
         let carpetas: Vec<PathBuf> = ["OneDrive", "OneDriveConsumer", "OneDriveCommercial"]
             .iter()
@@ -55,10 +55,10 @@ impl Almacen {
         ruta_dentro_de(&self.raiz, &carpetas)
     }
 
-    /// Lista los blobs que no usa ningún modelo: los que solo tienen un nombre (el suyo en `blobs\`).
+    /// Lists the blobs no model uses: those with only one name (their own in `blobs\`).
     ///
-    /// Un blob adoptado de un archivo externo tiene dos nombres (el original y el del almacén) y no aparece aquí:
-    /// borrarlo no liberaría espacio.
+    /// A blob adopted from an external file has two names (the original and the store one) and does not appear here:
+    /// deleting it would not free any space.
     pub fn blobs_sin_usar(&self) -> Result<Vec<BlobSinUsar>, ErrorAlmacen> {
         let mut resultado = Vec::new();
         let entradas = fs::read_dir(&self.blobs)
@@ -66,7 +66,7 @@ impl Almacen {
         for entrada in entradas {
             let entrada = entrada.contexto(|| "leer una entrada de blobs".into())?;
             let nombre = entrada.file_name();
-            // Solo nos interesan los archivos con nombre de blob válido; cualquier otra cosa se ignora.
+            // We only care about files with a valid blob name; anything else is ignored.
             let Some(huella) = nombre
                 .to_str()
                 .and_then(|n| n.strip_prefix("sha256-"))
@@ -89,7 +89,7 @@ impl Almacen {
         Ok(resultado)
     }
 
-    /// Borra un blob **solo si sigue sin usarse** (se comprueba otra vez justo antes de borrar).
+    /// Deletes a blob **only if it is still unused** (checked again right before deleting).
     pub fn eliminar_blob(&self, huella: &Huella) -> Result<u64, ErrorAlmacen> {
         let ruta = self.ruta_blob(huella);
         if !ruta.is_file() {
@@ -107,8 +107,8 @@ impl Almacen {
         Ok(bytes)
     }
 
-    /// Borra los temporales abandonados (de hace más de una hora): restos de un corte de luz o de un cierre brusco.
-    /// Los recientes se dejan, por si otra operación los está usando. Devuelve cuántos se han borrado.
+    /// Deletes abandoned temporary files (older than an hour): leftovers of a power cut or an abrupt shutdown.
+    /// Recent ones are left, in case another operation is using them. Returns how many were deleted.
     pub fn limpiar_temporales(&self) -> Result<usize, ErrorAlmacen> {
         let ahora = SystemTime::now();
         let mut borrados = 0;
@@ -117,8 +117,8 @@ impl Almacen {
         for entrada in entradas {
             let entrada = entrada.contexto(|| "leer una entrada de tmp".into())?;
             let ruta = entrada.path();
-            // Las descargas pausadas (`.parcial`) NO son basura: se reanudan la próxima vez. Solo se borran si el
-            // usuario cancela la descarga.
+            // Paused downloads (`.parcial`) are NOT junk: they resume next time. They are only deleted if the user cancels the
+            // download.
             if ruta.extension().is_some_and(|e| e == "parcial") {
                 continue;
             }
@@ -138,8 +138,8 @@ impl Almacen {
     }
 }
 
-/// ¿Está `ruta` dentro de alguna de `carpetas`? Compara sin distinguir mayúsculas (como Windows) y por
-/// componentes completos (`C:\OneDriveX` no está dentro de `C:\OneDrive`).
+/// Is `ruta` inside any of `carpetas`? Compares case-insensitively (like Windows) and by whole components
+/// (`C:\OneDriveX` is not inside `C:\OneDrive`).
 pub(crate) fn ruta_dentro_de(ruta: &Path, carpetas: &[PathBuf]) -> bool {
     let normalizar = |p: &Path| -> Vec<String> {
         let absoluta = fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
@@ -186,7 +186,7 @@ mod pruebas {
         let almacen = Almacen::abrir(carpeta.0.join("a")).unwrap();
         assert!(almacen.espacio_libre().unwrap() > 0);
         assert!(almacen.comprobar_espacio(1).is_ok());
-        // Nadie tiene 16 exabytes libres.
+        // Nobody has 16 exabytes free.
         assert!(matches!(
             almacen.comprobar_espacio(u64::MAX / 2),
             Err(ErrorAlmacen::EspacioInsuficiente { .. })
@@ -235,12 +235,12 @@ mod pruebas {
             }]
         );
 
-        // El que usa un modelo NO se puede borrar.
+        // The one a model uses can NOT be deleted.
         assert!(matches!(
             almacen.eliminar_blob(&usado),
             Err(ErrorAlmacen::BlobEnUso(_))
         ));
-        // El que no usa nadie, sí.
+        // The one nobody uses can.
         assert_eq!(almacen.eliminar_blob(&libre).unwrap(), 6);
         assert!(!almacen.contiene(&libre));
         assert!(almacen.contiene(&usado));
@@ -253,7 +253,7 @@ mod pruebas {
         let tmp = almacen.raiz().join("tmp");
         let viejo = tmp.join("viejo.tmp");
         let reciente = tmp.join("reciente.tmp");
-        let pausada = tmp.join("sha256-abc.parcial"); // una descarga pausada, también antigua
+        let pausada = tmp.join("sha256-abc.parcial"); // a paused download, also old
         for ruta in [&viejo, &reciente, &pausada] {
             fs::write(ruta, b"x").unwrap();
         }

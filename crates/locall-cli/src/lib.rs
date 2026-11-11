@@ -1,8 +1,7 @@
 //! # locall-cli
 //!
-//! La línea de comandos de Locall (Fase 4). Es un **cliente de la API local**, igual que lo será la app de
-//! escritorio (regla 9): nunca toca el núcleo directamente. Si Locall no está abierto, lo arranca en segundo plano
-//! (ADR 0017).
+//! Locall's command line (Phase 4). It is a **client of the local API**, just like the desktop app (rule 9): it never
+//! touches the core directly. If Locall is not open, it starts it in the background (ADR 0017).
 
 use std::path::Path;
 use std::time::{Duration, Instant};
@@ -21,8 +20,8 @@ pub mod progreso;
 pub use cliente::{Cliente, ErrorCli};
 pub use ordenes::{AYUDA, Orden, interpretar};
 
-/// Ejecuta una orden (todas menos `serve`, que la atiende el programa). `ejecutable` es `locall.exe`, para poder
-/// arrancar el núcleo en segundo plano. Devuelve el texto para el usuario.
+/// Runs a command (all except `serve`, which the program handles). `ejecutable` is `locall.exe`, so the core can be
+/// started in the background. Returns the text for the user.
 pub fn ejecutar(orden: &Orden, rutas: &Rutas, ejecutable: &Path) -> Result<String, ErrorCli> {
     match orden {
         Orden::Ayuda => Ok(AYUDA.to_owned()),
@@ -69,7 +68,7 @@ pub fn ejecutar(orden: &Orden, rutas: &Rutas, ejecutable: &Path) -> Result<Strin
     }
 }
 
-/// `locall status`: no arranca Locall; solo dice cómo está.
+/// `locall status`: does not start Locall; it only says how it is.
 fn estado(rutas: &Rutas) -> Result<String, ErrorCli> {
     let Some(cliente) = arranque::conectar(rutas)? else {
         return Ok("Locall no está abierto. Se abrirá solo cuando lo uses (por ejemplo, con «locall list»).\n".into());
@@ -97,7 +96,7 @@ fn estado(rutas: &Rutas) -> Result<String, ErrorCli> {
     Ok(texto)
 }
 
-/// `locall stop`: pide a Locall que se cierre y espera a que deje de responder.
+/// `locall stop`: asks Locall to close and waits until it stops answering.
 fn parar(rutas: &Rutas) -> Result<String, ErrorCli> {
     let Some(cliente) = arranque::conectar(rutas)? else {
         return Ok("Locall no estaba abierto.\n".into());
@@ -191,7 +190,7 @@ fn mostrar(cliente: &Cliente, id: &str) -> Result<String, ErrorCli> {
     Ok(texto_salida)
 }
 
-/// Un texto del JSON, o «—» si no hay.
+/// A text from the JSON, or «—» if there is none.
 fn texto(valor: &Value) -> String {
     valor.as_str().map_or_else(|| "—".to_owned(), str::to_owned)
 }

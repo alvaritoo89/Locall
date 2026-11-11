@@ -1,22 +1,23 @@
 //! # locall-scheduler
 //!
-//! El planificador decide **qué modelo está cargado**. La app, la API y la CLI no hablan con el motor
-//! directamente: piden al planificador "quiero usar este modelo" y reciben un [`Prestamo`].
+//! The scheduler decides **which model is loaded**. The app, the API and the CLI do not talk to the engine directly:
+//! they ask the scheduler "I want to use this model" and receive a [`Prestamo`] (a loan).
 //!
-//! Reglas:
+//! Rules:
 //!
-//! 1. **Un solo modelo a la vez** (cabe en equipos de 16 GB; decisión de la Fase 0). Si piden el mismo modelo con la
-//!    misma configuración, se reutiliza; si piden otro, se para el actual y se arranca el nuevo.
-//! 2. Mientras alguien tiene un **préstamo**, el modelo no se cambia: quien pide otro modelo **espera**.
-//!    Varios pueden tener a la vez un préstamo del *mismo* modelo.
-//! 3. Si el modelo lleva [`Opciones::inactividad`] sin usarse y nadie lo tiene prestado, **se descarga solo** para
-//!    liberar la RAM.
-//! 4. **Cola por orden de llegada:** se atiende a quien llegó primero. Quien pide el modelo ya cargado no se cuela
-//!    por delante de quien espera otro modelo (si no, ese podría esperar para siempre). Se puede **cancelar**
-//!    mientras se espera turno.
+//! 1. **One model at a time** (it fits on 16 GB computers; Phase 0 decision). If the same model is requested with the
+//!    same configuration, it is reused; if another one is requested, the current one is stopped and the new one
+//!    started.
+//! 2. While someone holds a **loan**, the model is not changed: whoever asks for another model **waits**.
+//!    Several can hold a loan of the *same* model at once.
+//! 3. If the model has gone [`Opciones::inactividad`] without use and nobody holds it, **it unloads by itself** to
+//!    free the RAM.
+//! 4. **First-come, first-served queue:** whoever arrived first is served first. Whoever asks for the already loaded
+//!    model does not jump ahead of someone waiting for another model (otherwise that one could wait forever). The
+//!    wait for a turn can be **cancelled**.
 //!
-//! El planificador no conoce `llama-server`: trabaja con cualquier [`Arrancador`]. Locall usa [`ArrancadorReal`]
-//! (el motor de `locall-engine`); las pruebas usan uno de imitación, rápido y exacto.
+//! The scheduler does not know `llama-server`: it works with any [`Arrancador`]. Locall uses [`ArrancadorReal`] (the
+//! `locall-engine` engine); tests use a fake one, fast and exact.
 
 use std::collections::VecDeque;
 use std::fmt;
@@ -34,41 +35,41 @@ mod pruebas;
 
 pub use comprobacion::{ErrorCarga, evaluar_carga};
 
-// ─── El trait Arrancador ──────────────────────────────────────────────────────
+// ─── The Arrancador trait ─────────────────────────────────────────────────────
 
-/// Lo que el planificador necesita de un motor: saber **arrancarlo** con una carga.
+/// What the scheduler needs from an engine: knowing how to **start it** with a load.
 ///
-/// Para **pararlo** basta con soltarlo (`Drop`), como ya hace [`locall_engine::Motor`].
+/// To **stop it**, dropping it is enough (`Drop`), as [`locall_engine::Motor`] already does.
 ///
-/// `Send + Sync + 'static` significa: se puede compartir entre hilos y no toma prestado nada de fuera. El
-/// planificador lo necesita porque lo usa desde varios hilos y desde su vigilante.
+/// `Send + Sync + 'static` means: it can be shared between threads and borrows nothing from outside. The scheduler
+/// needs it because it uses it from several threads and from its watcher.
 pub trait Arrancador: Send + Sync + 'static {
-    /// El motor en marcha que devuelve.
+    /// The running engine it returns.
     type Motor: Send + Sync + 'static;
-    /// El error si no puede arrancar.
+    /// The error if it cannot start.
     type Error: std::error::Error + Send + Sync + 'static;
 
-    /// Arranca un motor con `carga` y espera a que esté listo.
+    /// Starts an engine with `carga` and waits until it is ready.
     fn arrancar(&self, carga: &Carga) -> Result<Self::Motor, Self::Error>;
 
-    /// ¿Sigue vivo este motor? Si su proceso se ha cerrado solo (por falta de memoria, por un fallo…), el
-    /// planificador lo retira y, si se vuelve a pedir ese modelo, lo carga de nuevo. Por defecto, siempre vivo.
+    /// Is this engine still alive? If its process exited by itself (out of memory, a crash…), the scheduler removes it
+    /// and, if that model is requested again, loads it anew. By default, always alive.
     fn sigue_vivo(&self, motor: &Self::Motor) -> bool {
         let _ = motor;
         true
     }
 }
 
-/// El arrancador de verdad: `llama-server` mediante `locall-engine`.
+/// The real starter: `llama-server` through `locall-engine`.
 ///
-/// Antes de lanzar el motor comprueba (parte 9c) que el modelo es compatible y que **cabe en la memoria
-/// disponible**; si no, devuelve el error al instante, sin arrancar nada.
+/// Before launching the engine it checks (part 9c) that the model is compatible and that it **fits in the available
+/// memory**; if not, it returns the error instantly, without starting anything.
 #[derive(Debug, Clone)]
 pub struct ArrancadorReal {
-    /// Tiempo máximo para cargar un modelo.
+    /// Maximum time to load a model.
     pub espera_maxima: Duration,
-    /// Comprobar compatibilidad y memoria antes de cargar. Solo se desactiva si el usuario insiste en probar
-    /// (la estimación es prudente y puede equivocarse por poco).
+    /// Check compatibility and memory before loading. Only disabled if the user insists on trying (the estimate is
+    /// conservative and can be slightly wrong).
     pub comprobar_antes: bool,
 }
 
@@ -87,7 +88,7 @@ impl Arrancador for ArrancadorReal {
 
     fn arrancar(&self, carga: &Carga) -> Result<Motor, ErrorCarga> {
         if self.comprobar_antes {
-            // El planificador ya ha parado el modelo anterior: la memoria que libera cuenta como disponible.
+            // The scheduler has already stopped the previous model: the memory it frees counts as available.
             let disponibles = locall_system::memoria()
                 .map_err(ErrorCarga::Sistema)?
                 .disponible;
@@ -102,7 +103,7 @@ impl Arrancador for ArrancadorReal {
     fn sigue_vivo(&self, motor: &Motor) -> bool {
         let vivo = motor.sigue_vivo();
         if !vivo {
-            // El motor deja escrito por qué se cerró (falta de memoria, modelo dañado…): se apunta en el registro.
+            // The engine leaves written why it exited (out of memory, damaged model…): it is recorded in the log.
             let causa = motor.causa_del_cierre();
             log::warn!("el motor se ha cerrado solo (causa: {causa:?})");
         }
@@ -110,21 +111,21 @@ impl Arrancador for ArrancadorReal {
     }
 }
 
-// ─── Tipos públicos ───────────────────────────────────────────────────────────
+// ─── Public types ─────────────────────────────────────────────────────────────
 
-/// Qué modelo cargar y cómo.
+/// Which model to load and how.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Carga {
-    /// Nombre del modelo para mostrarlo (por ejemplo, `qwen2.5-1.5b`). Nunca una ruta.
+    /// Model name for display (for example, `qwen2.5-1.5b`). Never a path.
     pub modelo: String,
-    /// Cómo arrancar el motor. Si cambia algo (el contexto, las capas en la gráfica…), es otra carga.
+    /// How to start the engine. If anything changes (the context, the layers on the GPU…), it is a different load.
     pub config: ConfigMotor,
 }
 
-/// Ajustes del planificador.
+/// Scheduler settings.
 #[derive(Debug, Clone)]
 pub struct Opciones {
-    /// Tiempo sin usarse tras el que el modelo se descarga solo. `None` = no se descarga nunca solo.
+    /// Idle time after which the model unloads by itself. `None` = it never unloads by itself.
     pub inactividad: Option<Duration>,
 }
 
@@ -136,23 +137,23 @@ impl Default for Opciones {
     }
 }
 
-/// Qué está haciendo el planificador.
+/// What the scheduler is doing.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Estado {
-    /// No hay ningún modelo cargado.
+    /// No model is loaded.
     Vacio,
-    /// Se está cargando este modelo.
+    /// This model is being loaded.
     Cargando { modelo: String },
-    /// Este modelo está listo. `en_uso` = préstamos activos.
+    /// This model is ready. `en_uso` = active loans.
     Listo { modelo: String, en_uso: usize },
 }
 
-/// Lo que puede salir mal al pedir un modelo.
+/// What can go wrong when requesting a model.
 #[derive(Debug)]
 pub enum ErrorPlanificador<E> {
-    /// Se canceló mientras esperaba su turno.
+    /// It was cancelled while waiting for its turn.
     Cancelado,
-    /// El motor no pudo arrancar.
+    /// The engine could not start.
     Motor(E),
 }
 
@@ -176,40 +177,40 @@ impl<E: std::error::Error + 'static> std::error::Error for ErrorPlanificador<E> 
     }
 }
 
-/// Cada cuánto mira la petición en espera si la han cancelado.
+/// How often the waiting request checks whether it has been cancelled.
 const MIRAR_CANCELACION: Duration = Duration::from_millis(50);
 
-// ─── El planificador ─────────────────────────────────────────────────────────
+// ─── The scheduler ────────────────────────────────────────────────────────────
 
-/// El planificador. Se comparte entre hilos con una referencia (`&Planificador`) o un `Arc<Planificador>`.
+/// The scheduler. Shared between threads with a reference (`&Planificador`) or an `Arc<Planificador>`.
 pub struct Planificador<A: Arrancador> {
     compartido: Arc<Compartido<A>>,
     vigilante: Option<JoinHandle<()>>,
 }
 
-/// Lo que comparten el planificador, los préstamos y el vigilante.
+/// What the scheduler, the loans and the watcher share.
 struct Compartido<A: Arrancador> {
     arrancador: A,
     opciones: Opciones,
     estado: Mutex<Interno<A::Motor>>,
-    /// Avisa a los que esperan cada vez que cambia el estado.
+    /// Notifies the waiters every time the state changes.
     cambio: Condvar,
 }
 
-/// El estado, protegido por el `Mutex`: solo un hilo a la vez puede leerlo o cambiarlo.
+/// The state, protected by the `Mutex`: only one thread at a time can read or change it.
 struct Interno<M> {
     actual: Option<Cargado<M>>,
-    /// Modelo que algún hilo está cargando ahora mismo (los demás esperan).
+    /// Model some thread is loading right now (the others wait).
     cargando: Option<String>,
-    /// Préstamos activos del modelo actual.
+    /// Active loans of the current model.
     prestamos: usize,
-    /// Última vez que se soltó un préstamo (o que se cargó el modelo).
+    /// Last time a loan was released (or the model was loaded).
     ultimo_uso: Instant,
-    /// El planificador se está cerrando: el vigilante debe terminar.
+    /// The scheduler is shutting down: the watcher must finish.
     cerrando: bool,
-    /// Turnos de las peticiones que esperan, por orden de llegada.
+    /// Turns of the waiting requests, in order of arrival.
     cola: VecDeque<u64>,
-    /// Número del próximo turno que se reparte.
+    /// Number of the next turn handed out.
     siguiente_turno: u64,
 }
 
@@ -245,15 +246,15 @@ impl<A: Arrancador> Planificador<A> {
         }
     }
 
-    /// Pide usar el modelo de `carga`. Si hace falta, para el modelo actual y carga este.
+    /// Requests to use the model in `carga`. If needed, stops the current model and loads this one.
     ///
-    /// **Bloquea** hasta que sea su turno. Para poder cancelar la espera, usa [`Planificador::usar_con`].
+    /// **Blocks** until it is its turn. To be able to cancel the wait, use [`Planificador::usar_con`].
     pub fn usar(&self, carga: &Carga) -> Result<Prestamo<A>, ErrorPlanificador<A::Error>> {
         self.usar_con(carga, &AtomicBool::new(false))
     }
 
-    /// Como [`Planificador::usar`], pero si otro hilo pone `cancelar` a `true` mientras espera su turno, se va de
-    /// la cola con [`ErrorPlanificador::Cancelado`]. (Una carga ya empezada no se interrumpe.)
+    /// Like [`Planificador::usar`], but if another thread sets `cancelar` to `true` while it waits for its turn, it
+    /// leaves the queue with [`ErrorPlanificador::Cancelado`]. (A load already started is not interrupted.)
     pub fn usar_con(
         &self,
         carga: &Carga,
@@ -262,7 +263,7 @@ impl<A: Arrancador> Planificador<A> {
         let c = &self.compartido;
         let mut estado = c.bloquear();
 
-        // Coger turno, como en la pescadería.
+        // Take a ticket, like at the deli counter.
         let turno = estado.siguiente_turno;
         estado.siguiente_turno += 1;
         estado.cola.push_back(turno);
@@ -271,27 +272,27 @@ impl<A: Arrancador> Planificador<A> {
             if cancelar.load(Ordering::Relaxed) {
                 estado.cola.retain(|&t| t != turno);
                 drop(estado);
-                c.cambio.notify_all(); // el siguiente de la cola quizá ya puede pasar
+                c.cambio.notify_all(); // the next one in the queue may be able to go now
                 return Err(ErrorPlanificador::Cancelado);
             }
-            // Solo actúa el primero de la cola, y nunca mientras alguien está cargando un modelo.
+            // Only the first in the queue acts, and never while someone is loading a model.
             if estado.cola.front() == Some(&turno) && estado.cargando.is_none() {
-                // a) Ya está cargado el que queremos: prestarlo. (Primero se copia el `Arc` del motor y se
-                //    termina de leer; después se modifica el estado: Rust no deja modificar algo mientras se lee.)
+                // a) The one we want is already loaded: lend it. (First the engine's `Arc` is copied and reading finishes; then
+                //    the state is modified: Rust does not allow modifying something while it is being read.)
                 let mismo = estado
                     .actual
                     .as_ref()
                     .filter(|actual| actual.carga == *carga)
                     .map(|actual| Arc::clone(&actual.motor));
-                // a') …pero si su proceso se ha cerrado solo, no se presta un motor muerto: en cuanto nadie lo use,
-                //     se retira y se carga de nuevo (más abajo, como un cambio de modelo).
+                // a') …but if its process exited by itself, a dead engine is not lent: as soon as nobody uses it, it is removed
+                //     and loaded again (below, like a model change).
                 let mismo = match mismo {
                     Some(motor) if !c.arrancador.sigue_vivo(&motor) => {
                         if estado.prestamos == 0 {
                             soltar_actual(&mut estado, "el motor se cerró solo");
                             break;
                         }
-                        None // alguien lo tiene prestado: su petición fallará y lo soltará; esperar
+                        None // someone holds it: their request will fail and they will release it; wait
                     }
                     otro => otro,
                 };
@@ -299,26 +300,26 @@ impl<A: Arrancador> Planificador<A> {
                     estado.cola.pop_front();
                     estado.prestamos += 1;
                     drop(estado);
-                    c.cambio.notify_all(); // el siguiente quizá quiere el mismo modelo: que pase también
+                    c.cambio.notify_all(); // the next one may want the same model: let it through too
                     return Ok(Prestamo {
                         motor,
                         compartido: Arc::clone(c),
                     });
                 }
-                // b) Hay otro modelo, pero nadie lo usa: vía libre para cambiarlo.
+                // b) There is another model, but nobody uses it: free to change it.
                 if estado.prestamos == 0 {
                     break;
                 }
-                // c) Hay otro modelo en uso: esperar a que lo suelten.
+                // c) There is another model in use: wait for it to be released.
             }
             estado = c.esperar_un_rato(estado);
         }
 
         estado.cola.pop_front();
-        // Soltar el motor viejo para el proceso (es rápido). Así la RAM queda libre ANTES de cargar el nuevo.
+        // Drop the old engine to stop the process (it is fast). This way the RAM is free BEFORE loading the new one.
         soltar_actual(&mut estado, "cambio de modelo");
         estado.cargando = Some(carga.modelo.clone());
-        // Cargar puede tardar segundos: se hace SIN el candado, para que los demás puedan consultar el estado.
+        // Loading can take seconds: it is done WITHOUT the lock, so the others can query the state.
         drop(estado);
 
         log::info!("cargando el modelo «{}»", carga.modelo);
@@ -352,16 +353,16 @@ impl<A: Arrancador> Planificador<A> {
             }
         };
         drop(estado);
-        c.cambio.notify_all(); // despertar a los que esperaban
+        c.cambio.notify_all(); // wake up those who were waiting
         respuesta
     }
 
-    /// Peticiones esperando turno.
+    /// Requests waiting for their turn.
     pub fn en_cola(&self) -> usize {
         self.compartido.bloquear().cola.len()
     }
 
-    /// Qué está haciendo ahora.
+    /// What it is doing now.
     pub fn estado(&self) -> Estado {
         let estado = self.compartido.bloquear();
         if let Some(modelo) = &estado.cargando {
@@ -378,8 +379,8 @@ impl<A: Arrancador> Planificador<A> {
         }
     }
 
-    /// Cuánto falta para que el modelo cargado se descargue por inactividad. `None` si no hay modelo, si se está
-    /// usando o cargando, o si la descarga por inactividad está desactivada.
+    /// How long until the loaded model unloads due to inactivity. `None` if there is no model, if it is being used or
+    /// loaded, or if idle unloading is disabled.
     pub fn se_descarga_en(&self) -> Option<Duration> {
         let limite = self.compartido.opciones.inactividad?;
         let estado = self.compartido.bloquear();
@@ -389,28 +390,28 @@ impl<A: Arrancador> Planificador<A> {
         Some(limite.saturating_sub(estado.ultimo_uso.elapsed()))
     }
 
-    /// Consulta algo del motor cargado (por ejemplo, su proceso para medir su memoria), sin prestarlo: no cuenta como
-    /// uso. `None` si no hay modelo cargado.
+    /// Queries something about the loaded engine (for example, its process to measure its memory), without lending it:
+    /// it does not count as use. `None` if no model is loaded.
     pub fn con_motor<T>(&self, consulta: impl FnOnce(&A::Motor) -> T) -> Option<T> {
         let estado = self.compartido.bloquear();
         estado.actual.as_ref().map(|actual| consulta(&actual.motor))
     }
 
-    /// Descarga el modelo ahora mismo, si nadie lo está usando. Devuelve si se ha descargado.
+    /// Unloads the model right now, if nobody is using it. Returns whether it was unloaded.
     pub fn descargar(&self) -> bool {
         let c = &self.compartido;
         let mut estado = c.bloquear();
         if estado.prestamos > 0 || estado.cargando.is_some() || estado.actual.is_none() {
             return false;
         }
-        soltar_actual(&mut estado, "a petición"); // para el motor
+        soltar_actual(&mut estado, "a petición"); // stops the engine
         c.cambio.notify_all();
         true
     }
 }
 
 impl<A: Arrancador> Drop for Planificador<A> {
-    /// Cierra el vigilante. El modelo se para cuando se suelte el último préstamo (o ahora, si no hay ninguno).
+    /// Shuts down the watcher. The model stops when the last loan is released (or now, if there is none).
     fn drop(&mut self) {
         {
             let mut estado = self.compartido.bloquear();
@@ -435,14 +436,14 @@ impl<A: Arrancador> fmt::Debug for Planificador<A> {
 }
 
 impl<A: Arrancador> Compartido<A> {
-    /// Toma el candado. Si otro hilo entró en pánico con él tomado, seguimos con el estado tal como quedó: todos
-    /// los cambios del estado son pequeños y quedan siempre coherentes.
+    /// Takes the lock. If another thread panicked while holding it, we carry on with the state as it was left: all
+    /// state changes are small and always leave it consistent.
     fn bloquear(&self) -> MutexGuard<'_, Interno<A::Motor>> {
         self.estado.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    /// Como [`Compartido::esperar`], pero se despierta como mucho a los [`MIRAR_CANCELACION`] para comprobar si
-    /// han cancelado la petición (quien cancela no puede avisar a la `Condvar`: solo cambia su `AtomicBool`).
+    /// Like [`Compartido::esperar`], but wakes up after at most [`MIRAR_CANCELACION`] to check whether the request
+    /// has been cancelled (whoever cancels cannot notify the `Condvar`: they only change their `AtomicBool`).
     fn esperar_un_rato<'a>(
         &self,
         estado: MutexGuard<'a, Interno<A::Motor>>,
@@ -453,7 +454,7 @@ impl<A: Arrancador> Compartido<A> {
             .0
     }
 
-    /// Suelta el candado y duerme hasta que alguien avise de un cambio.
+    /// Releases the lock and sleeps until someone signals a change.
     fn esperar<'a>(
         &self,
         estado: MutexGuard<'a, Interno<A::Motor>>,
@@ -464,11 +465,11 @@ impl<A: Arrancador> Compartido<A> {
     }
 }
 
-// ─── El préstamo ─────────────────────────────────────────────────────────────
+// ─── The loan ─────────────────────────────────────────────────────────────────
 
-/// Permiso para usar el modelo cargado. Mientras exista, el modelo no se cambia ni se descarga.
+/// Permission to use the loaded model. While it exists, the model is neither changed nor unloaded.
 ///
-/// Se usa como si fuera el motor (`prestamo.chat(...)`) gracias a `Deref`. Al soltarlo, se anota el uso.
+/// It is used as if it were the engine (`prestamo.chat(...)`) thanks to `Deref`. Dropping it records the use.
 pub struct Prestamo<A: Arrancador> {
     motor: Arc<A::Motor>,
     compartido: Arc<Compartido<A>>,
@@ -488,7 +489,7 @@ impl<A: Arrancador> Drop for Prestamo<A> {
         estado.prestamos -= 1;
         estado.ultimo_uso = Instant::now();
         if estado.cerrando && estado.prestamos == 0 {
-            // El planificador ya no existe: parar el motor ahora.
+            // The scheduler no longer exists: stop the engine now.
             soltar_actual(&mut estado, "cierre de Locall");
         }
         drop(estado);
@@ -496,29 +497,29 @@ impl<A: Arrancador> Drop for Prestamo<A> {
     }
 }
 
-/// Para el modelo cargado (si lo hay) y lo anota en el registro.
+/// Stops the loaded model (if any) and records it in the log.
 fn soltar_actual<M>(estado: &mut Interno<M>, motivo: &str) {
     if let Some(viejo) = estado.actual.take() {
         let modelo = viejo.carga.modelo.clone();
-        drop(viejo); // para el motor
+        drop(viejo); // stops the engine
         log::info!("modelo «{modelo}» descargado ({motivo})");
     }
 }
 
-/// Cada cuánto mira el vigilante si el motor sigue vivo (mientras hay un modelo cargado que nadie usa).
+/// How often the watcher checks whether the engine is still alive (while a model nobody uses is loaded).
 const VIGILAR_MOTOR: Duration = Duration::from_secs(2);
 
-// ─── El vigilante de inactividad ─────────────────────────────────────────────
+// ─── The inactivity watcher ───────────────────────────────────────────────────
 
-/// Hilo que descarga el modelo cuando lleva `inactividad` sin préstamos, y que retira el motor si su proceso se ha
-/// cerrado solo (así el estado no dice «listo» con un motor muerto).
+/// Thread that unloads the model when it has gone `inactividad` without loans, and that removes the engine if its
+/// process exited by itself (so the state does not say «ready» with a dead engine).
 fn vigilar<A: Arrancador>(c: &Compartido<A>) {
     let mut estado = c.bloquear();
     loop {
         if estado.cerrando {
             return;
         }
-        let mut espera = None; // None = dormir hasta el próximo cambio
+        let mut espera = None; // None = sleep until the next change
         let libre = estado.actual.is_some() && estado.prestamos == 0 && estado.cargando.is_none();
         if libre {
             let muerto = estado
@@ -537,7 +538,7 @@ fn vigilar<A: Arrancador>(c: &Compartido<A>) {
         {
             let pasado = estado.ultimo_uso.elapsed();
             if pasado >= limite {
-                soltar_actual(&mut estado, "inactividad"); // para el motor
+                soltar_actual(&mut estado, "inactividad"); // stops the engine
                 c.cambio.notify_all();
                 continue;
             }

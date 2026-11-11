@@ -1,4 +1,4 @@
-//! `locall pull`, `locall import` y `locall rm`.
+//! `locall pull`, `locall import` and `locall rm`.
 
 use std::io::{BufRead, BufReader, IsTerminal, Write};
 use std::path::Path;
@@ -9,7 +9,7 @@ use crate::cliente::{Cliente, ErrorCli};
 use crate::formato;
 use crate::progreso::Barra;
 
-/// `locall pull <repo>`: lista los GGUF del repositorio para que el usuario elija.
+/// `locall pull <repo>`: lists the repository's GGUFs for the user to choose.
 pub fn listar_repo(
     cliente: &Cliente,
     repo: &str,
@@ -59,7 +59,7 @@ pub fn listar_repo(
     Ok(texto)
 }
 
-/// `locall pull <repo> <archivo>`: instala con barra de progreso.
+/// `locall pull <repo> <file>`: installs with a progress bar.
 pub fn instalar(
     cliente: &Cliente,
     repo: &str,
@@ -78,7 +78,7 @@ pub fn instalar(
     instalar_con(cliente, &cuerpo)
 }
 
-/// `locall pull <nombre>`: un modelo del catálogo.
+/// `locall pull <name>`: a catalog model.
 pub fn instalar_del_catalogo(cliente: &Cliente, nombre: &str) -> Result<String, ErrorCli> {
     let _ = writeln!(
         std::io::stderr(),
@@ -87,8 +87,8 @@ pub fn instalar_del_catalogo(cliente: &Cliente, nombre: &str) -> Result<String, 
     instalar_con(cliente, &json!({"name": nombre}))
 }
 
-/// `locall catalog`: los modelos del catálogo. Antes mira si hay uno nuevo (como mucho una vez al día); si no se puede
-/// (sin internet), enseña el que hay.
+/// `locall catalog`: the catalog models. First it checks whether there is a new one (at most once a day); if it
+/// cannot (no internet), it shows the one it has.
 pub fn catalogo(cliente: &Cliente) -> Result<String, ErrorCli> {
     let (catalogo, aviso) = match cliente.post("/api/catalog/update", &json!({})) {
         Ok(r) => (r["catalog"].clone(), None),
@@ -146,7 +146,7 @@ pub fn catalogo(cliente: &Cliente) -> Result<String, ErrorCli> {
     Ok(texto)
 }
 
-/// Pide la instalación y enseña la barra de progreso hasta que termina.
+/// Requests the installation and shows the progress bar until it finishes.
 fn instalar_con(cliente: &Cliente, cuerpo: &Value) -> Result<String, ErrorCli> {
     let respuesta = cliente.post_sin_leer("/api/models/pull", cuerpo)?;
     let mut barra = Barra::nueva();
@@ -192,9 +192,9 @@ fn instalar_con(cliente: &Cliente, cuerpo: &Value) -> Result<String, ErrorCli> {
     ))
 }
 
-/// `locall import <ruta>`
+/// `locall import <path>`
 pub fn importar(cliente: &Cliente, ruta: &str, id: Option<&str>) -> Result<String, ErrorCli> {
-    // La API pide una ruta completa: la de la orden puede ser relativa a la carpeta actual.
+    // The API asks for a full path: the command's one may be relative to the current folder.
     let completa = std::path::absolute(Path::new(ruta))
         .map_err(|e| ErrorCli::Uso(format!("ruta no válida «{ruta}»: {e}")))?;
     let mut cuerpo = json!({"path": completa.to_string_lossy()});
@@ -211,9 +211,9 @@ pub fn importar(cliente: &Cliente, ruta: &str, id: Option<&str>) -> Result<Strin
     ))
 }
 
-/// `locall rm <id>`: pide confirmación salvo con `--yes`.
+/// `locall rm <id>`: asks for confirmation unless `--yes` is given.
 pub fn eliminar(cliente: &Cliente, id: &str, sin_preguntar: bool) -> Result<String, ErrorCli> {
-    // Primero, comprobar que existe (y saber cuánto ocupa) para poder preguntar con datos.
+    // First, check that it exists (and how much space it takes) so the question can include the data.
     let m = cliente.get(&format!("/api/models/{}", codificar(id)))?;
     if !sin_preguntar {
         if !std::io::stdin().is_terminal() {
@@ -241,7 +241,7 @@ pub fn eliminar(cliente: &Cliente, id: &str, sin_preguntar: bool) -> Result<Stri
     ))
 }
 
-/// ¿Ha respondido que sí? (s, si, sí, y, yes; en mayúsculas o minúsculas).
+/// Did they answer yes? (s, si, sí, y, yes; upper or lower case).
 pub fn es_si(respuesta: &str) -> bool {
     matches!(
         respuesta.trim().to_lowercase().as_str(),
@@ -249,7 +249,7 @@ pub fn es_si(respuesta: &str) -> bool {
     )
 }
 
-/// Lo justo para meter un texto en una ruta de la API (los identificadores válidos no necesitan nada).
+/// Just enough to put a text into an API path (valid identifiers need nothing).
 pub fn codificar(texto: &str) -> String {
     let mut salida = String::new();
     for byte in texto.bytes() {

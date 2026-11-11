@@ -1,7 +1,7 @@
-//! Prueba completa con el modelo real dividido en dos partes (Qwen2.5 7B, 4,4 GB):
-//! adoptar las dos partes en un almacén (sin copiarlas: enlaces duros), verificar sus huellas contra las de
-//! Hugging Face, crear la snapshot y comprobar con locall-gguf que el archivo principal es el modelo correcto.
-//! Se salta si los modelos no están (ver `LOCALL_MODELOS`).
+//! Full test with the real model split into two parts (Qwen2.5 7B, 4.4 GB):
+//! adopt both parts into a store (without copying them: hard links), verify their hashes against Hugging Face's,
+//! create the snapshot and check with locall-gguf that the main file is the right model.
+//! Skipped if the models are not there (see `LOCALL_MODELOS`).
 
 use std::fs;
 use std::path::PathBuf;
@@ -10,7 +10,7 @@ use locall_store::{Almacen, Huella, NombreArchivo, Segmento};
 
 const PARTE_1: &str = "qwen2.5-7b-instruct-q4_k_m-00001-of-00002.gguf";
 const PARTE_2: &str = "qwen2.5-7b-instruct-q4_k_m-00002-of-00002.gguf";
-// Huellas publicadas en Hugging Face (Qwen/Qwen2.5-7B-Instruct-GGUF, revisión bb5d59e0).
+// Hashes published on Hugging Face (Qwen/Qwen2.5-7B-Instruct-GGUF, revision bb5d59e0).
 const HUELLA_1: &str = "dfce12e3862a5283ccfb88221b48480e58745165de856439950d0f22590580db";
 const HUELLA_2: &str = "539cf93f78e887edea1c04e2d7d8cdaca9d01dae9c9025bcb8accbe29df3d72a";
 
@@ -28,7 +28,7 @@ fn snapshot_del_modelo_7b_dividido() {
         return;
     }
 
-    // Almacén temporal en la carpeta temporal del sistema (mismo disco que los modelos, para poder enlazar).
+    // Temporary store in the system's temporary folder (same disk as the models, so they can be linked).
     let raiz = std::env::temp_dir().join(format!("locall-store-7b-{}", std::process::id()));
     let _ = fs::remove_dir_all(&raiz);
     let almacen = Almacen::abrir(&raiz).unwrap();
@@ -59,7 +59,7 @@ fn snapshot_del_modelo_7b_dividido() {
     assert_eq!(resumen.arquitectura.as_deref(), Some("qwen2"));
     assert_eq!(resumen.partes, Some(2));
 
-    // Limpieza: borrar el almacén temporal NO borra los modelos originales (son enlaces duros).
+    // Cleanup: deleting the temporary store does NOT delete the original models (they are hard links).
     fs::remove_dir_all(&raiz).unwrap();
     assert!(
         origen_1.exists() && origen_2.exists(),

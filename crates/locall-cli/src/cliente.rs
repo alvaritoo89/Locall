@@ -1,5 +1,5 @@
-//! Cliente de la API local: la CLI no toca el núcleo directamente, le habla por HTTP como cualquier otro programa
-//! (regla 9, ADR 0017).
+//! Local API client: the CLI does not touch the core directly, it talks to it over HTTP like any other program
+//! (rule 9, ADR 0017).
 
 use std::fmt;
 use std::path::Path;
@@ -7,24 +7,24 @@ use std::time::Duration;
 
 use serde_json::Value;
 
-/// Lo que puede salir mal en la CLI.
+/// What can go wrong in the CLI.
 #[derive(Debug)]
 pub enum ErrorCli {
-    /// La orden está mal escrita.
+    /// The command is malformed.
     Uso(String),
-    /// Locall no está abierto (para las órdenes que no lo arrancan).
+    /// Locall is not open (for the commands that do not start it).
     NoAbierto,
-    /// No se pudo arrancar el núcleo.
+    /// The core could not be started.
     Arranque(String),
-    /// La API respondió con un error (su mensaje ya está en español).
+    /// The API answered with an error (its message is already in Spanish).
     Api {
         estado: u16,
         codigo: String,
         mensaje: String,
     },
-    /// Fallo de conexión o de lectura.
+    /// Connection or read failure.
     Red(String),
-    /// Configuración o token.
+    /// Configuration or token.
     Config(String),
 }
 
@@ -43,14 +43,14 @@ impl fmt::Display for ErrorCli {
 
 impl std::error::Error for ErrorCli {}
 
-/// Un cliente de la API, ya con su dirección y su token.
+/// An API client, already with its address and token.
 #[derive(Clone)]
 pub struct Cliente {
     base: String,
     token: String,
     agente: ureq::Agent,
-    /// Para comprobar si hay alguien escuchando, con una espera corta: en Windows, conectar a un puerto cerrado de
-    /// `localhost` tarda ~2 s (el sistema reintenta), pero si el servidor existe acepta al instante.
+    /// To check whether anyone is listening, with a short timeout: on Windows, connecting to a closed `localhost` port
+    /// takes ~2 s (the system retries), but if the server exists it accepts instantly.
     sonda: ureq::Agent,
 }
 
@@ -81,7 +81,7 @@ impl Cliente {
         &self.base
     }
 
-    /// `GET` que devuelve JSON.
+    /// `GET` that returns JSON.
     pub fn get(&self, ruta: &str) -> Result<Value, ErrorCli> {
         let respuesta = self
             .agente
@@ -92,13 +92,13 @@ impl Cliente {
         leer_json(respuesta)
     }
 
-    /// `POST` con cuerpo JSON que devuelve JSON.
+    /// `POST` with a JSON body that returns JSON.
     pub fn post(&self, ruta: &str, cuerpo: &Value) -> Result<Value, ErrorCli> {
         leer_json(self.post_sin_leer(ruta, cuerpo)?)
     }
 
-    /// `POST` que devuelve la respuesta sin leer (para las respuestas por trozos). Si es un error, lo devuelve ya
-    /// convertido.
+    /// `POST` that returns the response unread (for chunked responses). If it is an error, it returns it already
+    /// converted.
     pub fn post_sin_leer(
         &self,
         ruta: &str,
@@ -118,7 +118,7 @@ impl Cliente {
         }
     }
 
-    /// `PATCH` con cuerpo JSON que devuelve JSON.
+    /// `PATCH` with a JSON body that returns JSON.
     pub fn patch(&self, ruta: &str, cuerpo: &Value) -> Result<Value, ErrorCli> {
         let respuesta = self
             .agente
@@ -130,7 +130,7 @@ impl Cliente {
         leer_json(respuesta)
     }
 
-    /// `DELETE` que devuelve JSON.
+    /// `DELETE` that returns JSON.
     pub fn delete(&self, ruta: &str) -> Result<Value, ErrorCli> {
         let respuesta = self
             .agente
@@ -141,7 +141,7 @@ impl Cliente {
         leer_json(respuesta)
     }
 
-    /// ¿Responde la API con nuestro token? (Si en el puerto hay otro programa, o un Locall con otro token, no.)
+    /// Does the API answer with our token? (If another program is on the port, or a Locall with another token, no.)
     pub fn responde(&self) -> bool {
         self.sonda
             .get(&format!("{}/api/version", self.base))
@@ -175,7 +175,7 @@ fn leer_json(respuesta: ureq::http::Response<ureq::Body>) -> Result<Value, Error
     })
 }
 
-/// El token de la API, si existe y es válido.
+/// The API token, if it exists and is valid.
 pub fn leer_token(ruta: &Path) -> Option<String> {
     let texto = std::fs::read_to_string(ruta).ok()?;
     let token = texto.trim();

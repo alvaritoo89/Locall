@@ -1,5 +1,5 @@
-//! Comprueba la huella de un modelo real contra la publicada por Hugging Face.
-//! Se salta si el modelo no está (ver `LOCALL_MODELOS` en las pruebas de locall-gguf).
+//! Checks a real model's hash against the one published by Hugging Face.
+//! Skipped if the model is not there (see `LOCALL_MODELOS` in the locall-gguf tests).
 
 use std::path::PathBuf;
 
@@ -13,7 +13,7 @@ fn la_huella_del_modelo_1_5b_coincide_con_hugging_face() {
         eprintln!("(saltado: no encuentro {})", ruta.display());
         return;
     }
-    // Huella publicada en Hugging Face (Qwen/Qwen2.5-1.5B-Instruct-GGUF, revisión 91cad511).
+    // Hash published on Hugging Face (Qwen/Qwen2.5-1.5B-Instruct-GGUF, revision 91cad511).
     let esperada = locall_store::Huella::desde_hex(
         "6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e",
     )

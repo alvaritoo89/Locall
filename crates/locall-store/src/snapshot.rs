@@ -1,4 +1,4 @@
-//! Carpetas snapshot: cada archivo de un modelo con su **nombre original**, como enlace duro a su blob.
+//! Snapshot folders: each file of a model with its **original name**, as a hard link to its blob.
 //!
 //! ```text
 //! snapshots\qwen2.5-7b\bb5d59e0\
@@ -6,9 +6,9 @@
 //! └── qwen2.5-7b-instruct-q4_k_m-00002-of-00002.gguf   → blobs\sha256-539cf9…
 //! ```
 //!
-//! Un **enlace duro** es otro nombre para el mismo archivo: no ocupa espacio extra y el contenido no se borra hasta
-//! que se elimina el último nombre (comprobado en la Fase 0). Los enlaces duros no pueden cruzar de un disco a otro,
-//! por eso los blobs y las snapshots viven siempre en la misma carpeta raíz.
+//! A **hard link** is another name for the same file: it takes no extra space and the content is not deleted until
+//! the last name is removed (checked in Phase 0). Hard links cannot cross from one disk to another, which is why
+//! blobs and snapshots always live in the same root folder.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -16,7 +16,7 @@ use std::sync::atomic::Ordering;
 
 use crate::{Almacen, CONTADOR_TMP, ConContexto, ErrorAlmacen, Huella, NombreArchivo, Segmento};
 
-/// Una carpeta snapshot ya creada.
+/// A snapshot folder already created.
 #[derive(Debug, Clone)]
 pub struct Snapshot {
     carpeta: PathBuf,
@@ -24,35 +24,35 @@ pub struct Snapshot {
 }
 
 impl Snapshot {
-    /// La carpeta del snapshot.
+    /// The snapshot folder.
     pub fn carpeta(&self) -> &Path {
         &self.carpeta
     }
 
-    /// Todos los archivos, ordenados por nombre.
+    /// All the files, sorted by name.
     pub fn archivos(&self) -> &[PathBuf] {
         &self.archivos
     }
 
-    /// El archivo que hay que pasarle a llama.cpp: el primero por orden de nombre (en un modelo dividido, la parte
-    /// `-00001-of-…`; llama.cpp encuentra las demás por su nombre).
+    /// The file to pass to llama.cpp: the first one by name (in a split model, the `-00001-of-…` part; llama.cpp finds
+    /// the others by their name).
     pub fn ruta_principal(&self) -> &Path {
         &self.archivos[0]
     }
 }
 
 impl Almacen {
-    /// Dónde está (o estaría) la carpeta snapshot de un modelo y revisión.
+    /// Where the snapshot folder of a model and revision is (or would be).
     pub fn carpeta_snapshot(&self, modelo: &Segmento, revision: &Segmento) -> PathBuf {
         self.snapshots
             .join(modelo.como_str())
             .join(revision.como_str())
     }
 
-    /// Crea (o vuelve a crear) la carpeta snapshot de un modelo con sus archivos.
+    /// Creates (or recreates) a model's snapshot folder with its files.
     ///
-    /// Es **atómico**: se construye en una carpeta temporal y solo al final se pone en su sitio. Si un blob no
-    /// existe o algo falla, no queda ninguna snapshot a medias.
+    /// It is **atomic**: it is built in a temporary folder and only put in place at the end. If a blob does not exist or
+    /// something fails, no half-built snapshot is left.
     pub fn crear_snapshot(
         &self,
         modelo: &Segmento,
@@ -62,7 +62,7 @@ impl Almacen {
         if archivos.is_empty() {
             return Err(ErrorAlmacen::SnapshotVacio);
         }
-        // Comprobar ANTES de tocar nada que todos los blobs existen.
+        // Check BEFORE touching anything that all the blobs exist.
         for (_, huella) in archivos {
             if !self.contiene(huella) {
                 return Err(ErrorAlmacen::BlobNoEncontrado(huella.clone()));
@@ -73,7 +73,7 @@ impl Almacen {
         fs::create_dir_all(&carpeta_modelo)
             .contexto(|| format!("crear la carpeta {}", carpeta_modelo.display()))?;
 
-        // 1. Construir en una carpeta temporal dentro de la del modelo (mismo disco, para poder renombrar).
+        // 1. Build in a temporary folder inside the model's (same disk, so it can be renamed).
         let numero = CONTADOR_TMP.fetch_add(1, Ordering::Relaxed);
         let temporal = carpeta_modelo.join(format!(
             ".creando-{}-{}-{numero}",
@@ -86,7 +86,7 @@ impl Almacen {
             return Err(e);
         }
 
-        // 2. Sustituir la snapshot anterior, si la había, y poner la nueva en su sitio.
+        // 2. Replace the previous snapshot, if there was one, and put the new one in place.
         let definitiva = carpeta_modelo.join(revision.como_str());
         if definitiva.exists() {
             fs::remove_dir_all(&definitiva)
@@ -106,7 +106,7 @@ impl Almacen {
         })
     }
 
-    /// Crea en `carpeta` un enlace duro por archivo.
+    /// Creates one hard link per file in `carpeta`.
     fn enlazar_en(
         &self,
         carpeta: &Path,
@@ -122,8 +122,8 @@ impl Almacen {
         Ok(())
     }
 
-    /// Borra la carpeta snapshot de un modelo. Los blobs se conservan (otros modelos podrían usarlos);
-    /// la limpieza de blobs sin usar llegará en la parte 3c.
+    /// Deletes a model's snapshot folder. The blobs are kept (other models could use them);
+    /// cleanup of unused blobs will come in part 3c.
     pub fn eliminar_snapshot(
         &self,
         modelo: &Segmento,
@@ -186,8 +186,8 @@ mod pruebas {
 
         assert_eq!(fs::read(snap.ruta_principal()).unwrap(), b"abc");
 
-        // Prueba de que es EL MISMO archivo (enlace duro) y no una copia: lo que se escribe por un nombre aparece
-        // por el otro. (Locall nunca escribe en los modelos; esto es solo para la prueba.)
+        // Proof that it is THE SAME file (hard link) and not a copy: what is written through one name shows up through
+        // the other. (Locall never writes to models; this is only for the test.)
         let mut f = fs::OpenOptions::new()
             .append(true)
             .open(snap.ruta_principal())
@@ -204,7 +204,7 @@ mod pruebas {
         let h1 = almacen.guardar_desde(&b"parte1"[..], None).unwrap();
         let h2 = almacen.guardar_desde(&b"parte2"[..], None).unwrap();
 
-        // Se pasan desordenadas a propósito.
+        // Deliberately passed out of order.
         let snap = almacen
             .crear_snapshot(
                 &seg("m"),
@@ -252,12 +252,12 @@ mod pruebas {
             .unwrap();
         almacen
             .crear_snapshot(&seg("m"), &seg("r"), &archivos)
-            .unwrap(); // otra vez: no falla
+            .unwrap(); // again: it does not fail
 
         almacen.eliminar_snapshot(&seg("m"), &seg("r")).unwrap();
         assert!(!almacen.carpeta_snapshot(&seg("m"), &seg("r")).exists());
         assert!(almacen.contiene(&huella), "el blob debe seguir ahí");
-        // No quedan carpetas temporales de construcción.
+        // No temporary build folders are left.
         let restos = fs::read_dir(almacen.raiz().join("snapshots").join("m"))
             .unwrap()
             .count();

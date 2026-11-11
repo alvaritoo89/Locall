@@ -1,8 +1,7 @@
-//! **Privacidad de los registros (regla 17, ADR 0014)**, con el motor real: se carga un modelo, se le hace una
-//! pregunta con una palabra secreta y se comprueba que el registro anota lo que hizo Locall, pero NUNCA la pregunta,
-//! la respuesta ni la clave del motor.
+//! **Log privacy (rule 17, ADR 0014)**, with the real engine: a model is loaded, asked a question with a secret word,
+//! and the test checks that the log records what Locall did, but NEVER the question, the answer or the engine key.
 //!
-//! Es la única prueba de este archivo porque el escritor de registros es global (uno por proceso).
+//! It is the only test in this file because the log writer is global (one per process).
 
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
@@ -63,7 +62,7 @@ fn el_registro_no_guarda_conversaciones_ni_claves() {
     let texto = std::fs::read_to_string(carpeta.join(registros::nombre_del_dia(&hoy))).unwrap();
     eprintln!("── registro ──\n{texto}──────────────");
 
-    // Lo que SÍ debe estar: lo que hizo Locall.
+    // What MUST be there: what Locall did.
     for esperado in [
         "cargando el modelo «privacidad»",
         "motor arrancado",
@@ -74,7 +73,7 @@ fn el_registro_no_guarda_conversaciones_ni_claves() {
     ] {
         assert!(texto.contains(esperado), "falta «{esperado}»");
     }
-    // Lo que NUNCA debe estar: la pregunta, la respuesta ni la clave.
+    // What must NEVER be there: the question, the answer or the key.
     assert!(
         !texto.contains(SECRETO),
         "¡la pregunta está en el registro!"

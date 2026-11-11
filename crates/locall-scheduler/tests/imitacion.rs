@@ -1,5 +1,5 @@
-//! Pruebas del planificador con un **motor de imitación**: "carga" al instante (o con la demora que digamos) y
-//! apunta todo lo que le piden. Así las pruebas con varios hilos son rápidas y exactas.
+//! Scheduler tests with a **fake engine**: it "loads" instantly (or with the delay we say) and records everything
+//! it is asked. This way multi-threaded tests are fast and exact.
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -10,30 +10,30 @@ use std::time::{Duration, Instant};
 use locall_engine::ConfigMotor;
 use locall_scheduler::{Arrancador, Carga, ErrorPlanificador, Estado, Opciones, Planificador};
 
-// ─── El motor de imitación ───────────────────────────────────────────────────
+// ─── The fake engine ──────────────────────────────────────────────────────────
 
-/// Lleva la cuenta de lo que pasa, compartida con la prueba.
+/// Keeps track of what happens, shared with the test.
 #[derive(Default)]
 struct Registro {
-    /// Modelos cargados, en orden.
+    /// Models loaded, in order.
     cargas: Mutex<Vec<String>>,
-    /// Motores "en marcha" ahora mismo.
+    /// Engines "running" right now.
     vivos: AtomicUsize,
-    /// Máximo de motores en marcha a la vez que se ha visto (debe ser 1).
+    /// Maximum number of engines seen running at once (must be 1).
     max_vivos: AtomicUsize,
 }
 
 struct Imitacion {
     registro: Arc<Registro>,
     demora: Duration,
-    /// Modelos que fallan al cargar.
+    /// Models that fail to load.
     fallan: Vec<String>,
 }
 
 struct MotorFalso {
     modelo: String,
     registro: Arc<Registro>,
-    /// La prueba lo pone a `true` para imitar un motor cuyo proceso se ha cerrado solo.
+    /// The test sets it to `true` to fake an engine whose process exited by itself.
     muerto: AtomicBool,
 }
 
@@ -82,7 +82,7 @@ impl Arrancador for Imitacion {
     }
 }
 
-// ─── Ayudantes ────────────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 fn carga(modelo: &str) -> Carga {
     Carga {
@@ -127,14 +127,14 @@ fn cargas(registro: &Registro) -> Vec<String> {
     registro.cargas.lock().unwrap().clone()
 }
 
-// ─── Pruebas ──────────────────────────────────────────────────────────────────
+// ─── Tests ────────────────────────────────────────────────────────────────────
 
 #[test]
 fn reutiliza_el_mismo_modelo() {
     let (plan, reg) = planificador(0, None);
     drop(plan.usar(&carga("a")).unwrap());
     let prestamo = plan.usar(&carga("a")).unwrap();
-    assert_eq!(prestamo.modelo, "a"); // gracias a Deref, el préstamo se usa como el motor
+    assert_eq!(prestamo.modelo, "a"); // thanks to Deref, the loan is used like the engine
     assert_eq!(cargas(&reg), ["a"], "no debe cargarlo dos veces");
 }
 
@@ -219,7 +219,7 @@ fn quien_pide_otro_modelo_espera_a_que_suelten_el_actual() {
 
 #[test]
 fn si_varios_piden_a_la_vez_se_carga_una_sola_vez() {
-    let (plan, reg) = planificador(100, None); // la carga tarda 100 ms
+    let (plan, reg) = planificador(100, None); // loading takes 100 ms
     thread::scope(|s| {
         for _ in 0..8 {
             s.spawn(|| {
@@ -264,7 +264,7 @@ fn no_se_descarga_mientras_alguien_lo_usa() {
         "en uso: no se descarga"
     );
 
-    // El plazo cuenta desde que se suelta.
+    // The deadline counts from when it is released.
     drop(prestamo);
     thread::sleep(Duration::from_millis(50));
     assert_eq!(reg.vivos.load(Ordering::SeqCst), 1);
@@ -306,17 +306,17 @@ fn un_prestamo_sobrevive_al_planificador() {
     let (plan, reg) = planificador(0, None);
     let prestamo = plan.usar(&carga("a")).unwrap();
     drop(plan);
-    // Quien estaba usando el modelo puede terminar su respuesta...
+    // Whoever was using the model can finish their answer...
     assert_eq!(prestamo.modelo, "a");
     assert_eq!(reg.vivos.load(Ordering::SeqCst), 1);
-    // ...y al soltarlo, el motor se para.
+    // ...and when they release it, the engine stops.
     drop(prestamo);
     assert_eq!(reg.vivos.load(Ordering::SeqCst), 0);
 }
 
-// ─── Cola (parte 9b) ─────────────────────────────────────────────────────────
+// ─── Queue (part 9b) ──────────────────────────────────────────────────────────
 
-/// Espera (hasta 2 s) a que haya `n` peticiones en la cola.
+/// Waits (up to 2 s) for there to be `n` requests in the queue.
 fn espera_cola(plan: &Planificador<Imitacion>, n: usize) {
     let inicio = Instant::now();
     while plan.en_cola() != n {
@@ -333,7 +333,7 @@ fn atiende_por_orden_de_llegada() {
     let (plan, reg) = planificador(0, None);
     thread::scope(|s| {
         let prestamo_a = plan.usar(&carga("a")).unwrap();
-        // b, c y d llegan en este orden mientras a está en uso.
+        // b, c and d arrive in this order while a is in use.
         for (i, modelo) in ["b", "c", "d"].into_iter().enumerate() {
             let plan = &plan;
             s.spawn(move || drop(plan.usar(&carga(modelo)).unwrap()));
@@ -349,14 +349,14 @@ fn nadie_se_cuela_por_delante_de_quien_espera_otro_modelo() {
     let (plan, reg) = planificador(0, None);
     thread::scope(|s| {
         let prestamo_a = plan.usar(&carga("a")).unwrap();
-        // Primero llega quien quiere b (tiene que esperar a que suelten a)...
+        // First comes whoever wants b (they have to wait for a to be released)...
         let b = s.spawn(|| {
             let p = plan.usar(&carga("b")).unwrap();
             thread::sleep(Duration::from_millis(100));
             drop(p);
         });
         espera_cola(&plan, 1);
-        // ...y después quien quiere a, que YA está cargado. No debe colarse: espera detrás de b.
+        // ...and then whoever wants a, which IS already loaded. It must not jump the queue: it waits behind b.
         let a_otra_vez = s.spawn(|| drop(plan.usar(&carga("a")).unwrap()));
         espera_cola(&plan, 2);
         thread::sleep(Duration::from_millis(100));
@@ -366,7 +366,7 @@ fn nadie_se_cuela_por_delante_de_quien_espera_otro_modelo() {
         b.join().unwrap();
         a_otra_vez.join().unwrap();
     });
-    // a → b → a: el segundo "a" se atendió después de b.
+    // a → b → a: the second "a" was served after b.
     assert_eq!(cargas(&reg), ["a", "b", "a"]);
 }
 
@@ -375,18 +375,18 @@ fn los_que_quieren_el_mismo_modelo_pasan_juntos() {
     let (plan, reg) = planificador(0, None);
     thread::scope(|s| {
         let prestamo_a = plan.usar(&carga("a")).unwrap();
-        // Tres peticiones seguidas que quieren b esperan detrás de a.
+        // Three consecutive requests wanting b wait behind a.
         for n in 1..=3 {
             s.spawn(|| {
                 let p = plan.usar(&carga("b")).unwrap();
-                thread::sleep(Duration::from_millis(300)); // lo usan un rato
+                thread::sleep(Duration::from_millis(300)); // they use it for a while
                 drop(p);
             });
             espera_cola(&plan, n);
         }
         drop(prestamo_a);
 
-        // Al soltar a: b se carga una vez y los tres lo usan a la vez.
+        // When a is released: b loads once and all three use it at the same time.
         let inicio = Instant::now();
         while plan.estado()
             != (Estado::Listo {
@@ -450,7 +450,7 @@ fn cancelar_al_primero_deja_pasar_al_siguiente() {
     assert_eq!(cargas(&reg), ["a", "c"]);
 }
 
-// ─── Consultas para la app (parte 5b) ────────────────────────────────────────
+// ─── Queries for the app (part 5b) ────────────────────────────────────────────
 
 #[test]
 fn dice_cuanto_falta_para_descargarse() {
@@ -494,16 +494,16 @@ fn consulta_el_motor_sin_contarlo_como_uso() {
     );
 }
 
-// ─── Motor que se cierra solo (Fase 7a) ──────────────────────────────────────
+// ─── Engine that exits by itself (Phase 7a) ───────────────────────────────────
 
 #[test]
 fn si_el_motor_se_cierra_solo_se_vuelve_a_cargar() {
     let (plan, reg) = planificador(0, None);
     let prestamo = plan.usar(&carga("a")).unwrap();
-    prestamo.muerto.store(true, Ordering::SeqCst); // el proceso del motor se cierra (falta de memoria…)
+    prestamo.muerto.store(true, Ordering::SeqCst); // the engine process exits (out of memory…)
     drop(prestamo);
 
-    // Al pedir el mismo modelo, no se presta el motor muerto: se retira y se carga otro.
+    // When the same model is requested, the dead engine is not lent: it is removed and another one is loaded.
     let otro = plan.usar(&carga("a")).unwrap();
     assert!(
         !otro.muerto.load(Ordering::SeqCst),
@@ -515,7 +515,7 @@ fn si_el_motor_se_cierra_solo_se_vuelve_a_cargar() {
 
 #[test]
 fn el_vigilante_retira_un_motor_que_se_cerro_solo() {
-    // Sin descarga por inactividad: aun así, un motor muerto no debe quedarse como «listo».
+    // No idle unloading: even so, a dead engine must not stay «ready».
     let (plan, reg) = planificador(0, None);
     let prestamo = plan.usar(&carga("a")).unwrap();
     prestamo.muerto.store(true, Ordering::SeqCst);
@@ -537,8 +537,8 @@ fn un_motor_muerto_no_se_retira_mientras_alguien_lo_tiene_prestado() {
     let primero = plan.usar(&carga("a")).unwrap();
     primero.muerto.store(true, Ordering::SeqCst);
 
-    // Otro pide el mismo modelo: no se le presta el muerto, y tampoco se le quita al primero (su petición fallará
-    // por su cuenta): espera a que lo suelte y entonces se carga uno nuevo.
+    // Someone else requests the same model: the dead one is not lent to them, nor is it taken from the first one (their
+    // request will fail on its own): they wait until it is released and then a new one is loaded.
     let otro_plan = Arc::clone(&plan);
     let segundo = thread::spawn(move || {
         let p = otro_plan.usar(&carga("a")).unwrap();

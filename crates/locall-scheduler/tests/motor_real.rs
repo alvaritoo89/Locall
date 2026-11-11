@@ -1,8 +1,8 @@
-//! Prueba del planificador con el `llama-server` real (build b12189): carga un modelo, conversa, cambia a otro y
-//! comprueba que el primero se ha parado de verdad. Después, la descarga por inactividad.
+//! Scheduler test with the real `llama-server` (build b12189): loads a model, chats, switches to another one and
+//! checks that the first one really stopped. Then, idle unloading.
 //!
-//! Se salta si faltan los archivos. Rutas por defecto (cambiables con `LOCALL_MOTOR` y `LOCALL_MODELOS`):
-//! `C:\Locall-poc\motor\cpu\llama-server.exe` y `C:\Locall-poc\modelos` (Qwen 2.5 1.5B y Qwen3 4B).
+//! Skipped if the files are missing. Default paths (changeable with `LOCALL_MOTOR` and `LOCALL_MODELOS`):
+//! `C:\Locall-poc\motor\cpu\llama-server.exe` and `C:\Locall-poc\modelos` (Qwen 2.5 1.5B and Qwen3 4B).
 
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
@@ -43,12 +43,12 @@ fn carga(nombre: &str, archivo: &str) -> Option<Carga> {
     })
 }
 
-/// ¿Sigue existiendo el proceso? (Si ya terminó, Windows no deja consultar su memoria.)
+/// Does the process still exist? (If it already finished, Windows does not allow querying its memory.)
 fn proceso_vivo(pid: u32) -> bool {
     locall_system::memoria_de_proceso(pid).is_ok()
 }
 
-/// Espera hasta 3 s a que el proceso desaparezca.
+/// Waits up to 3 s for the process to disappear.
 fn espera_a_que_muera(pid: u32) -> bool {
     let inicio = Instant::now();
     while inicio.elapsed() < Duration::from_secs(3) {
@@ -79,7 +79,7 @@ fn carga_conversa_y_cambia_de_modelo() {
     };
     let plan = Planificador::nuevo(ArrancadorReal::default(), Opciones { inactividad: None });
 
-    // 1) Cargar el pequeño y conversar con él a través del préstamo.
+    // 1) Load the small one and chat with it through the loan.
     let prestamo = plan.usar(&pequeno).unwrap();
     let pid_pequeno = prestamo.pid();
     let resumen = prestamo
@@ -88,10 +88,10 @@ fn carga_conversa_y_cambia_de_modelo() {
     assert!(resumen.tokens_generados > 0);
     drop(prestamo);
 
-    // 2) Volver a pedirlo: el mismo proceso (no se recarga).
+    // 2) Request it again: the same process (it is not reloaded).
     assert_eq!(plan.usar(&pequeno).unwrap().pid(), pid_pequeno);
 
-    // 3) Cambiar al mediano: el pequeño debe pararse.
+    // 3) Switch to the medium one: the small one must stop.
     let prestamo = plan.usar(&mediano).unwrap();
     assert_ne!(prestamo.pid(), pid_pequeno);
     assert!(
@@ -108,7 +108,7 @@ fn carga_conversa_y_cambia_de_modelo() {
     let pid_mediano = prestamo.pid();
     drop(prestamo);
 
-    // 4) Al soltar el planificador, se para todo.
+    // 4) When the scheduler is dropped, everything stops.
     drop(plan);
     assert!(
         espera_a_que_muera(pid_mediano),
@@ -144,7 +144,7 @@ fn dos_conversaciones_a_la_vez_con_un_solo_hueco() {
         return;
     };
     let plan = Planificador::nuevo(ArrancadorReal::default(), Opciones { inactividad: None });
-    // Con paralelo = 1, el motor atiende una y la otra espera dentro del motor: las dos deben terminar bien.
+    // With parallel = 1, the engine serves one and the other waits inside the engine: both must finish fine.
     let resumenes: Vec<_> = thread::scope(|s| {
         let hilos: Vec<_> = (0..2)
             .map(|_| {
@@ -171,8 +171,8 @@ fn si_el_motor_real_se_cierra_solo_se_recupera() {
     let plan = Planificador::nuevo(ArrancadorReal::default(), Opciones { inactividad: None });
     let pid = plan.usar(&pequeno).unwrap().pid();
 
-    // Imitar que el motor se cierra solo (como si Windows lo cerrara por falta de memoria): la prueba termina el
-    // proceso del motor que ella misma ha arrancado.
+    // Fake the engine exiting by itself (as if Windows closed it for lack of memory): the test terminates the engine
+    // process it started itself.
     let cerrado = std::process::Command::new("taskkill")
         .args(["/PID", &pid.to_string(), "/F"])
         .output()
@@ -183,7 +183,7 @@ fn si_el_motor_real_se_cierra_solo_se_recupera() {
     );
     assert!(espera_a_que_muera(pid));
 
-    // El vigilante lo retira: el estado deja de decir «listo» (mira cada 2 s).
+    // The watcher removes it: the state stops saying «ready» (it checks every 2 s).
     let limite = Instant::now() + Duration::from_secs(10);
     while plan.estado() != Estado::Vacio && Instant::now() < limite {
         thread::sleep(Duration::from_millis(100));
@@ -194,7 +194,7 @@ fn si_el_motor_real_se_cierra_solo_se_recupera() {
         "el motor muerto sigue como «listo»"
     );
 
-    // Y al volver a pedirlo, se carga otro motor que responde.
+    // And when it is requested again, another engine that answers is loaded.
     let prestamo = plan.usar(&pequeno).unwrap();
     assert_ne!(prestamo.pid(), pid, "es un motor nuevo");
     let resumen = prestamo

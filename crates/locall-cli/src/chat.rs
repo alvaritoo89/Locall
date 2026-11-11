@@ -1,12 +1,12 @@
-//! `locall run <modelo> [pregunta]`: conversar en la terminal.
+//! `locall run <model> [question]`: chatting in the terminal.
 //!
-//! - Con una pregunta (o con texto llegando por la entrada, `echo hola | locall run qwen`): una respuesta y fin.
-//! - Sin pregunta, en una terminal: un **chat**. La conversación se recuerda mientras dura (se envía entera en cada
-//!   pregunta: el motor no guarda nada entre peticiones).
-//! - **Ctrl+C mientras responde** corta esa respuesta y vuelve a preguntar; **Ctrl+C esperando** sale.
+//! - With a question (or with text arriving on the input, `echo hola | locall run qwen`): one answer and done.
+//! - Without a question, in a terminal: a **chat**. The conversation is remembered while it lasts (it is sent whole
+//!   with each question: the engine keeps nothing between requests).
+//! - **Ctrl+C while answering** cuts that answer and asks again; **Ctrl+C while waiting** exits.
 //!
-//! Cortar funciona cerrando la conexión: el servidor lo nota y el motor deja de generar (Fase 3). Se comprueba entre
-//! trozo y trozo, así que tarda como mucho lo que tarde en llegar el siguiente (un token, o un lote del prompt).
+//! Cutting works by closing the connection: the server notices and the engine stops generating (Phase 3). It is
+//! checked between chunks, so it takes at most as long as the next one takes to arrive (a token, or a prompt batch).
 
 use std::io::{BufRead, BufReader, IsTerminal, Read, Write};
 
@@ -15,11 +15,11 @@ use serde_json::{Value, json};
 use crate::cliente::{Cliente, ErrorCli};
 use crate::modelos::codificar;
 
-/// Resultado de una respuesta.
+/// Result of an answer.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Respuesta {
     pub texto: String,
-    /// Se cortó con Ctrl+C.
+    /// It was cut with Ctrl+C.
     pub cortada: bool,
 }
 
@@ -31,14 +31,14 @@ const AYUDA_CHAT: &str = "\
 
 /// `locall run`
 pub fn ejecutar(cliente: &Cliente, id: &str, pregunta: Option<&str>) -> Result<String, ErrorCli> {
-    // Comprobar que el modelo existe antes de nada (error claro y rápido).
+    // Check that the model exists before anything else (clear, fast error).
     cliente.get(&format!("/api/models/{}", codificar(id)))?;
-    let _ = locall_system::capturar_ctrl_c(); // si no se puede, Ctrl+C cerrará el programa (lo de siempre)
-    let _ = locall_system::ctrl_c_pulsado(); // bajar un aviso anterior
+    let _ = locall_system::capturar_ctrl_c(); // if it cannot be done, Ctrl+C will close the program (the usual)
+    let _ = locall_system::ctrl_c_pulsado(); // lower an earlier flag
 
     let pregunta = match pregunta {
         Some(p) => Some(p.to_owned()),
-        // Sin terminal en la entrada: lo que llegue por ella es la pregunta.
+        // No terminal on the input: whatever arrives through it is the question.
         None if !std::io::stdin().is_terminal() => {
             let mut texto = String::new();
             std::io::stdin()
@@ -79,7 +79,7 @@ pub fn ejecutar(cliente: &Cliente, id: &str, pregunta: Option<&str>) -> Result<S
     }
 }
 
-/// Si el modelo no está cargado, avisa de que la primera respuesta tardará un poco más.
+/// If the model is not loaded, warns that the first answer will take a bit longer.
 fn avisar_si_carga(cliente: &Cliente, id: &str) {
     if let Ok(estado) = cliente.get("/api/status")
         && !(estado["state"] == "ready" && estado["model"] == id)
@@ -91,9 +91,9 @@ fn avisar_si_carga(cliente: &Cliente, id: &str) {
     }
 }
 
-/// El bucle del chat, separado de la red y de la consola para poder probarlo.
+/// The chat loop, separated from the network and the console so it can be tested.
 ///
-/// `responder` envía la conversación y escribe la respuesta; `interrumpido` dice si se ha pulsado Ctrl+C.
+/// `responder` sends the conversation and writes the answer; `interrumpido` says whether Ctrl+C was pressed.
 pub fn conversar<E: BufRead, S: Write>(
     mut entrada: E,
     salida: &mut S,
@@ -108,7 +108,7 @@ pub fn conversar<E: BufRead, S: Write>(
         let leidos = entrada.read_line(&mut linea).unwrap_or(0);
         if leidos == 0 || interrumpido() {
             let _ = writeln!(salida);
-            return Ok(()); // Ctrl+C, Ctrl+Z o fin de la entrada
+            return Ok(()); // Ctrl+C, Ctrl+Z or end of input
         }
         let texto = linea.trim();
         match texto {
@@ -132,7 +132,7 @@ pub fn conversar<E: BufRead, S: Write>(
         historial.push(json!({"role": "user", "content": texto}));
         match responder(&historial, salida) {
             Ok(r) => {
-                // Aunque se corte, lo que ya se ha visto forma parte de la conversación.
+                // Even if it is cut, what has already been shown is part of the conversation.
                 if r.texto.is_empty() {
                     historial.pop();
                 } else {
@@ -143,7 +143,7 @@ pub fn conversar<E: BufRead, S: Write>(
                 }
             }
             Err(e) => {
-                historial.pop(); // la pregunta no obtuvo respuesta: se puede repetir
+                historial.pop(); // the question got no answer: it can be repeated
                 let _ = writeln!(salida, "\nError: {e}");
                 if let ErrorCli::Api { codigo, .. } = &e
                     && codigo == "context_exceeded"
@@ -158,7 +158,7 @@ pub fn conversar<E: BufRead, S: Write>(
     }
 }
 
-/// Envía la conversación y escribe la respuesta a medida que llega. Ctrl+C la corta.
+/// Sends the conversation and writes the answer as it arrives. Ctrl+C cuts it.
 fn responder<S: Write>(
     cliente: &Cliente,
     id: &str,
@@ -167,12 +167,12 @@ fn responder<S: Write>(
 ) -> Result<Respuesta, ErrorCli> {
     let cuerpo = json!({"model": id, "messages": mensajes, "stream": true});
     let respuesta = cliente.post_sin_leer("/api/chat", &cuerpo)?;
-    let atenuar = std::io::stdout().is_terminal(); // el razonamiento, en gris (solo en una terminal)
+    let atenuar = std::io::stdout().is_terminal(); // the reasoning, in grey (only in a terminal)
     let mut texto = String::new();
     let mut pensando = false;
     for linea in BufReader::new(respuesta.into_body().into_reader()).lines() {
         if locall_system::ctrl_c_pulsado() {
-            // Al salir de aquí se suelta la respuesta y se cierra la conexión: el motor deja de generar.
+            // On leaving here the response is dropped and the connection closed: the engine stops generating.
             let _ = writeln!(
                 salida,
                 "{}\n[respuesta cortada]",
@@ -234,7 +234,7 @@ mod pruebas {
 
     use super::*;
 
-    /// Simula un chat: `entrada` son las líneas que escribe el usuario; el "modelo" responde "R<n>".
+    /// Simulates a chat: `entrada` are the lines the user types; the "model" answers "R<n>".
     fn simular(entrada: &str) -> (String, Vec<Vec<Value>>) {
         let enviadas: RefCell<Vec<Vec<Value>>> = RefCell::new(Vec::new());
         let mut salida = Vec::new();
@@ -261,7 +261,7 @@ mod pruebas {
     fn recuerda_la_conversacion() {
         let (salida, enviadas) = simular("hola\n¿y tú?\n/salir\nesto ya no\n");
         assert_eq!(enviadas.len(), 2, "tras /salir no se envía nada más");
-        // La segunda pregunta lleva toda la conversación anterior.
+        // The second question carries the whole previous conversation.
         assert_eq!(
             enviadas[1],
             vec![
@@ -307,7 +307,7 @@ mod pruebas {
                         mensaje: "no cabe".into(),
                     });
                 }
-                // La pregunta que falló no se queda en la conversación.
+                // The question that failed does not stay in the conversation.
                 assert_eq!(mensajes, [json!({"role": "user", "content": "otra"})]);
                 Ok(Respuesta {
                     texto: "vale".into(),

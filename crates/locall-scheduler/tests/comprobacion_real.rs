@@ -1,7 +1,7 @@
-//! La comprobación antes de cargar, con modelos reales y archivos preparados a propósito. Ninguna de estas pruebas
-//! debe llegar a arrancar el motor: los fallos se detectan antes, en un instante.
+//! The pre-load check, with real models and deliberately prepared files. None of these tests should get as far as
+//! starting the engine: failures are detected earlier, instantly.
 //!
-//! Se salta si faltan los archivos (rutas por defecto: `C:\Locall-poc\motor\cpu` y `C:\Locall-poc\modelos`).
+//! Skipped if the files are missing (default paths: `C:\Locall-poc\motor\cpu` and `C:\Locall-poc\modelos`).
 
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
@@ -50,7 +50,7 @@ fn real(archivo: &str, contexto: u32) -> Option<Carga> {
     carga_de(ruta, contexto)
 }
 
-/// Un GGUF v3 mínimo, sin tensores, con los metadatos de texto y `u16` indicados.
+/// A minimal GGUF v3, without tensors, with the given text and `u16` metadata.
 fn gguf_minimo(textos: &[(&str, &str)], numeros_u16: &[(&str, u16)]) -> Vec<u8> {
     let mut v = b"GGUF".to_vec();
     v.extend(3u32.to_le_bytes());
@@ -62,7 +62,7 @@ fn gguf_minimo(textos: &[(&str, &str)], numeros_u16: &[(&str, u16)]) -> Vec<u8> 
     };
     for (clave, valor) in textos {
         cadena(&mut v, clave);
-        v.extend(8u32.to_le_bytes()); // cadena
+        v.extend(8u32.to_le_bytes()); // string
         cadena(&mut v, valor);
     }
     for (clave, valor) in numeros_u16 {
@@ -97,7 +97,7 @@ fn evalua_los_modelos_reales() {
     );
     assert!(e.comprobacion.es_compatible());
 
-    // El 7B dividido: deben contarse las DOS partes.
+    // The split 7B: BOTH parts must be counted.
     let e = evaluar_carga(&dividido).unwrap();
     let partes: u64 = ["00001", "00002"]
         .iter()
