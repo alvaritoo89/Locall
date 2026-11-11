@@ -1,31 +1,31 @@
-# ADR 0007 · Gráfica integrada activada solo en dispositivos validados (D1)
+# ADR 0007 · Integrated GPU enabled only on validated devices (D1)
 
-- **Estado:** aceptada
-- **Fecha:** 2026-11-08
+- **Status:** accepted
+- **Date:** 2026-11-08
 
-## Decisión
+## Decision
 
-La aceleración por gráfica integrada (Vulkan) se activa **por defecto solo en dispositivos validados** (hoy:
-una gráfica integrada de Intel de portátil reciente), con un interruptor para desactivarla y **vuelta automática a CPU** si el motor falla con ella.
-En el resto de gráficas integradas queda desactivada por defecto.
+Integrated-GPU acceleration (Vulkan) is enabled **by default only on validated devices** (today: an Intel integrated
+GPU in a recent laptop), with a switch to turn it off and an **automatic fallback to CPU** if the engine fails with it.
+On every other integrated GPU it is off by default.
 
-"Usar CPU" significa usar el **paquete CPU** del motor: en el paquete Vulkan, `-ngl 0` sigue enviando la lectura del
-prompt a la gráfica.
+"Use the CPU" means using the engine's **CPU package**: in the Vulkan package, `-ngl 0` still sends prompt processing
+to the GPU.
 
-## Motivos (gráfica integrada de Intel, paquete Vulkan, 8 hilos, sin mapeo)
+## Rationale (Intel integrated GPU, Vulkan package, 8 threads, no mmap)
 
-| Modelo | Leer el prompt CPU → gráfica | Escribir CPU → gráfica |
+| Model | Prompt processing CPU → GPU | Generation CPU → GPU |
 |---|---|---|
-| 1.5B | 153 → 509 t/s | 32,8 → 29,7 t/s |
-| 4B | 47,6 → 189 t/s | 12,9 → 12,9 t/s |
-| 7B | 27,4 → 115 t/s | 7,6 → 7,5 t/s |
+| 1.5B | 153 → 509 t/s | 32.8 → 29.7 t/s |
+| 4B | 47.6 → 189 t/s | 12.9 → 12.9 t/s |
+| 7B | 27.4 → 115 t/s | 7.6 → 7.5 t/s |
 
-- Leer el prompt es entre 3,3 y 4,2 veces más rápido; escribir va igual. El procesador se calienta menos.
-- La memoria "de la gráfica" sale de la misma RAM: Vulkan informa de 8 GB "libres" que en realidad son RAM del sistema.
-- Ollama descarta por defecto las gráficas integradas que no son CUDA.
-- Un solo equipo y un solo driver probados: no se generaliza.
+- Prompt processing is 3.3 to 4.2 times faster; generation is the same. The CPU runs cooler.
+- "GPU" memory comes from the same RAM: Vulkan reports 8 GB "free" that is really system RAM.
+- Ollama excludes non-CUDA integrated GPUs by default.
+- Only one machine and one driver tested: no generalizing.
 
-## Consecuencias
+## Consequences
 
-- Hace falta una lista de dispositivos validados y un mecanismo de vuelta a CPU.
-- La regla de memoria nunca usa la memoria libre que informa Vulkan en gráficas con memoria unificada.
+- A list of validated devices and a CPU fallback mechanism are needed.
+- The memory rule never uses the free memory Vulkan reports on unified-memory GPUs.

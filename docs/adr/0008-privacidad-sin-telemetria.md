@@ -1,26 +1,26 @@
-# ADR 0008 · Privacidad local: sin telemetría
+# ADR 0008 · Local privacy: no telemetry
 
-- **Estado:** aceptada
-- **Fecha:** 2026-11-08
+- **Status:** accepted (extended by ADR 0020 and ADR 0023)
+- **Date:** 2026-11-08
 
-## Decisión
+## Decision
 
-- Locall **no incluye telemetría ni analítica** de ningún tipo.
-- Los únicos datos que salen del equipo son:
-  - las **descargas de modelos** desde Hugging Face;
-  - la **consulta del catálogo y de las actualizaciones** desde GitHub (desactivable).
-- **Nunca** se envían conversaciones, prompts ni archivos del usuario.
-- La aplicación mostrará un **registro de conexiones**: qué ha salido del equipo, cuándo y por qué.
-- Las APIs externas (OpenAI, Anthropic…) solo existirán como función futura y opcional, con las claves de cada
-  usuario guardadas en el Administrador de credenciales de Windows.
+- Locall includes **no telemetry or analytics** of any kind.
+- The only data that leaves the machine is:
+  - **model downloads** from Hugging Face;
+  - **catalog and update checks** from GitHub (can be turned off).
+- Conversations, prompts and user files are **never** sent.
+- The app will show a **connection log**: what left the machine, when and why.
+- External APIs (OpenAI, Anthropic…) will only exist as an optional future feature, with each user's keys stored in
+  the Windows Credential Manager.
 
-## Motivos
+## Rationale
 
-- Reglas 17 y 18 del proyecto: sin analítica invasiva; la privacidad local es un principio de diseño.
-- Diferenciación frente a herramientas con telemetría activada por defecto o con servicios en la nube.
-- Sin servidores propios, el proyecto se mantiene gratis.
+- Project rules 17 and 18: no invasive analytics; local privacy is a design principle.
+- Differentiation from tools that enable telemetry by default or rely on cloud services.
+- Without our own servers, the project stays free.
 
-## Consecuencias
+## Consequences
 
-- Los fallos se diagnostican con un **paquete de diagnóstico** que el usuario revisa y decide enviar.
-- No habrá métricas de uso: las prioridades se deciden con issues y opiniones explícitas.
+- Problems are diagnosed with a **diagnostic bundle** that the user reviews and decides whether to send.
+- There will be no usage metrics: priorities are decided through issues and explicit feedback.

@@ -1,29 +1,29 @@
-# ADR 0005 · Cargar los modelos sin mapeo de memoria (D2)
+# ADR 0005 · Load models without memory mapping (D2)
 
-- **Estado:** aceptada
-- **Fecha:** 2026-11-08
+- **Status:** accepted
+- **Date:** 2026-11-08
 
-## Decisión
+## Decision
 
-Locall lanza `llama-server` con `--load-mode none` (sin `mmap`) por defecto en CPU y en gráficas integradas.
+Locall launches `llama-server` with `--load-mode none` (no `mmap`) by default on CPU and on integrated GPUs.
 
-## Motivos (mediciones en el equipo de referencia, build 12189)
+## Rationale (measurements on the reference machine, build 12189)
 
-| Modelo | RAM con mapeo | RAM sin mapeo | Velocidad |
+| Model | RAM with mmap | RAM without mmap | Speed |
 |---|---|---|---|
-| Qwen3 4B Q4_K_M (2,3 GB) | 4,18 GB | 2,53 GB | igual o mejor (12,9 frente a 12,4 t/s) |
-| Qwen2.5 7B Q4_K_M (4,4 GB) | más de 7,2 GB (cancelado por falta de RAM) | 4,59 GB | 7,6 t/s |
+| Qwen3 4B Q4_K_M (2.3 GB) | 4.18 GB | 2.53 GB | same or better (12.9 vs 12.4 t/s) |
+| Qwen2.5 7B Q4_K_M (4.4 GB) | over 7.2 GB (cancelled, out of RAM) | 4.59 GB | 7.6 t/s |
 
-- Con mapeo, la memoria usada era de 1,6 a 1,8 veces el tamaño del archivo; sin mapeo, de 1,05 a 1,1 veces.
-- Tiempo de carga del 4B (archivo en caché del sistema): 2,29 s con mapeo frente a 1,96 s sin mapeo.
-- Ollama desactiva el mapeo cuando la RAM va justa (`maybeDisableMmapForHostPressure`).
+- With mmap, memory use was 1.6 to 1.8 times the file size; without it, 1.05 to 1.1 times.
+- Load time of the 4B (file in the OS cache): 2.29 s with mmap vs 1.96 s without.
+- Ollama disables mmap when RAM is tight (`maybeDisableMmapForHostPressure`).
 
-## Alternativas descartadas
+## Rejected alternatives
 
-- **Mapeo por defecto (`auto`):** consume demasiada RAM en equipos de 16 GB.
+- **mmap by default (`auto`):** uses too much RAM on 16 GB machines.
 
-## Consecuencias
+## Consequences
 
-- La estimación de memoria puede basarse en "tamaño del archivo + caché KV + margen" (error medido de ~5 %).
-- Pendiente: medir la carga "en frío" (archivo fuera de la caché de Windows).
-- La opción antigua `-mmp` ya no existe; se usa `--load-mode` (`-lm`).
+- The memory estimate can be based on "file size + KV cache + margin" (measured error ~5%).
+- Pending: measure a "cold" load (file not in the Windows cache).
+- The old `-mmp` option no longer exists; `--load-mode` (`-lm`) is used.

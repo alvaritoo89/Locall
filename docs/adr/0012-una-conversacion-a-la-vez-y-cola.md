@@ -1,40 +1,40 @@
-# ADR 0012 · Una conversación a la vez por modelo, y cola por orden de llegada
+# ADR 0012 · One conversation at a time per model, and a first-come-first-served queue
 
-- **Estado:** aceptada
-- **Fecha:** 2026-11-08
+- **Status:** accepted
+- **Date:** 2026-11-08
 
-## Decisión
+## Decision
 
-- El motor se arranca con **`--parallel 1`** (`ConfigMotor::paralelo`, por defecto `PARALELO_POR_DEFECTO = 1`).
-  Atiende una conversación cada vez; si llegan dos a la vez, la segunda espera dentro del motor y termina bien
-  (comprobado con b12189).
-- El planificador atiende las peticiones **por orden de llegada** (turnos):
-  - quien pide el modelo ya cargado **no se cuela** por delante de quien espera otro modelo;
-  - los que esperan seguidos el mismo modelo pasan juntos (una sola carga);
-  - se puede **cancelar** mientras se espera turno (`usar_con`); el siguiente pasa enseguida.
-- `paralelo` es configurable: más adelante (pieza 10) podrá subirse en equipos potentes o para clientes de la API
-  que hagan varias peticiones a la vez.
+- The engine is started with **`--parallel 1`** (`ConfigMotor::paralelo`, default `PARALELO_POR_DEFECTO = 1`). It
+  serves one conversation at a time; if two arrive together, the second waits inside the engine and completes
+  correctly (checked with b12189).
+- The scheduler serves requests **in order of arrival** (turns):
+  - a request for the model that is already loaded **does not jump ahead** of one waiting for another model;
+  - consecutive requests for the same model go through together (a single load);
+  - a request can be **cancelled** while it waits for its turn (`usar_con`); the next one goes through right away.
+- `paralelo` is configurable: later (piece 10) it can be raised on powerful machines or for API clients that make
+  several requests at once.
 
-## Motivos
+## Rationale
 
-- Por defecto, b12189 abre **4 huecos** que **comparten** el contexto (`kv_unified`): con 4 conversaciones largas a
-  la vez, cada una tendría en la práctica una cuarta parte del contexto, y el usuario no entendería por qué.
-- En un procesador de portátil, generar 4 respuestas a la vez hace **cada una más lenta**. Para el uso principal
-  (una persona chateando), una sola conversación a toda velocidad es mejor.
-- Con un hueco, el motor reutiliza mejor la caché de la conversación anterior.
-- La memoria es la misma con 1 o con 4 huecos (el contexto es un único bloque compartido), así que la estimación de
-  `locall-compat` sigue siendo válida.
-- Sin orden de llegada, quien pidiera otro modelo podría esperar para siempre si siguen llegando peticiones del
-  modelo cargado.
+- By default, b12189 opens **4 slots** that **share** the context (`kv_unified`): with 4 long conversations at once,
+  each would in practice get a quarter of the context, and the user would not understand why.
+- On a laptop CPU, generating 4 answers at once makes **each one slower**. For the main use (one person chatting), a
+  single conversation at full speed is better.
+- With one slot, the engine reuses the previous conversation's cache better.
+- Memory is the same with 1 or 4 slots (the context is a single shared block), so `locall-compat`'s estimate remains
+  valid.
+- Without first-come-first-served ordering, a request for another model could wait forever if requests for the loaded
+  model kept arriving.
 
-## Alternativas descartadas
+## Rejected alternatives
 
-- **4 huecos (lo que hace el motor por defecto):** contexto dividido y respuestas más lentas sin avisar.
-- **Dar a cada hueco su propio contexto** (`--kv-unified-per-slot`): multiplica la memoria por el número de huecos.
+- **4 slots (the engine's default):** a split context and slower answers without warning.
+- **Giving each slot its own context** (`--kv-unified-per-slot`): multiplies memory by the number of slots.
 
-## Consecuencias
+## Consequences
 
-- Dos peticiones simultáneas al mismo modelo se responden **una detrás de otra**. La API (Fase 3) debe informar de
-  que la segunda está esperando.
-- La cancelación en la cola se comprueba cada 50 ms (quien cancela solo cambia un `AtomicBool`).
-- Una carga ya empezada no se interrumpe al cancelar: el motor no lo permite a medias de forma segura.
+- Two simultaneous requests to the same model are answered **one after the other**. The API (Phase 3) must report that
+  the second one is waiting.
+- Cancellation in the queue is checked every 50 ms (the canceller only flips an `AtomicBool`).
+- A load that has already started is not interrupted on cancel: the engine cannot be stopped halfway safely.

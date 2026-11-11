@@ -1,37 +1,37 @@
-# ADR 0011 · Errores comprensibles del motor
+# ADR 0011 · Understandable engine errors
 
-- **Estado:** aceptada
-- **Fecha:** 2026-11-08
+- **Status:** accepted
+- **Date:** 2026-11-08
 
-## Decisión
+## Decision
 
-- `locall-engine` reconoce los fallos más comunes de `llama-server` y los convierte en una `Causa` con un
-  **mensaje propio en español**: puerto ocupado, memoria insuficiente, modelo dañado o incompleto, arquitectura
-  no soportada, contexto excedido, modelo cargando y clave rechazada.
-- **Fuentes:** para los fallos de carga, el final del registro del motor (últimos 64 KB). Para los errores de una
-  petición, el campo `type` del JSON de error, que es más estable que el mensaje.
-- **Nunca se muestra el texto del motor** al usuario: puede llevar la ruta del modelo, con el nombre de usuario de
-  Windows (D4). Si la causa es desconocida, se dice qué falló y dónde está el registro.
-- Única excepción a "clasificar solo para mensajes" (D8): si la causa es **puerto ocupado**, `arrancar_listo`
-  reintenta con otro puerto (hasta 3 veces). Si una versión futura cambiara ese texto, simplemente no se reintentaría
-  y se vería el error. No hay riesgo de hacer algo incorrecto.
+- `locall-engine` recognizes the most common `llama-server` failures and turns them into a `Causa` with **our own
+  message in Spanish** (the UI language): port in use, out of memory, damaged or incomplete model, unsupported
+  architecture, context exceeded, model loading and key rejected.
+- **Sources:** for load failures, the end of the engine log (last 64 KB). For request errors, the `type` field of the
+  error JSON, which is more stable than the message.
+- **The engine's text is never shown** to the user: it may contain the model's path, including the Windows user name
+  (D4). If the cause is unknown, the message says what failed and where the log is.
+- The only exception to "classify only for messages" (D8): if the cause is **port in use**, `arrancar_listo` retries
+  with another port (up to 3 times). If a future version changed that text, it would simply not retry and the error
+  would be shown. There is no risk of doing something wrong.
 
-## Motivos
+## Rationale
 
-- La Fase 0 mostró que los mensajes del motor son técnicos y en inglés ("failed to allocate buffer for kv cache").
-- Los textos buscados se han comprobado **provocando cada fallo** con la build b12189. Las pruebas unitarias guardan
-  esas líneas reales, así que un cambio de versión del motor que las rompa se notará.
-- El puerto se elige libre justo antes de lanzar el motor, pero otro programa puede ocuparlo en ese instante; con el
-  reintento, el usuario no llega a verlo.
+- Phase 0 showed that the engine's messages are technical and in English ("failed to allocate buffer for kv cache").
+- The texts we look for were checked by **triggering each failure** with build b12189. The unit tests keep those real
+  lines, so an engine version change that breaks them will be noticed.
+- The port is chosen free right before launching the engine, but another program can take it at that instant; with
+  the retry, the user never sees it.
 
-## Alternativas descartadas
+## Rejected alternatives
 
-- **Mostrar el mensaje original del motor:** incomprensible para el usuario y con datos privados.
-- **Pasar al motor un socket ya abierto** (y evitar así la carrera por el puerto): `llama-server` no lo admite.
+- **Showing the engine's original message:** incomprehensible to the user and containing private data.
+- **Passing an already-open socket to the engine** (avoiding the port race): `llama-server` does not support it.
 
-## Consecuencias
+## Consequences
 
-- Al actualizar la build de llama.cpp hay que repetir las pruebas de fallos reales (`tests/motor_real.rs`,
-  `tests/chat_real.rs`) por si cambian los textos.
-- No verificado todavía: los fallos propios de Vulkan (memoria de la gráfica). Hoy se clasifican como desconocidos,
-  hasta que los provoquemos y los reconozcamos.
+- When updating the llama.cpp build, the real-failure tests (`tests/motor_real.rs`, `tests/chat_real.rs`) must be
+  rerun in case the texts change.
+- Not verified yet: Vulkan-specific failures (GPU memory). They are classified as unknown until we trigger and
+  recognize them.

@@ -1,28 +1,29 @@
-# ADR 0001 · Registrar las decisiones de arquitectura
+# ADR 0001 · Record architecture decisions
 
-- **Estado:** aceptada
-- **Fecha:** 2026-11-08
+- **Status:** accepted (language amended by ADR 0027)
+- **Date:** 2026-11-08
 
-## Contexto
+## Context
 
-Locall es un proyecto personal, sin fechas, que puede pausarse durante meses. Las decisiones importantes se tomaron
-con datos (Fase 0) y hay que poder recordar **qué** se decidió y **por qué**.
+Locall is a personal project with no deadlines that may be paused for months. The important decisions were made with
+data (Phase 0), and we need to be able to remember **what** was decided and **why**.
 
-## Decisión
+## Decision
 
-Cada decisión técnica importante se documenta en un ADR corto dentro de `docs/adr/`, numerado (`NNNN-titulo.md`),
-en español, con estas partes: estado, fecha, contexto, decisión, motivos, alternativas descartadas y consecuencias.
+Every important technical decision is documented in a short ADR in `docs/adr/`, numbered (`NNNN-title.md`), with
+these parts: status, date, context, decision, rationale, rejected alternatives and consequences. ADRs were originally
+written in Spanish; since ADR 0027 they are written in English.
 
-Un ADR no se borra: si una decisión cambia, se escribe uno nuevo que lo **sustituye** y el antiguo pasa a
-"sustituida por NNNN".
+An ADR is never deleted: if a decision changes, a new one is written that **supersedes** it, and the old one becomes
+"superseded by NNNN".
 
-## Motivos
+## Rationale
 
-- Regla 10 del proyecto: documentar las decisiones técnicas importantes.
-- Facilita retomar el proyecto y explicar las decisiones a futuros colaboradores.
+- Project rule 10: document important technical decisions.
+- It makes it easier to pick the project up again and to explain decisions to future contributors.
 
-## Consecuencias
+## Consequences
 
-- Un poco más de trabajo al decidir; mucho menos al recordar.
-- Las mediciones de la Fase 0 están en el informe de la Fase 0 (documentación del proyecto, fuera del repositorio);
-  los ADR citan los datos clave.
+- A bit more work when deciding; much less when remembering.
+- The Phase 0 measurements are in the Phase 0 report (project documentation, outside the repository); the ADRs quote
+  the key figures.

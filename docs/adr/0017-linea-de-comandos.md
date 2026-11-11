@@ -1,42 +1,43 @@
-# ADR 0017 · Línea de comandos: cliente de la API, arranque bajo demanda y lexopt
+# ADR 0017 · Command line: an API client, on-demand startup and lexopt
 
-- **Estado:** aceptada
-- **Fecha:** 2026-11-09
+- **Status:** accepted
+- **Date:** 2026-11-09
 
-## Decisión
+## Decision
 
-- La CLI (`locall-cli`) es un **cliente de la API local**, como lo será la app de escritorio: nunca toca el núcleo
-  directamente (regla 9). Lee el puerto de `config.toml` y el token de `%LOCALAPPDATA%\Locall\token`.
-- **Arranque bajo demanda** (decisión ratificada): si Locall no está abierto, las órdenes que lo necesitan lanzan
-  `locall serve` en segundo plano y esperan a que responda (hasta 20 s; si se cierra antes, se dice y se señala el
-  registro). `status` y `stop` nunca lo abren.
-- El núcleo en segundo plano se lanza:
-  - **sin consola** (`DETACHED_PROCESS`) y en **su propio grupo** (`CREATE_NEW_PROCESS_GROUP`): un Ctrl+C en la
-    terminal no le llega;
-  - **fuera del Job Object** de la terminal si esta lo permite (`CREATE_BREAKAWAY_FROM_JOB`), para que no muera al
-    cerrarla; si no lo permite, se lanza igualmente;
-  - **sin heredar la entrada y salida** de la consola (ver Motivos).
-- `locall stop` usa `POST /api/shutdown`, que cierra el núcleo igual que Ctrl+C: ordenadamente y parando el motor.
-- Las órdenes se leen con **lexopt** (MIT, sin dependencias). La ayuda y todos los errores son nuestros, en español.
-  Código de salida: 0 = bien, 1 = error, 2 = orden mal escrita.
+- The CLI (`locall-cli`) is a **client of the local API**, like the desktop app: it never touches the core directly
+  (rule 9). It reads the port from `config.toml` and the token from `%LOCALAPPDATA%\Locall\token`.
+- **On-demand startup** (confirmed decision): if Locall is not running, the commands that need it launch
+  `locall serve` in the background and wait for it to respond (up to 20 s; if it exits earlier, that is reported along
+  with the log). `status` and `stop` never start it.
+- The background core is launched:
+  - **without a console** (`DETACHED_PROCESS`) and in **its own process group** (`CREATE_NEW_PROCESS_GROUP`): a Ctrl+C
+    in the terminal does not reach it;
+  - **outside the terminal's Job Object** if the terminal allows it (`CREATE_BREAKAWAY_FROM_JOB`), so it does not die
+    when the terminal is closed; if it is not allowed, it is launched anyway;
+  - **without inheriting the console's input and output** (see Rationale).
+- `locall stop` uses `POST /api/shutdown`, which shuts the core down just like Ctrl+C: in an orderly way, stopping the
+  engine.
+- Commands are parsed with **lexopt** (MIT, no dependencies). The help and every error message are our own, in
+  Spanish. Exit codes: 0 = success, 1 = error, 2 = badly written command.
 
-## Motivos
+## Rationale
 
-- Un único camino (la API) para todos los clientes: la seguridad y las pruebas de la API cubren también la CLI.
-- **Herencia de la salida:** en Windows, un proceso hijo hereda los "tubos" de la consola del padre. Con la primera
-  versión, el núcleo heredaba el de la CLI y la terminal esperaba a que se cerrara: `locall list` tardaba **90 s** en
-  terminar (hasta que el núcleo se cerraba por inactividad). Marcando la entrada y salida de la CLI como no heredables
-  (`SetHandleInformation`) baja a **0,12 s**.
-- **Sonda corta:** en Windows, conectar a un puerto cerrado de `localhost` tarda ~2 s porque el sistema reintenta.
-  Para saber si Locall está abierto se usa una espera de conexión de 300 ms; si el servidor existe, el sistema acepta
-  la conexión al instante aunque el programa esté ocupado. `status` con Locall cerrado pasa de 2 s a 0,3 s.
-- **lexopt frente a clap:** clap es el más usado, pero sus mensajes de error están en inglés y cambiarlos todos es
-  complicado. clap mínimo trae 4 dependencias; con `derive`, 21. lexopt, ninguna: solo resuelve lo difícil
-  (`--opcion=valor`, `-abc`, argumentos no Unicode).
+- A single path (the API) for every client: the API's security and tests also cover the CLI.
+- **Inherited output:** on Windows, a child process inherits the parent console's "pipes". In the first version, the
+  core inherited the CLI's and the terminal waited for it to close: `locall list` took **90 s** to finish (until the
+  core shut down from inactivity). Marking the CLI's input and output as non-inheritable (`SetHandleInformation`)
+  brings it down to **0.12 s**.
+- **Short probe:** on Windows, connecting to a closed `localhost` port takes ~2 s because the system retries. To find
+  out whether Locall is running, a 300 ms connection timeout is used; if the server exists, the system accepts the
+  connection immediately even if the program is busy. `status` with Locall closed goes from 2 s to 0.3 s.
+- **lexopt rather than clap:** clap is the most widely used, but its error messages are in English and changing them
+  all is complicated. Minimal clap brings 4 dependencies; with `derive`, 21. lexopt brings none: it only solves the
+  hard parts (`--option=value`, `-abc`, non-Unicode arguments).
 
-## Consecuencias
+## Consequences
 
-- Si en el puerto configurado hay otro programa, Locall no arranca y la CLI lo dice con la ruta del registro.
-- Si el núcleo se cierra por inactividad entre dos órdenes, la siguiente lo vuelve a abrir (se nota un momento la
-  primera vez).
-- Hay que mantener la ayuda (`ordenes::AYUDA`) a mano al añadir órdenes.
+- If another program holds the configured port, Locall does not start and the CLI says so, with the log path.
+- If the core shuts down from inactivity between two commands, the next one starts it again (noticeable for a moment
+  the first time).
+- The help text (`ordenes::AYUDA`) must be maintained by hand when commands are added.

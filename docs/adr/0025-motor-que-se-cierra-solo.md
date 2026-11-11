@@ -1,32 +1,31 @@
-# ADR 0025 · Fase 7a: detectar un motor que se ha cerrado solo
+# ADR 0025 · Phase 7a: detecting an engine that exited on its own
 
-- **Estado:** aceptada
-- **Fecha:** 2026-11-11
+- **Status:** accepted
+- **Date:** 2026-11-11
 
-## Problema
+## Problem
 
-El planificador guardaba el motor cargado y, si se volvía a pedir el mismo modelo, lo prestaba **sin comprobar que
-su proceso seguía vivo**. Si `llama-server` se cerraba solo (falta de memoria, un fallo, alguien lo terminaba), cada
-mensaje fallaba hasta que el modelo se descargaba por inactividad (5 minutos por defecto) y el estado seguía diciendo
-«Motor listo». Existía `Motor::sigue_vivo`, pero necesitaba `&mut` (`Child::try_wait`) y el planificador comparte el
-motor entre hilos, así que nunca se usaba. Se encontró leyendo el código en la revisión de la Fase 7.
+The scheduler kept the loaded engine and, when the same model was requested again, lent it out **without checking that
+its process was still alive**. If `llama-server` exited on its own (out of memory, a crash, someone killing it), every
+message failed until the model was unloaded for inactivity (5 minutes by default), and the status kept saying
+«Motor listo» (engine ready). `Motor::sigue_vivo` existed, but it needed `&mut` (`Child::try_wait`) and the scheduler
+shares the engine between threads, so it was never used. Found by reading the code during the Phase 7 review.
 
-## Decisión
+## Decision
 
-- `locall_system::proceso_vivo(&Child)`: pregunta a Windows con `WaitForSingleObject(proceso, 0)` (espera de 0 ms:
-  solo «¿has terminado?»). No necesita `&mut`, así que sirve con el motor compartido. `Motor::sigue_vivo` pasa a
-  `&self`.
-- El trait `Arrancador` gana `sigue_vivo(&motor)` (por defecto, siempre vivo); `ArrancadorReal` lo implementa y, si el
-  motor ha muerto, apunta en el registro la causa que dejó el motor (`Motor::causa_del_cierre`).
-- El planificador:
-  - **al prestar** el modelo que ya está cargado, comprueba que vive; si no, lo retira y lo carga de nuevo (si alguien
-    lo tiene prestado, espera a que lo suelte: su petición fallará por su cuenta);
-  - **el vigilante**, mientras hay un modelo cargado que nadie usa, comprueba cada 2 s que el motor vive y, si no, lo
-    retira: el estado pasa a «Ningún modelo cargado» en vez de mentir.
+- `locall_system::proceso_vivo(&Child)`: asks Windows with `WaitForSingleObject(process, 0)` (a 0 ms wait: just "have
+  you finished?"). It does not need `&mut`, so it works with the shared engine. `Motor::sigue_vivo` becomes `&self`.
+- The `Arrancador` trait gains `sigue_vivo(&motor)` (always alive by default); `ArrancadorReal` implements it and, if
+  the engine has died, logs the cause the engine left behind (`Motor::causa_del_cierre`).
+- The scheduler:
+  - **when lending** the model that is already loaded, checks that it is alive; if not, it removes it and loads it again
+    (if someone has it on loan, it waits until they release it: their request will fail on its own);
+  - **the watcher**, while a loaded model is unused, checks every 2 s that the engine is alive and, if not, removes it:
+    the status becomes «Ningún modelo cargado» (no model loaded) instead of lying.
 
-## Pruebas
+## Tests
 
-- Con un motor de imitación que la prueba «mata»: se recarga al pedirlo, el vigilante lo retira solo, y no se le
-  quita a quien lo tiene prestado.
-- Con el motor real: la prueba termina el proceso que ella misma arrancó; Locall lo retira en menos de 2 s, carga uno
-  nuevo y responde.
+- With an imitation engine that the test "kills": it is reloaded when requested, the watcher removes it on its own, and
+  it is not taken away from whoever has it on loan.
+- With the real engine: the test terminates the process it started itself; Locall removes it in under 2 s, loads a new
+  one and answers.

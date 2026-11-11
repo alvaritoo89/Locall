@@ -1,56 +1,56 @@
-# ADR 0019 · Conversaciones guardadas: en el núcleo, borrado real y un mensaje cada vez
+# ADR 0019 · Saved conversations: in the core, real deletion and one message at a time
 
-- **Estado:** aceptada
-- **Fecha:** 2026-11-09
+- **Status:** accepted
+- **Date:** 2026-11-09
 
-## Decisión
+## Decision
 
-- **Las conversaciones las guarda el núcleo**, en el mismo registro SQLite que los modelos (esquema v2: tablas
-  `conversaciones` y `mensajes`, con borrado en cascada). La app y cualquier otro cliente ven las mismas.
-- **Se guardan solo en tu equipo** (`%LOCALAPPDATA%\Locall\locall.db`), nunca salen de él (ADR 0008) y no
-  aparecen en los registros diarios (ADR 0014).
-- **Borrar es borrar de verdad.** SQLite, al borrar, no sobrescribe los datos: el texto seguiría en el archivo y en su
-  registro de cambios (`-wal`). Por eso la conexión usa `PRAGMA secure_delete=ON` (rellena con ceros lo borrado) y, al
-  eliminar una conversación, se vacía el `-wal` (`wal_checkpoint(TRUNCATE)`). Hay una prueba que busca el texto en
-  los archivos antes y después de borrar.
-- **Locall envía al modelo la conversación guardada entera** (con las instrucciones del sistema delante): el cliente
-  solo manda el mensaje nuevo (`POST /api/conversations/{id}/messages`). Los ajustes (modelo, instrucciones,
-  temperatura) se guardan con la conversación en cada mensaje.
-- **Nada a medias:**
-  - si el modelo falla (por ejemplo, la conversación ya no cabe), la pregunta no se queda guardada;
-  - si se para antes de que llegue nada, tampoco;
-  - si se para a mitad, se guarda lo que llegó, marcado como cortado.
-- **Cada conversación atiende un mensaje cada vez.** Si llega otro mientras la anterior aún se guarda (por ejemplo,
-  al parar y enviar enseguida), espera su turno, para que los mensajes no se guarden desordenados.
-- **Se comprueba antes de guardar** que existen la conversación y el modelo (en ese orden).
-- La app crea la conversación **al enviar el primer mensaje** (con su principio como título), para no dejar
-  conversaciones vacías.
+- **Conversations are stored by the core**, in the same SQLite registry as the models (schema v2: `conversaciones` and
+  `mensajes` tables, with cascading deletes). The app and any other client see the same ones.
+- **They are stored only on your computer** (`%LOCALAPPDATA%\Locall\locall.db`), never leave it (ADR 0008) and do not
+  appear in the daily logs (ADR 0014).
+- **Deleting really deletes.** When SQLite deletes, it does not overwrite the data: the text would remain in the file
+  and in its write-ahead log (`-wal`). That is why the connection uses `PRAGMA secure_delete=ON` (it fills deleted data
+  with zeros) and, when a conversation is deleted, the `-wal` is emptied (`wal_checkpoint(TRUNCATE)`). A test searches
+  the files for the text before and after deleting.
+- **Locall sends the model the whole saved conversation** (with the system instructions first): the client only sends
+  the new message (`POST /api/conversations/{id}/messages`). The settings (model, instructions, temperature) are saved
+  with the conversation on every message.
+- **Nothing half-done:**
+  - if the model fails (for example, the conversation no longer fits), the question is not kept;
+  - if it is stopped before anything arrives, it is not kept either;
+  - if it is stopped halfway, what arrived is saved, marked as cut off.
+- **Each conversation handles one message at a time.** If another arrives while the previous one is still being saved
+  (for example, stopping and sending again right away), it waits its turn, so messages are never saved out of order.
+- **Before saving, Locall checks** that the conversation and the model exist (in that order).
+- The app creates the conversation **when the first message is sent** (with its beginning as the title), so no empty
+  conversations are left behind.
 
-## Rutas
+## Routes
 
-| Ruta | Qué hace |
+| Route | What it does |
 |------|----------|
-| `GET /api/conversations` | Lista (de la más reciente a la más antigua) |
-| `POST /api/conversations` | Crea una vacía (`{"title"?}`) |
-| `GET /api/conversations/{id}` | Una conversación con sus mensajes |
-| `PATCH /api/conversations/{id}` | Cambia el título (`{"title"}`) |
-| `DELETE /api/conversations/{id}` | La elimina de verdad |
-| `POST /api/conversations/{id}/messages` | Escribe un mensaje (`{"content", "model", "system"?, "temperature"?, "stream"?}`) y responde en NDJSON; el último evento lleva la conversación y el mensaje guardados |
+| `GET /api/conversations` | List (most recent first) |
+| `POST /api/conversations` | Create an empty one (`{"title"?}`) |
+| `GET /api/conversations/{id}` | A conversation with its messages |
+| `PATCH /api/conversations/{id}` | Change the title (`{"title"}`) |
+| `DELETE /api/conversations/{id}` | Delete it for real |
+| `POST /api/conversations/{id}/messages` | Write a message (`{"content", "model", "system"?, "temperature"?, "stream"?}`) and respond in NDJSON; the last event carries the saved conversation and message |
 
-Una conversación que no existe da `404 conversation_not_found`.
+A conversation that does not exist gives `404 conversation_not_found`.
 
-## Motivos
+## Rationale
 
-- **En el núcleo y no en la app:** así la CLI podrá abrir las mismas conversaciones más adelante, y la app sigue
-  siendo solo una interfaz (regla 9).
-- **Borrado real:** la privacidad local es un principio de diseño (regla 18). Quien borra una conversación espera que
-  no se pueda recuperar del disco.
-- **La conversación entera la monta el núcleo:** lo que se guarda y lo que ve el modelo no pueden diferir.
+- **In the core rather than the app:** so the CLI can open the same conversations later, and the app stays just a UI
+  (rule 9).
+- **Real deletion:** local privacy is a design principle (rule 18). Someone who deletes a conversation expects it to be
+  unrecoverable from disk.
+- **The core assembles the whole conversation:** what is saved and what the model sees cannot differ.
 
-## Consecuencias
+## Consequences
 
-- `secure_delete` hace los borrados algo más lentos (escribe ceros). Con conversaciones de texto no se nota.
-- Las conversaciones **no se cifran** en el disco: las protege la cuenta de Windows, como el resto de tus archivos.
-  Cifrarlas se valorará en la Fase 7 (endurecimiento).
-- Si haces copias de seguridad que incluyan `%LOCALAPPDATA%\Locall`, esas copias pueden conservar conversaciones ya
-  borradas. Locall no puede evitarlo.
+- `secure_delete` makes deletion a little slower (it writes zeros). With text conversations it is not noticeable.
+- Conversations are **not encrypted** on disk: they are protected by the Windows account, like the rest of your files.
+  Encrypting them was decided in Phase 7 (Windows DPAPI).
+- If you make backups that include `%LOCALAPPDATA%\Locall`, those copies may keep conversations that were already
+  deleted. Locall cannot prevent that.

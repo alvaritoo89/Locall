@@ -1,42 +1,42 @@
-# ADR 0014 · Registros: lo que hace Locall, nunca lo que dices
+# ADR 0014 · Logs: what Locall does, never what you say
 
-- **Estado:** aceptada
-- **Fecha:** 2026-11-08
+- **Status:** accepted
+- **Date:** 2026-11-08
 
-## Decisión
+## Decision
 
-- Cada crate de Locall escribe con la fachada estándar **`log`** (`log::info!`, `log::warn!`). Un escritor propio
-  (`locall-config::registros`) lo guarda en **`registros\locall-AAAA-MM-DD.log`**, un archivo por día con la hora
-  local de Windows (`GetLocalTime`).
-- Solo se guardan los mensajes de **nuestros crates** (`locall…`) de nivel **INFO o más importante**. Los de otros
-  crates (`ureq`…) y los de depuración no se guardan.
-- Al iniciar se borran los `locall-*.log` de más de `registros_dias` días (7 por defecto). Ningún otro archivo de la
-  carpeta se toca.
-- Escribir en el registro **nunca hace fallar a Locall**: si el disco falla, se pierde la línea.
-- **Privacidad (regla 17):** se anota lo que **hace** Locall (modelo cargado o descargado y por qué, motor
-  arrancado o parado, descargas, reintentos, errores, tiempos y cifras de tokens). **Nunca** se anota el contenido
-  de las conversaciones (preguntas, respuestas, razonamientos), las claves ni los tokens de acceso.
+- Every Locall crate writes through the standard **`log`** facade (`log::info!`, `log::warn!`). Our own writer
+  (`locall-config::registros`) stores it in **`registros\locall-YYYY-MM-DD.log`**, one file per day, using Windows
+  local time (`GetLocalTime`).
+- Only messages from **our crates** (`locall…`) at **INFO level or higher** are stored. Messages from other crates
+  (`ureq`…) and debug messages are not.
+- On startup, `locall-*.log` files older than `registros_dias` days (7 by default) are deleted. No other file in the
+  folder is touched.
+- Writing to the log **never makes Locall fail**: if the disk fails, the line is lost.
+- **Privacy (rule 17):** the log records what Locall **does** (model loaded or unloaded and why, engine started or
+  stopped, downloads, retries, errors, timings and token counts). It **never** records conversation content
+  (questions, answers, reasoning), keys or access tokens.
 
-## Motivos
+## Rationale
 
-- `log` ya estaba en el proyecto (la trae `ureq`) y es el estándar de Rust: **ninguna dependencia nueva**. El
-  escritor propio son unas 100 líneas; `env_logger` o `tracing` traerían bastantes más dependencias.
-- Un registro que contiene conversaciones es un riesgo: los usuarios lo comparten al pedir ayuda. Por eso la regla
-  es "solo cifras", y una **prueba con el motor real** (`locall-scheduler/tests/registros_real.rs`) hace una pregunta
-  con una palabra secreta y comprueba que ni la pregunta, ni la respuesta, ni la clave del motor aparecen.
-- Filtrar por crate evita depender de lo que otros crates decidan anotar.
+- `log` was already in the project (`ureq` brings it in) and is the Rust standard: **no new dependency**. Our writer is
+  about 100 lines; `env_logger` or `tracing` would bring quite a few more dependencies.
+- A log that contains conversations is a risk: users share it when asking for help. Hence the rule "numbers only", and
+  a **test with the real engine** (`locall-scheduler/tests/registros_real.rs`) asks a question containing a secret word
+  and checks that neither the question, nor the answer, nor the engine key appears.
+- Filtering by crate avoids depending on what other crates decide to log.
 
-## Alternativas descartadas
+## Rejected alternatives
 
-- **`env_logger`, `tracing` o `flexi_logger`:** más dependencias para lo mismo.
-- **Registrar en el Visor de eventos de Windows:** difícil de leer y de compartir para el usuario.
-- **Fecha en UTC:** más fácil de calcular, pero confusa al leer el registro ("¿por qué pone las 19:00 si eran las
-  20:00?").
+- **`env_logger`, `tracing` or `flexi_logger`:** more dependencies for the same result.
+- **Logging to the Windows Event Viewer:** hard for the user to read and to share.
+- **UTC timestamps:** easier to compute, but confusing to read ("why does it say 19:00 when it was 20:00?").
 
-## Consecuencias
+## Consequences
 
-- Quien añada un `log::info!` debe respetar la norma de privacidad; la prueba cubre el camino principal (cargar,
-  conversar, descargar el modelo), no cada línea futura.
-- Los mensajes de error que incluyen la ruta del registro del motor llevan la carpeta del usuario. Es aceptable
-  porque el archivo es local, pero hay que tenerlo en cuenta si algún día se ofrece "enviar registros".
-- El registro del motor (`llama-server`) es aparte: se sobrescribe en cada arranque y la limpieza no lo toca.
+- Anyone adding a `log::info!` must respect the privacy rule; the test covers the main path (load, chat, unload the
+  model), not every future line.
+- Error messages that include the path of the engine log contain the user's folder. That is acceptable because the file
+  is local, but it must be kept in mind if "send logs" is ever offered.
+- The engine's own log (`llama-server`) is separate: it is overwritten on every start and the cleanup does not touch
+  it.

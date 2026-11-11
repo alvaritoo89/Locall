@@ -1,36 +1,35 @@
-# ADR 0003 · llama.cpp oficial como subproceso, con planificador propio
+# ADR 0003 · Official llama.cpp as a subprocess, with our own scheduler
 
-- **Estado:** aceptada
-- **Fecha:** 2026-11-08
+- **Status:** accepted
+- **Date:** 2026-11-08
 
-## Decisión
+## Decision
 
-- El motor de inferencia es **`llama-server` de llama.cpp, binarios oficiales sin modificar**, con una compilación
-  fijada y verificada por sha256 (hoy: build 12189).
-- Se ejecuta como **proceso hijo**, nunca enlazado dentro del núcleo, y dentro de un **Job Object** de Windows con
+- The inference engine is **llama.cpp's `llama-server`, unmodified official binaries**, with a pinned build verified
+  by sha256 (today: build 12189).
+- It runs as a **child process**, never linked into the core, inside a Windows **Job Object** with
   `KILL_ON_JOB_CLOSE`.
-- Locall usa **su propio planificador** (v1: un modelo cargado a la vez) y **no** el modo router de llama-server.
+- Locall uses **its own scheduler** (v1: one model loaded at a time) and **not** llama-server's router mode.
 
-## Motivos
+## Rationale
 
-- Ollama acabó usando el `llama-server` original como subproceso; Jan, aun compilándolo dentro de su programa, lo
-  sigue ejecutando en un proceso aparte porque `GGML_ASSERT` termina el proceso y no se puede capturar.
-- Fase 1: sin Job Object, matar el núcleo dejó un `llama-server` huérfano con 1,21 GB; con Job Object, Windows lo
-  terminó solo. 10 ciclos seguidos sin huérfanos ni fugas de memoria.
-- El modo router queda fuera del ámbito de seguridad de llama.cpp (`SECURITY.md`) y a Jan le dejó procesos
-  huérfanos tras actualizar.
+- Ollama ended up running the original `llama-server` as a subprocess; Jan, even though it builds it into its program,
+  still runs it in a separate process, because `GGML_ASSERT` terminates the process and cannot be caught.
+- Phase 1: without a Job Object, killing the core left an orphaned `llama-server` holding 1.21 GB; with a Job Object,
+  Windows terminated it by itself. 10 consecutive cycles with no orphans and no memory leaks.
+- Router mode is outside llama.cpp's security scope (`SECURITY.md`) and left orphaned processes behind for Jan after
+  updating.
 
-## Alternativas descartadas
+## Rejected alternatives
 
-- **Enlazar llama.cpp como biblioteca (FFI):** un fallo del motor tumbaría el núcleo y habría que compilar los
-  backends (CUDA, Vulkan) nosotros.
-- **Compilar nuestro propio motor (como Jan):** demasiada complejidad para empezar; la arquitectura permite
-  reconsiderarlo.
-- **Modo router de llama-server:** ver motivos.
+- **Linking llama.cpp as a library (FFI):** an engine crash would take the core down, and we would have to build the
+  backends (CUDA, Vulkan) ourselves.
+- **Building our own engine (like Jan):** too much complexity to start with; the architecture allows reconsidering it.
+- **llama-server router mode:** see the rationale.
 
-## Consecuencias
+## Consequences
 
-- Dependemos del contrato HTTP y de las opciones de línea de comandos de llama-server: cada cambio de compilación se
-  valida con pruebas de regresión antes de distribuirse.
-- Los binarios oficiales no están firmados y su ZIP no incluye la licencia MIT de llama.cpp: Locall añadirá los
-  avisos de licencia.
+- We depend on llama-server's HTTP contract and command-line options: every build change is validated with regression
+  tests before it is shipped.
+- The official binaries are not signed and their ZIP does not include llama.cpp's MIT license: Locall will add the
+  license notices.

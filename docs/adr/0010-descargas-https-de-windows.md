@@ -1,46 +1,47 @@
-# ADR 0010 · Descargas con `ureq` y el HTTPS de Windows
+# ADR 0010 · Downloads with `ureq` and Windows HTTPS
 
-- **Estado:** aceptada
-- **Fecha:** 2026-11-08
+- **Status:** accepted
+- **Date:** 2026-11-08
 
-## Decisión
+## Decision
 
-- El descargador (`locall-download`) usa **`ureq` 3** (cliente HTTP bloqueante, sin `async`), con
-  `default-features = false` y solo la función `native-tls-no-default`.
-- El HTTPS lo hace **el propio Windows** (SChannel, mediante `native-tls`) con **sus certificados**
-  (`RootCerts::PlatformVerifier`). Locall no lleva su propia pila TLS ni su propia lista de certificados.
-- Toda descarga lleva **huella sha256 obligatoria**, calculada mientras se descarga. Si no coincide, se descarta.
-- **Reanudable:** lo descargado se guarda en `tmp\sha256-<hex>.parcial` y se continúa con `Range`. La limpieza de
-  temporales no toca los `.parcial`. Si el servidor ignora el `Range` (responde 200) o el rango no encaja, se
-  empieza de cero; nunca se mezclan datos.
-- **Atascos:** si no llega ningún byte en 60 s, se corta y se reanuda. **Reintentos** con espera creciente
-  (1 s → 30 s). El contador se reinicia cuando llegan datos. Ante un `429` se espera lo que pide `Retry-After`
-  (máximo 120 s). Los errores 4xx (salvo 416 y 429) no se reintentan.
-- Se comprueba el **espacio libre** antes de empezar. El progreso se cuenta con los bytes escritos.
-- En v1 **no se usa token** de Hugging Face (solo modelos públicos).
+- The downloader (`locall-download`) uses **`ureq` 3** (a blocking HTTP client, no `async`), with
+  `default-features = false` and only the `native-tls-no-default` feature.
+- HTTPS is handled by **Windows itself** (SChannel, through `native-tls`) with **its certificates**
+  (`RootCerts::PlatformVerifier`). Locall ships neither its own TLS stack nor its own certificate list.
+- Every download carries a **mandatory sha256 fingerprint**, computed while downloading. If it does not match, the file
+  is discarded.
+- **Resumable:** downloaded data is kept in `tmp\sha256-<hex>.parcial` and continued with `Range`. Temporary-file
+  cleanup does not touch `.parcial` files. If the server ignores `Range` (responds 200) or the range does not fit, the
+  download starts from scratch; data is never mixed.
+- **Stalls:** if no byte arrives for 60 s, the connection is cut and resumed. **Retries** with growing waits
+  (1 s → 30 s). The counter resets when data arrives. On a `429`, Locall waits as long as `Retry-After` asks (at most
+  120 s). 4xx errors (except 416 and 429) are not retried.
+- **Free space** is checked before starting. Progress is counted in bytes written.
+- v1 uses **no** Hugging Face token (public models only).
 
-## Motivos
+## Rationale
 
-- **Menos dependencias** (regla 3): con `native-tls` no se compila ninguna librería criptográfica. En la versión con
-  rustls habría que añadir `rustls`, `ring` y `webpki-roots`, que además exige compilar C/ensamblador.
-- **Certificados del sistema:** si una empresa usa un proxy con su propio certificado instalado en Windows, Locall
-  funciona sin configurar nada. Las actualizaciones de certificados llegan con Windows Update.
-- **Bloqueante es suficiente:** las descargas son pocas y largas; un hilo por descarga es simple de entender y
-  probar. `async` (tokio + reqwest) añadiría decenas de dependencias sin ganar nada aquí.
-- Verificado en esta máquina: descarga real de Hugging Face, incluida la redirección a su CDN y la reanudación con
-  `Range` tras una pausa.
+- **Fewer dependencies** (rule 3): with `native-tls` no cryptographic library is compiled. The rustls variant would add
+  `rustls`, `ring` and `webpki-roots`, which also requires compiling C/assembly.
+- **System certificates:** if a company uses a proxy with its own certificate installed in Windows, Locall works with
+  no configuration. Certificate updates arrive through Windows Update.
+- **Blocking is enough:** downloads are few and long; one thread per download is simple to understand and to test.
+  `async` (tokio + reqwest) would add dozens of dependencies for no gain here.
+- Verified on this machine: a real download from Hugging Face, including the redirect to its CDN and resuming with
+  `Range` after a pause.
 
-## Alternativas descartadas
+## Rejected alternatives
 
-- **`reqwest` + tokio:** potente, pero mucho más grande; lo reconsideraremos si la API (Fase 3) ya trae tokio.
-- **`ureq` con rustls:** independiente del sistema, pero más dependencias y certificados propios que mantener.
-- **Llamar a `curl.exe`:** sin control fino del progreso ni de los errores; depende de un programa externo.
+- **`reqwest` + tokio:** powerful, but much bigger; to be reconsidered if the API (Phase 3) already brings tokio.
+- **`ureq` with rustls:** independent of the system, but more dependencies and our own certificates to maintain.
+- **Calling `curl.exe`:** no fine control over progress or errors; depends on an external program.
 
-## Consecuencias
+## Consequences
 
-- Dependencias nuevas (todas MIT o MIT/Apache): `ureq`, `ureq-proto`, `http`, `httparse`, `native-tls`, `schannel`,
+- New dependencies (all MIT or MIT/Apache): `ureq`, `ureq-proto`, `http`, `httparse`, `native-tls`, `schannel`,
   `rustls-pki-types`, `base64`, `bytes`, `log`, `percent-encoding`, `utf8-zero`, `der`, `pem-rfc7468`, `const-oid`,
   `base64ct`, `zeroize`, `itoa`.
-- **A revisar al llevar Locall a Linux:** allí `native-tls` usa OpenSSL (habría que tenerlo instalado o compilarlo).
-  Entonces decidiremos entre OpenSSL y rustls.
-- El descargador es bloqueante: la app y la API deben llamarlo desde un hilo propio.
+- **To review when porting Locall to Linux:** there `native-tls` uses OpenSSL (it would have to be installed or
+  compiled). We will then decide between OpenSSL and rustls.
+- The downloader is blocking: the app and the API must call it from their own thread.

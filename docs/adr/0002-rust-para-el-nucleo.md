@@ -1,26 +1,26 @@
-# ADR 0002 · Rust para el núcleo
+# ADR 0002 · Rust for the core
 
-- **Estado:** aceptada
-- **Fecha:** 2026-11-08
+- **Status:** accepted
+- **Date:** 2026-11-08
 
-## Decisión
+## Decision
 
-El núcleo de Locall (gestión de modelos, motor, API local y CLI, en un único binario) se escribe en **Rust**.
-La aplicación de escritorio usará Tauri 2, cuyo backend también es Rust.
+Locall's core (model management, engine, local API and CLI, in a single binary) is written in **Rust**. The desktop
+app will use Tauri 2, whose backend is also Rust.
 
-## Motivos
+## Rationale
 
-- Un solo lenguaje para el núcleo y el shell de escritorio.
-- Seguridad de memoria y gestión de errores explícita (`Result`), adecuadas para un proceso que corre durante horas.
-- Buen acceso a la API de Windows (Job Objects, demostrados en la Fase 1 con `windows-sys`).
-- Objetivo de aprendizaje del autor: aprender Rust y programación de sistemas.
+- A single language for the core and the desktop shell.
+- Memory safety and explicit error handling (`Result`), well suited to a process that runs for hours.
+- Good access to the Windows API (Job Objects, demonstrated in Phase 1 with `windows-sys`).
+- The author's learning goal: learning Rust and systems programming.
 
-## Alternativas descartadas
+## Rejected alternatives
 
-- **Go:** probado en producción por Ollama y más fácil de aprender; descartado por el objetivo de aprendizaje y por
-  unificar con Tauri. Sigue siendo una alternativa válida si Rust se convirtiera en un freno.
+- **Go:** proven in production by Ollama and easier to learn; rejected because of the learning goal and to unify with
+  Tauri. It remains a valid alternative if Rust ever became a bottleneck.
 
-## Consecuencias
+## Consequences
 
-- Curva de aprendizaje alta al principio: se compensa avanzando paso a paso, con explicaciones y pruebas.
-- El uso de `unsafe` se limita a módulos pequeños de integración con el sistema, cada bloque justificado.
+- A steep learning curve at first: offset by moving step by step, with explanations and tests.
+- `unsafe` is limited to small system-integration modules, with every block justified.

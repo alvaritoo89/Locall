@@ -1,53 +1,55 @@
-# ADR 0020 · Explorar, Ajustes e importar desde la app
+# ADR 0020 · Explore, Settings and importing from the app
 
-- **Estado:** aceptada
-- **Fecha:** 2026-11-10
+- **Status:** accepted
+- **Date:** 2026-11-10
 
-## Decisión
+## Decision
 
-### Explorar: buscar en Hugging Face por nombre
+### Explore: searching Hugging Face by name
 
-- El núcleo busca con `GET https://huggingface.co/api/models?search=…&filter=gguf&sort=downloads&direction=-1`
-  (formato comprobado en vivo el 2026-11-10): solo repositorios con GGUF, los más descargados primero, como mucho 50.
-- **A Hugging Face solo le llega el texto buscado** (codificado), sin cuenta ni datos del equipo. Esto **amplía el
-  ADR 0008**: además de descargar, Locall consulta Hugging Face al buscar, y solo cuando la persona busca. La pantalla
-  lo dice.
-- La API lo ofrece como `POST /api/hub/search` con `{"query", "limit"?}`: con el texto en el cuerpo, lo buscado nunca
-  forma parte de una dirección (ni aparece en una línea de petición), y no hace falta decodificar direcciones.
-- Al abrir un resultado se consulta el repositorio y se instala igual que desde la Biblioteca (versión fijada al
-  commit, compatibilidad comprobada antes de descargar, sha256).
-- Las instalaciones en marcha se guardan en la raíz de la interfaz (`App`), no en cada pantalla: el progreso se ve en
-  Explorar y en la Biblioteca y no se pierde al cambiar de pantalla.
+- The core searches with `GET https://huggingface.co/api/models?search=…&filter=gguf&sort=downloads&direction=-1`
+  (format checked live on 2026-11-10): only repositories with GGUF files, most downloaded first, at most 50.
+- **Hugging Face only receives the search text** (encoded), with no account and no machine data. This **extends
+  ADR 0008**: besides downloading, Locall queries Hugging Face when searching, and only when the person searches. The
+  screen says so.
+- The API offers it as `POST /api/hub/search` with `{"query", "limit"?}`: with the text in the body, what is searched
+  never becomes part of a URL (nor appears in a request line), and no URL decoding is needed.
+- Opening a result looks up the repository and installs it exactly as from the Library (version pinned to the commit,
+  compatibility checked before downloading, sha256).
+- Installs in progress are kept at the root of the UI (`App`), not in each screen: progress shows in Explore and in the
+  Library and is not lost when switching screens.
 
-### Ajustes
+### Settings
 
-- `GET /api/settings` da los ajustes **en uso** (leídos al abrir Locall) y los **guardados** (`config.toml` ahora), y
-  si hace falta reiniciar. `PATCH /api/settings` guarda cambios.
-- **Los cambios se aplican al reiniciar Locall**, no en caliente: el núcleo lee los ajustes al arrancar y cambiarlos
-  en marcha (el contexto de un modelo cargado, el tiempo de descarga del planificador…) sería frágil. La app ofrece
-  «Reiniciar Locall ahora» (`POST /api/shutdown`; se vuelve a abrir solo), desactivado mientras algo está en marcha.
-- **Se pueden cambiar** el contexto, los hilos, los minutos para liberar la memoria y para cerrar Locall, y los días de
-  registros. **No se cambian desde la app** (sí a mano en `config.toml`, con Locall cerrado):
-  - la **carpeta de modelos**: los modelos instalados se quedarían en la antigua; moverlos bien es trabajo aparte;
-  - el **puerto**: la app y la CLI buscan a Locall en el puerto del archivo; cambiarlo con Locall abierto acabaría con
-    dos Locall abiertos;
-  - **paralelo**: fijado en 1 (ADR 0012).
-- **Guardar respeta el archivo del usuario:** solo se reescriben las líneas de los ajustes cambiados (un comentario al
-  final de esa misma línea se pierde; los demás se quedan), el resultado se valida antes de escribirlo y se escribe en
-  un archivo temporal que después sustituye al original.
+- `GET /api/settings` returns the settings **in use** (read when Locall started) and the **saved** ones (`config.toml`
+  now), and whether a restart is needed. `PATCH /api/settings` saves changes.
+- **Changes are applied when Locall restarts**, not live: the core reads its settings at startup, and changing them on
+  the fly (the context of a loaded model, the scheduler's unload time…) would be fragile. The app offers «Reiniciar
+  Locall ahora» (restart now: `POST /api/shutdown`; it starts again by itself), disabled while something is in
+  progress.
+- **Can be changed:** the context, the threads, the minutes before freeing memory and before shutting Locall down, and
+  the days of logs kept. **Cannot be changed from the app** (only by hand in `config.toml`, with Locall closed):
+  - the **models folder**: installed models would stay in the old one; moving them properly is separate work;
+  - the **port**: the app and the CLI look for Locall on the port in the file; changing it while Locall is running would
+    end with two instances running;
+  - **paralelo**: fixed at 1 (ADR 0012).
+- **Saving respects the user's file:** only the lines of the changed settings are rewritten (a comment at the end of
+  that same line is lost; the others remain), the result is validated before writing, and it is written to a temporary
+  file that then replaces the original.
 
-### Importar un `.gguf` desde la app
+### Importing a `.gguf` from the app
 
-- Se abre la ventana normal de Windows con **`rfd` 0.17.2** (MIT). Es la pieza que usa por dentro el complemento
-  oficial `tauri-plugin-dialog`, pero sin él: el complemento arrastra `tauri-plugin-fs` y obliga a dar permisos de
-  archivos a la interfaz. En Windows, `rfd` solo usa `windows-sys` y `raw-window-handle`, que ya estaban en el
-  proyecto: añade **un** crate. Se eligió la 0.17.2 y no la 0.18.0 porque esta tenía 3 días.
-- **El diálogo lo abre la parte Rust**, y la ruta elegida va directa a la API: la interfaz nunca da una ruta. Lo mismo
-  al abrir las carpetas en el Explorador: la interfaz solo elige «datos» o «modelos» y la ruta la da Locall.
+- The standard Windows file dialog is opened with **`rfd` 0.17.2** (MIT). It is the piece the official
+  `tauri-plugin-dialog` uses internally, but without the plugin: the plugin pulls in `tauri-plugin-fs` and requires
+  granting file permissions to the UI. On Windows, `rfd` only uses `windows-sys` and `raw-window-handle`, which were
+  already in the project: it adds **one** crate. 0.17.2 was chosen over 0.18.0 because the latter was 3 days old.
+- **The dialog is opened by the Rust side**, and the chosen path goes straight to the API: the UI never provides a
+  path. The same applies to opening folders in File Explorer: the UI only picks «datos» (data) or «modelos» (models)
+  and Locall provides the path.
 
-## Consecuencias
+## Consequences
 
-- La búsqueda depende de la API pública de Hugging Face; si cambia su formato, Explorar fallará con un error claro
-  (hay una prueba contra el Hugging Face real, marcada `#[ignore]` porque usa internet).
-- Mientras no haya catálogo propio (Fase 6), Explorar muestra lo que hay en Hugging Face sin filtrar por calidad.
-- Reiniciar descarga el modelo de la memoria: la siguiente respuesta tarda unos segundos más en empezar.
+- Search depends on Hugging Face's public API; if its format changes, Explore will fail with a clear error (there is a
+  test against the real Hugging Face, marked `#[ignore]` because it uses the internet).
+- Until our own catalog exists (Phase 6), Explore shows what is on Hugging Face without filtering for quality.
+- Restarting unloads the model from memory: the next answer takes a few seconds longer to start.

@@ -1,30 +1,29 @@
-# ADR 0006 · Seguridad del motor: clave, red y respuestas (D3, D4)
+# ADR 0006 · Engine security: key, network and responses (D3, D4)
 
-- **Estado:** aceptada
-- **Fecha:** 2026-11-08
+- **Status:** accepted
+- **Date:** 2026-11-08
 
-## Decisión
+## Decision
 
-Al lanzar `llama-server`, Locall:
+When it launches `llama-server`, Locall:
 
-1. Lo hace escuchar **solo en `127.0.0.1`**, en un **puerto nuevo** elegido en cada arranque.
-2. Genera una **clave aleatoria de 256 bits** en cada arranque y la pasa por la variable de entorno
-   **`LLAMA_API_KEY`**, nunca como parámetro de línea de comandos.
-3. Restringe CORS con `--cors-origins localhost` y desactiva la interfaz web (`--no-webui`).
-4. **Nunca expone el puerto del motor ni reenvía sus respuestas tal cual:** el núcleo las traduce a su propio
-   formato, con el nombre del modelo en lugar de su ruta.
+1. Makes it listen **only on `127.0.0.1`**, on a **new port** chosen at every start.
+2. Generates a **random 256-bit key** at every start and passes it through the **`LLAMA_API_KEY`** environment
+   variable, never as a command-line argument.
+3. Restricts CORS with `--cors-origins localhost` and disables the web UI (`--no-webui`).
+4. **Never exposes the engine's port or forwards its responses as-is:** the core translates them into its own format,
+   with the model's name instead of its path.
 
-## Motivos (contrato verificado en la Fase 0)
+## Rationale (contract verified in Phase 0)
 
-- Sin clave, `/v1/models`, `/props`, `/slots` y `/metrics` responden 401; `/health` responde sin clave.
-- CORS por defecto: devuelve cualquier `Origin` con `Access-Control-Allow-Credentials: true`.
-- `/v1/models` y cada fragmento del streaming incluyen la **ruta completa del modelo** (contiene el nombre de usuario
-  de Windows).
-- Jan pasa la clave por variable de entorno porque los parámetros de un proceso los puede leer cualquier programa del
-  equipo.
-- Tras una parada forzada, el puerto queda unos segundos en estado "Listen" huérfano.
+- Without the key, `/v1/models`, `/props`, `/slots` and `/metrics` return 401; `/health` answers without the key.
+- Default CORS: it echoes any `Origin` with `Access-Control-Allow-Credentials: true`.
+- `/v1/models` and every streaming chunk include the model's **full path** (which contains the Windows user name).
+- Jan passes the key through an environment variable because any program on the machine can read a process's
+  arguments.
+- After a forced stop, the port stays in an orphaned "Listen" state for a few seconds.
 
-## Consecuencias
+## Consequences
 
-- Fase 1 verificó que la clave no aparece en el registro del motor.
-- La API pública de Locall tiene su propia autenticación (token local), independiente de esta clave.
+- Phase 1 verified that the key does not appear in the engine's log.
+- Locall's public API has its own authentication (a local token), independent of this key.

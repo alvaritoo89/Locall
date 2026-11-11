@@ -1,29 +1,29 @@
-# ADR 0004 · Solo GGUF, Windows primero, paquetes CPU y Vulkan
+# ADR 0004 · GGUF only, Windows first, CPU and Vulkan packages
 
-- **Estado:** aceptada
-- **Fecha:** 2026-11-08
+- **Status:** accepted
+- **Date:** 2026-11-08
 
-## Decisión
+## Decision
 
-- La versión 1 solo admite modelos en formato **GGUF** (versión 3), descargados de Hugging Face con revisión
-  (commit) y sha256 fijados, o importados del disco como "no verificados".
-- Plataforma inicial: **Windows x64**. macOS y Linux, más adelante.
-- Motor incluido: paquetes **CPU** y **Vulkan** de llama.cpp. Vulkan en gráficas dedicadas se marca como
-  **experimental** hasta tener pruebas reales (D6). CUDA queda fuera de la v1.
+- Version 1 only supports models in **GGUF** format (version 3), downloaded from Hugging Face with a pinned revision
+  (commit) and sha256, or imported from disk as "unverified".
+- Initial platform: **Windows x64**. macOS and Linux later.
+- Bundled engine: llama.cpp's **CPU** and **Vulkan** packages. Vulkan on dedicated GPUs is marked **experimental**
+  until it has been tested for real (D6). CUDA is out of scope for v1.
 
-## Motivos
+## Rationale
 
-- GGUF es autocontenido (metadatos, tokenizador, plantilla de chat) y es el formato de llama.cpp.
-- Rechazar otros formatos elimina el riesgo de formatos que ejecutan código al cargarse (pickle).
-- El equipo de referencia es Windows con gráfica integrada Intel; no se puede probar CUDA ni ROCm.
-- Regla 19: no afirmar compatibilidad sin verificarla.
+- GGUF is self-contained (metadata, tokenizer, chat template) and is llama.cpp's format.
+- Rejecting other formats removes the risk of formats that execute code when loaded (pickle).
+- The reference machine is Windows with Intel integrated graphics; CUDA and ROCm cannot be tested.
+- Rule 19: never claim compatibility without verifying it.
 
-## Alternativas descartadas
+## Rejected alternatives
 
-- **Safetensors/ONNX/MLX en la v1:** exigirían otros motores; se reconsiderará con una necesidad concreta.
-- **Incluir CUDA:** sin hardware para probarlo y con condiciones de redistribución propias de NVIDIA.
+- **Safetensors/ONNX/MLX in v1:** they would require other engines; to be reconsidered given a concrete need.
+- **Bundling CUDA:** no hardware to test it, and NVIDIA's own redistribution terms.
 
-## Consecuencias
+## Consequences
 
-- Catálogo y validador centrados en GGUF; el lector de cabeceras GGUF es un componente crítico (con pruebas y
+- The catalog and the validator focus on GGUF; the GGUF header reader is a critical component (with tests and
   fuzzing).

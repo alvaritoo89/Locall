@@ -1,51 +1,55 @@
-# ADR 0023 · El catálogo dentro de Locall: actualizar, instalar por nombre y recomendar
+# ADR 0023 · The catalog inside Locall: updating, installing by name and recommending
 
-- **Estado:** aceptada
-- **Fecha:** 2026-11-10
+- **Status:** accepted
+- **Date:** 2026-11-10
 
-## Decisión
+## Decision
 
-- **Al abrir**, el núcleo usa el catálogo más nuevo (`published`) entre el que lleva dentro y uno descargado antes
-  (`<datos>\catalogo\`), siempre con la firma comprobada. Si el guardado no pasa la firma, se usa el incluido.
-- **Actualizar** (`POST /api/catalog/update`): se mira en GitHub
-  (`https://raw.githubusercontent.com/alvaritoo89/Locall/main/catalogo/catalogo.json` y su `.minisig`) **como mucho una
-  vez al día** (salvo `force`). La hora de la última vez se guarda aunque falle, para no insistir si no hay internet.
-  - Límites: 4 MB el catálogo, 4 KB la firma.
-  - Solo se acepta si la firma es buena **y** `published` es mayor que el del que hay: un catálogo antiguo bien firmado
-    se ignora (anti-retroceso).
-  - Se guarda con archivo temporal + renombrar; si se corta a medias, al abrir la firma no cuadra y se usa el incluido.
-  - Nada se mira solo: la app pide la actualización la primera vez que se abre Explorar; la CLI, con `locall catalog`.
-- **Instalar por nombre** (`locall pull qwen3-4b`, `{"name": …}` en `POST /api/models/pull`): **antes de descargar**
-  se comprueba que lo que ofrece Hugging Face en ese commit coincide exactamente con lo firmado (mismas partes, mismos
-  tamaños, mismos sha256). Si no, error `catalog_mismatch` y no se descarga nada. Después, la instalación normal
-  (comprueba la cabecera y verifica cada archivo con sha256).
-- **Identificador** del modelo instalado: el nombre del catálogo (`qwen3-4b`) para la variante por defecto y
-  `nombre-variante` (`qwen3-4b-q8_0`) para las demás. Así `locall run qwen3-4b` funciona tras `locall pull qwen3-4b`.
-- En la CLI, `pull` con `/` sigue siendo un repositorio de Hugging Face; sin `/`, un nombre del catálogo.
-- **¿Cabe?** en el catálogo es **aproximado**: el modelo no está descargado y no se puede leer su cabecera, así que se
-  estima como el archivo + 10 % + 512 MB, contra la memoria libre ahora (como en la Biblioteca). La app y la CLI dicen
-  «aprox.».
-- La app muestra «Recomendados por Locall» al principio de Explorar, con la etiqueta «compatible» y la explicación de
-  que no se han probado uno a uno (ADR 0022).
+- **On startup**, the core uses the newest catalog (`published`) between the one it ships with and one downloaded
+  earlier (`<data>\catalogo\`), always with the signature checked. If the saved one fails the signature check, the
+  bundled one is used.
+- **Updating** (`POST /api/catalog/update`): GitHub is checked
+  (`https://raw.githubusercontent.com/alvaritoo89/Locall/main/catalogo/catalogo.json` and its `.minisig`) **at most
+  once a day** (unless `force`). The time of the last check is saved even if it fails, so as not to insist when there
+  is no internet.
+  - Limits: 4 MB for the catalog, 4 KB for the signature.
+  - It is only accepted if the signature is valid **and** `published` is greater than the current one's: an old, validly
+    signed catalog is ignored (anti-rollback).
+  - It is saved through a temporary file + rename; if interrupted halfway, the signature will not match on startup and
+    the bundled catalog is used.
+  - Nothing is checked automatically: the app requests the update the first time Explore is opened; the CLI, with
+    `locall catalog`.
+- **Installing by name** (`locall pull qwen3-4b`, `{"name": …}` in `POST /api/models/pull`): **before downloading**,
+  Locall checks that what Hugging Face offers at that commit matches exactly what is signed (same parts, same sizes,
+  same sha256). If not: a `catalog_mismatch` error and nothing is downloaded. Then the normal install (checks the
+  header and verifies each file with sha256).
+- **Identifier** of the installed model: the catalog name (`qwen3-4b`) for the default variant and `name-variant`
+  (`qwen3-4b-q8_0`) for the others. So `locall run qwen3-4b` works after `locall pull qwen3-4b`.
+- In the CLI, `pull` with a `/` is still a Hugging Face repository; without `/`, a catalog name.
+- **Does it fit?** is **approximate** in the catalog: the model has not been downloaded and its header cannot be read,
+  so it is estimated as the file + 10% + 512 MB, against the memory free right now (as in the Library). The app and the
+  CLI say «aprox.» (approx.).
+- The app shows «Recomendados por Locall» (recommended by Locall) at the top of Explore, labelled «compatible», with the
+  explanation that they have not been tested one by one (ADR 0022).
 
-## Nuevas rutas y errores
+## New routes and errors
 
-| Ruta | Qué hace |
+| Route | What it does |
 |------|----------|
-| `GET /api/catalog` | Catálogo en uso: `published`, `source` (`builtin`/`downloaded`), `checked_at` y `models` (con `status: "compatible"`, `installed`, `fit_estimate`, `memory_estimate_bytes`, `size_bytes`, `variants`) |
+| `GET /api/catalog` | Catalog in use: `published`, `source` (`builtin`/`downloaded`), `checked_at` and `models` (with `status: "compatible"`, `installed`, `fit_estimate`, `memory_estimate_bytes`, `size_bytes`, `variants`) |
 | `POST /api/catalog/update` | `{"force"?}` → `{"result": "not_due" \| "no_changes" \| "updated", "catalog": …}` |
 
-Errores: `not_in_catalog` (404), `catalog_mismatch` (409), `catalog_invalid` y `catalog_unavailable` (502).
+Errors: `not_in_catalog` (404), `catalog_mismatch` (409), `catalog_invalid` and `catalog_unavailable` (502).
 
-## Privacidad
+## Privacy
 
-Ampliación del ADR 0008: además de Hugging Face, Locall se conecta a **GitHub** (raw.githubusercontent.com), como
-mucho una vez al día y solo al usar Explorar o `locall catalog`, para descargar dos archivos públicos. No envía nada
-más que la petición. La pantalla de Ajustes lo dice.
+Extension of ADR 0008: besides Hugging Face, Locall connects to **GitHub** (raw.githubusercontent.com), at most once a
+day and only when Explore or `locall catalog` is used, to download two public files. Nothing but the request itself is
+sent. The Settings screen says so.
 
-## Pruebas
+## Tests
 
-Catálogos de prueba firmados con la clave de prueba (`crates/locall-core/tests/datos/`), publicados después del
-oficial, contra un Hugging Face falso que también sirve el catálogo: actualizar una vez al día, guardar y recordar,
-anti-retroceso, firma manipulada, GitHub sin el archivo, instalar por nombre, huella distinta en Hugging Face (no se
-descarga nada) y nombre inexistente. Y una prueba (`#[ignore]`, usa internet) con el catálogo real de GitHub.
+Test catalogs signed with the test key (`crates/locall-core/tests/datos/`), published after the official one, against a
+fake Hugging Face that also serves the catalog: updating once a day, saving and remembering, anti-rollback, tampered
+signature, GitHub without the file, installing by name, a different fingerprint on Hugging Face (nothing is
+downloaded) and a non-existent name. Plus a test (`#[ignore]`, uses the internet) against the real catalog on GitHub.

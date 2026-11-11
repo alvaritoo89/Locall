@@ -1,55 +1,53 @@
-# ADR 0016 · Compatibilidad con OpenAI y cierre por inactividad
+# ADR 0016 · OpenAI compatibility and idle shutdown
 
-- **Estado:** aceptada
-- **Fecha:** 2026-11-08
+- **Status:** accepted
+- **Date:** 2026-11-08
 
-## Decisión
+## Decision
 
-### Compatibilidad con la API de OpenAI
+### OpenAI API compatibility
 
-- `GET /v1/models` y `POST /v1/chat/completions`, con el formato de OpenAI: `chat.completion` entero o, con
-  `"stream": true`, trozos `chat.completion.chunk` por **SSE** terminados en `data: [DONE]`. Admite
-  `stream_options.include_usage`, `max_tokens` / `max_completion_tokens`, `temperature`, `seed`, el rol `developer`
-  y el contenido como lista de partes de texto.
-- La "API key" es el **token de Locall** (los SDK de OpenAI ya envían `Authorization: Bearer …`). Se aplican las
-  mismas protecciones que al resto (ADR 0015): `Host` y `Origin`.
-- Lo que **no se admite todavía se rechaza** con un error 400 claro, en vez de ignorarlo: `tools`/`functions`,
-  `tool_choice`, `response_format`, `n` > 1, imágenes en los mensajes y el rol `tool`.
-- Los parámetros de muestreo que Locall todavía no pasa al motor (`top_p`, `presence_penalty`,
-  `frequency_penalty`, `stop`…) **se ignoran**.
-- Los errores mantienen nuestro formato `{"error": {"code", "message"}}`, que incluye el `message` que leen los
-  clientes de OpenAI.
+- `GET /v1/models` and `POST /v1/chat/completions`, in OpenAI's format: a whole `chat.completion` or, with
+  `"stream": true`, `chat.completion.chunk` pieces over **SSE** ending with `data: [DONE]`. Supports
+  `stream_options.include_usage`, `max_tokens` / `max_completion_tokens`, `temperature`, `seed`, the `developer` role
+  and content given as a list of text parts.
+- The "API key" is **Locall's token** (OpenAI SDKs already send `Authorization: Bearer …`). The same protections as
+  everywhere else apply (ADR 0015): `Host` and `Origin`.
+- What is **not supported yet is rejected** with a clear 400 error instead of being ignored: `tools`/`functions`,
+  `tool_choice`, `response_format`, `n` > 1, images in messages and the `tool` role.
+- Sampling parameters that Locall does not pass to the engine yet (`top_p`, `presence_penalty`, `frequency_penalty`,
+  `stop`…) **are ignored**.
+- Errors keep our `{"error": {"code", "message"}}` format, which includes the `message` that OpenAI clients read.
 
-### Cierre por inactividad
+### Idle shutdown
 
-- Ajuste `cierre_inactividad_minutos` (30 por defecto, 0 = nunca): si Locall lleva ese tiempo **sin peticiones y sin
-  trabajo en marcha**, se cierra solo, parando el motor. La CLI y la app lo volverán a abrir cuando haga falta
-  (decisión ratificada: núcleo bajo demanda, sin arrancar con Windows).
-- Cuenta como trabajo en marcha: una instalación, una carga o una respuesta en curso, aunque no lleguen peticiones
-  nuevas. Un modelo cargado sin usar no cuenta. Se comprueba cada 30 s.
-- `locall serve` termina con Ctrl+C o por inactividad, lo que llegue antes.
+- Setting `cierre_inactividad_minutos` (30 by default, 0 = never): if Locall has spent that long **with no requests
+  and no work in progress**, it shuts itself down, stopping the engine. The CLI and the app start it again when needed
+  (confirmed decision: on-demand core, not started with Windows).
+- Work in progress means an install, a load or an answer under way, even if no new requests arrive. A loaded but unused
+  model does not count. Checked every 30 s.
+- `locall serve` ends with Ctrl+C or by idle shutdown, whichever comes first.
 
-## Motivos
+## Rationale
 
-- Ser compatible con OpenAI hace que funcionen sin cambios muchas herramientas y bibliotecas que ya existen.
-- Rechazar lo no admitido evita que una herramienta crea que, por ejemplo, ha recibido una llamada a una función
-  cuando Locall la ha ignorado (regla 12: no ocultar errores).
-- Un núcleo que se cierra solo no se queda en segundo plano gastando memoria cuando el usuario ya no lo usa.
+- Being OpenAI-compatible makes many existing tools and libraries work unchanged.
+- Rejecting what is not supported prevents a tool from believing, for example, that it received a function call when
+  Locall ignored it (rule 12: do not hide errors).
+- A core that shuts itself down does not linger in the background using memory when the user no longer needs it.
 
-## Verificación y límites (regla 19)
+## Verification and limits (rule 19)
 
-- **Comprobado** con pruebas que siguen el formato documentado de OpenAI, contra el motor real: respuesta entera,
-  SSE con uso al final y errores.
-- **Comprobado con el cliente oficial** `openai` 3.46.0 de Python (2026-11-08, `scripts/probar_openai.py`):
-  `models.list()`, respuesta entera, `stream=True` con `include_usage`, y los errores llegan como las excepciones
-  que espera el cliente (`BadRequestError` con «tools», `AuthenticationError`, `NotFoundError`), con nuestro mensaje
-  en español.
-- **No comprobado todavía** con herramientas como Continue u Open WebUI. Hasta probarlas, no se anuncia
-  compatibilidad con ellas.
-- Las herramientas que se ejecutan **dentro de un navegador** envían `Origin` y se rechazan (ADR 0015); las que
-  hablan desde un servidor o una extensión, no.
+- **Checked** with tests that follow OpenAI's documented format, against the real engine: whole answers, SSE with usage
+  at the end, and errors.
+- **Checked with the official client** `openai` 3.46.0 for Python (2026-11-08, `scripts/probar_openai.py`):
+  `models.list()`, a whole answer, `stream=True` with `include_usage`, and errors arrive as the exceptions the client
+  expects (`BadRequestError` for «tools», `AuthenticationError`, `NotFoundError`), with our message in Spanish.
+- **Not checked yet** with tools such as Continue or Open WebUI. Until they are tested, compatibility with them is not
+  announced.
+- Tools that run **inside a browser** send `Origin` and are rejected (ADR 0015); those that talk from a server or an
+  extension are not.
 
-## Consecuencias
+## Consequences
 
-- Al añadir `tools` o imágenes en el futuro, habrá que quitar su rechazo y añadir pruebas.
-- Las peticiones `/v1` sin `stream` esperan la respuesta entera: el cliente debe tener un tiempo de espera suficiente.
+- When `tools` or images are added in the future, their rejection must be removed and tests added.
+- `/v1` requests without `stream` wait for the whole answer: the client needs a long enough timeout.

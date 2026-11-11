@@ -1,38 +1,38 @@
-# ADR 0013 · Configuración: carpeta de datos y config.toml con lector propio
+# ADR 0013 · Configuration: data folder and config.toml with our own reader
 
-- **Estado:** aceptada
-- **Fecha:** 2026-11-08
+- **Status:** accepted
+- **Date:** 2026-11-08
 
-## Decisión
+## Decision
 
-- Los datos de Locall viven en **`%LOCALAPPDATA%\Locall`**: `config.toml`, `locall.db`, `modelos\` y
-  `registros\`. Con la variable `LOCALL_DATOS` se puede usar otra carpeta (pruebas, versión portátil).
-- Los ajustes de la v1: `carpeta_modelos`, `hilos` (`"auto"` o número), `contexto`, `inactividad_minutos`,
-  `paralelo` y `registros_dias`. Cada uno con un **rango validado** y mensajes que dicen la línea.
-- El archivo usa un **subconjunto de TOML** (`clave = valor`, comentarios `#`, textos `'...'` y `"..."`, enteros)
-  leído con un **lector propio** (`locall-config::lector`).
-- Si el archivo no existe, se usan los valores por defecto. `crear_si_no_existe` lo crea con los valores por
-  defecto comentados y **nunca sobrescribe** el del usuario.
-- Una clave desconocida es un **aviso**, no un error.
+- Locall's data lives in **`%LOCALAPPDATA%\Locall`**: `config.toml`, `locall.db`, `modelos\` and `registros\`. The
+  `LOCALL_DATOS` environment variable selects another folder (tests, portable version).
+- The v1 settings: `carpeta_modelos`, `hilos` (`"auto"` or a number), `contexto`, `inactividad_minutos`, `paralelo` and
+  `registros_dias`. Each one with a **validated range** and error messages that give the line.
+- The file uses a **subset of TOML** (`key = value`, `#` comments, `'...'` and `"..."` strings, integers) read with
+  **our own reader** (`locall-config::lector`).
+- If the file does not exist, the defaults are used. `crear_si_no_existe` creates it with the defaults, commented, and
+  **never overwrites** the user's file.
+- An unknown key is a **warning**, not an error.
 
-## Motivos
+## Rationale
 
-- `Local` y no `Roaming`: la parte "Roaming" se puede sincronizar con otros equipos, y los modelos ocupan gigas.
-- **Sin dependencias nuevas** (regla 3): con los crates `toml` + `serde` serían unas diez dependencias para leer seis
-  ajustes planos. El lector propio tiene unas 150 líneas con pruebas. Como el formato es TOML válido, se puede
-  cambiar a `toml` en el futuro **sin tocar los archivos de los usuarios**.
-- Las rutas de Windows se escriben con comillas simples (`'D:\Modelos'`) porque en TOML las dobles interpretan `\`.
-  Si alguien usa dobles, el mensaje lo explica.
-- Avisar en vez de fallar ante claves desconocidas permite abrir con una versión antigua un archivo de una nueva.
-- Los hilos se validan contra los del equipo: en la Fase 0, 246 hilos en un equipo de 12 hundieron la velocidad.
+- `Local` rather than `Roaming`: the "Roaming" part can be synchronized to other machines, and models take gigabytes.
+- **No new dependencies** (rule 3): with the `toml` + `serde` crates it would be about ten dependencies to read six flat
+  settings. Our reader is about 150 lines with tests. Since the format is valid TOML, it can switch to `toml` in the
+  future **without touching users' files**.
+- Windows paths are written with single quotes (`'D:\Modelos'`) because in TOML double quotes interpret `\`. If someone
+  uses double quotes, the message explains it.
+- Warning instead of failing on unknown keys lets an older version open a file written by a newer one.
+- Threads are validated against the machine's: in Phase 0, 246 threads on a 12-thread machine sank the speed.
 
-## Alternativas descartadas
+## Rejected alternatives
 
-- **`toml` + `serde`:** muchas dependencias para un archivo tan simple.
-- **JSON (ya tenemos `serde_json`):** sin comentarios y fácil de romper a mano con una coma.
-- **Registro de Windows:** difícil de editar, de copiar y de llevar a Linux.
+- **`toml` + `serde`:** many dependencies for such a simple file.
+- **JSON (we already have `serde_json`):** no comments, and easy to break by hand with a comma.
+- **The Windows registry:** hard to edit, to copy and to port to Linux.
 
-## Consecuencias
+## Consequences
 
-- Si en el futuro hacen falta secciones o listas, se cambia al crate `toml` (mismo formato).
-- El ajuste de la gráfica (Vulkan) se añadirá cuando esté validada (D1).
+- If sections or lists are ever needed, switch to the `toml` crate (same format).
+- The GPU (Vulkan) setting will be added once it is validated (D1).
