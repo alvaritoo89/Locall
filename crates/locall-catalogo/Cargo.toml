@@ -1,6 +1,6 @@
 [package]
 name = "locall-catalogo"
-description = "El catálogo de modelos compatibles de Locall: formato, validación y firma (minisign)."
+description = "Locall's catalog of compatible models: format, validation and signature (minisign)."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -9,7 +9,7 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
-# Verificar la firma minisign del catálogo. MIT, sin dependencias, sin `unsafe` (ADR 0022).
+# Verifies the catalog's minisign signature. MIT, no dependencies, no `unsafe` (ADR 0022).
 minisign-verify = "=0.3.0"
 serde_json = "1.0.154"
 

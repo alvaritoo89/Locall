@@ -1,6 +1,6 @@
 [package]
 name = "locall-cli"
-description = "Línea de comandos de Locall: un cliente de la API local que arranca el núcleo cuando hace falta."
+description = "Locall's command line: a client of the local API that starts the core when needed."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -9,11 +9,11 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
-# Lee las órdenes (`--opcion=valor`, `-abc`, textos con caracteres raros) sin dependencias; la ayuda y los errores,
-# en español, son nuestros (ADR 0017).
+# Parses the command line (`--option=value`, `-abc`, text with unusual characters) without dependencies; the help and
+# the error messages, in Spanish, are our own (ADR 0017).
 lexopt = "0.3.2"
 locall-config = { path = "../locall-config" }
 locall-system = { path = "../locall-system" }
 serde_json = "1.0.154"
-# Cliente HTTP para hablar con la API local (127.0.0.1): sin TLS.
+# HTTP client to talk to the local API (127.0.0.1): no TLS.
 ureq = { version = "3.5.1", default-features = false }

@@ -1,6 +1,6 @@
 [package]
 name = "locall-engine"
-description = "Motor de Locall: arranca, vigila y para llama-server de forma segura."
+description = "Locall's engine: starts, watches and stops llama-server safely."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -9,13 +9,13 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
-# Clave aleatoria del motor con el generador seguro del sistema.
+# Random engine key from the operating system's secure generator.
 getrandom = "0.4.3"
 locall-system = { path = "../locall-system" }
 log = "0.4.35"
-# Peticiones y respuestas del motor en JSON (también la usará la API).
+# Engine requests and responses in JSON (the API uses it too).
 serde_json = "1.0.154"
-# HTTP con el motor, que está en el mismo equipo (127.0.0.1): sin TLS.
+# HTTP to the engine, which runs on the same machine (127.0.0.1): no TLS.
 ureq = { version = "3.5.1", default-features = false }
 
 [dev-dependencies]

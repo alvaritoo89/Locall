@@ -1,6 +1,6 @@
 [package]
 name = "locall-system"
-description = "Información del equipo para Locall (memoria, procesador) y control de procesos de Windows (Job Object)."
+description = "Machine information for Locall (memory, CPU) and Windows process control (Job Objects)."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

@@ -1,25 +1,25 @@
-# Resultados de compilación de Rust
+# Rust build output
 /target/
 
-# App de escritorio: paquetes de npm y la interfaz construida
+# Desktop app: npm packages and the built UI
 node_modules/
 /crates/locall-app/dist/
 /crates/locall-app/gen/
 
-# Modelos y motores: nunca van al repositorio (pesan gigas y tienen sus propias licencias)
+# Models and engines never go into the repository (they weigh gigabytes and have their own licenses)
 *.gguf
 /engines/bin/
 
-# Archivos locales de editores y del sistema
+# Local editor and system files
 .vscode/
 .idea/
 *.swp
 Thumbs.db
 desktop.ini
 
-# Secretos locales (por si acaso)
+# Local secrets (just in case)
 *.key
 .env
 
-# La web generada (en local se genera en target/web; en GitHub Actions, en _site)
+# The generated website (locally it is generated in target/web; in GitHub Actions, in _site)
 /_site/

@@ -1,6 +1,6 @@
 [package]
 name = "locall"
-description = "Locall: el programa (núcleo, API local y, en la Fase 4, la línea de comandos)."
+description = "Locall: the program (core, local API and command line)."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -22,6 +22,6 @@ log = "0.4.35"
 tokio = { version = "1.54.1", default-features = false, features = ["rt-multi-thread", "net", "signal", "sync", "time"] }
 
 [dev-dependencies]
-# El Hugging Face falso de las pruebas (compartido con locall-api) calcula huellas con el almacén.
+# The fake Hugging Face used in tests (shared with locall-api) computes fingerprints with the store.
 locall-store = { path = "../locall-store" }
 serde_json = "1.0.154"

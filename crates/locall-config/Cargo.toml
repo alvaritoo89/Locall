@@ -1,6 +1,6 @@
 [package]
 name = "locall-config"
-description = "Configuración de Locall: carpetas de datos y ajustes del usuario (config.toml), validados."
+description = "Locall's configuration: data folders and validated user settings (config.toml)."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -9,9 +9,9 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
-# La "fachada" estándar de registros de Rust (ya estaba en el proyecto, la trae ureq). MIT/Apache.
+# Rust's standard logging "facade" (already in the project, ureq brings it in). MIT/Apache.
 log = { version = "0.4.35", features = ["std"] }
-# Para validar los hilos contra los del equipo.
+# To validate the thread count against the machine's.
 locall-system = { path = "../locall-system" }
 
 [dev-dependencies]

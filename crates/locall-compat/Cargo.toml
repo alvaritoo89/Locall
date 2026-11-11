@@ -1,6 +1,6 @@
 [package]
 name = "locall-compat"
-description = "¿Cabe este modelo en tu equipo y lo entiende el motor? Estimación de memoria y compatibilidad para Locall."
+description = "Does this model fit on your machine, and can the engine run it? Memory and compatibility estimates for Locall."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -11,6 +11,6 @@ publish.workspace = true
 [dependencies]
 locall-gguf = { path = "../locall-gguf" }
 
-# Solo para el ejemplo: consultar la RAM real del equipo.
+# Only for the example: read the machine's real RAM.
 [dev-dependencies]
 locall-system = { path = "../locall-system" }

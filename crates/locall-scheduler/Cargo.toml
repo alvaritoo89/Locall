@@ -1,6 +1,6 @@
 [package]
 name = "locall-scheduler"
-description = "Planificador de Locall: decide qué modelo está cargado, lo presta y lo descarga cuando no se usa."
+description = "Locall's scheduler: decides which model is loaded, lends it out and unloads it when unused."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -16,5 +16,5 @@ log = "0.4.35"
 locall-system = { path = "../locall-system" }
 
 [dev-dependencies]
-# Para la prueba de privacidad de los registros.
+# For the log privacy test.
 locall-config = { path = "../locall-config" }

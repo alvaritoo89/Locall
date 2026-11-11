@@ -1,10 +1,10 @@
-# Publica la web de Locall en GitHub Pages (ADR 0024).
+# Publishes the Locall website to GitHub Pages (ADR 0024).
 #
-# Se ejecuta al subir cambios del catálogo, de la web o del generador. Antes de publicar: pasa las pruebas del catálogo
-# y del generador, y el generador se niega a crear la web si el catálogo no tiene la firma oficial buena.
+# Runs when changes to the catalog, the website or the generator are pushed. Before publishing: runs the catalog and
+# generator tests, and the generator refuses to build the site if the catalog does not carry a valid official signature.
 #
-# Seguridad: cada acción está fijada a un commit exacto (no a una etiqueta, que su autor podría mover); el trabajo que
-# compila solo puede leer el repositorio; solo el que publica tiene permiso para publicar.
+# Security: every action is pinned to an exact commit (not to a tag, which its author could move); the build job can
+# only read the repository; only the publishing job is allowed to publish.
 
 name: Web
 
@@ -22,7 +22,7 @@ on:
 permissions:
   contents: read
 
-# Una publicación cada vez; si llega otra, espera (no se cancela una a medias).
+# One deployment at a time; if another arrives, it waits (a deployment is never cancelled halfway).
 concurrency:
   group: pages
   cancel-in-progress: false
@@ -35,15 +35,15 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Rust 1.99.1 (la misma versión que en desarrollo)
+      - name: Rust 1.99.1 (same version as in development)
         run: |
           rustup toolchain install 1.99.1 --profile minimal
           rustup default 1.99.1
 
-      - name: Pruebas del catálogo y del generador
+      - name: Catalog and generator tests
         run: cargo test --locked -p locall-catalogo -p locall-web
 
-      - name: Generar la web (se niega si el catálogo no tiene firma buena)
+      - name: Generate the website (refuses if the catalog's signature is not valid)
         run: cargo run --locked -p locall-web -- _site
 
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0

@@ -1,6 +1,6 @@
 [package]
 name = "locall-mutador"
-description = "Solo para pruebas: estropea entradas válidas a propósito y comprueba que Locall nunca se cierra de golpe ni pide memoria sin límite."
+description = "Tests only: deliberately corrupts valid inputs and checks that Locall never crashes or allocates without limit."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

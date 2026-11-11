@@ -1,6 +1,6 @@
 [package]
 name = "locall-registry"
-description = "Registro de modelos instalados de Locall (SQLite): qué modelo es cada archivo, de dónde vino y su licencia."
+description = "Locall's registry (SQLite): installed models (which model each file is, where it came from, its license) and saved conversations."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

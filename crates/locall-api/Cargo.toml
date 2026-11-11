@@ -1,6 +1,6 @@
 [package]
 name = "locall-api"
-description = "API local de Locall: servidor HTTP en 127.0.0.1 con token y protección frente a webs (ADR 0015)."
+description = "Locall's local API: an HTTP server on 127.0.0.1 with a token and protection against websites (ADR 0015)."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -9,9 +9,9 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
-# Servidor HTTP (ADR 0015). Solo HTTP/1.1 y JSON: sin HTTP/2, WebSockets ni nada que no usemos.
+# HTTP server (ADR 0015). HTTP/1.1 and JSON only: no HTTP/2, WebSockets or anything we do not use.
 axum = { version = "0.8.9", default-features = false, features = ["http1", "json", "tokio"] }
-# Para enviar la respuesta por trozos (ya estaba en el proyecto: la trae axum).
+# To stream responses in chunks (already in the project: axum brings it in).
 futures-util = { version = "0.3.34", default-features = false }
 getrandom = "0.4.3"
 locall-compat = { path = "../locall-compat" }
@@ -20,19 +20,19 @@ locall-core = { path = "../locall-core" }
 locall-engine = { path = "../locall-engine" }
 locall-registry = { path = "../locall-registry" }
 locall-scheduler = { path = "../locall-scheduler" }
-# Datos del equipo para la app (procesador, memoria).
+# Machine information for the app (CPU, memory).
 locall-system = { path = "../locall-system" }
 log = "0.4.35"
 serde_json = "1.0.154"
-# Para llamar al núcleo (que es de hilos normales) sin bloquear el servidor: spawn_blocking.
+# To call the core (which uses plain threads) without blocking the server: spawn_blocking.
 tokio = { version = "1.54.1", default-features = false, features = ["rt", "net", "sync", "time"] }
 
 [dev-dependencies]
-# Para combinar dos esperas en la prueba de inactividad.
+# To combine two waits in the idle-shutdown test.
 futures-util = { version = "0.3.34", default-features = false }
-# El Hugging Face falso de las pruebas calcula las huellas con el almacén.
+# The fake Hugging Face used in tests computes fingerprints with the store.
 locall-store = { path = "../locall-store" }
 tokio = { version = "1.54.1", default-features = false, features = ["rt-multi-thread", "net"] }
-# Cliente para las pruebas de conversación (entiende respuestas por trozos).
+# Client for the chat tests (understands chunked responses).
 ureq = { version = "3.5.1", default-features = false }
 locall-mutador = { path = "../locall-mutador" }

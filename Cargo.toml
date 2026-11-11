@@ -1,11 +1,11 @@
-# Workspace de Locall: agrupa todos los módulos (crates) del proyecto.
-# Cada módulo vivirá en crates/<nombre> y heredará estos valores comunes.
+# Locall workspace: groups all the modules (crates) of the project.
+# Each module lives in crates/<name> and inherits these common values.
 
 [workspace]
 resolver = "3"
 members = ["crates/*"]
-# Lo que compilan y prueban `cargo build` y `cargo test` sin indicar paquete: todo menos la app de escritorio
-# (Tauri son más de 200 crates y necesita la interfaz ya construida). La app: `cargo build -p locall-app`.
+# What `cargo build` and `cargo test` build and test when no package is given: everything except the desktop app
+# (Tauri is over 200 crates and needs the UI already built). For the app: `cargo build -p locall-app`.
 default-members = [
     "crates/locall",
     "crates/locall-api",
@@ -33,8 +33,8 @@ license = "Apache-2.0"
 repository = "https://github.com/alvaritoo89/Locall"
 publish = false
 
-# En modo desarrollo, Rust no optimiza el código para compilar rápido. Para el cálculo de sha256 eso lo hace muy
-# lento con archivos de gigas, así que optimizamos solo esas bibliotecas (nuestro código sigue compilando rápido).
+# In development mode Rust does not optimize, to compile faster. That makes sha256 very slow on multi-gigabyte files,
+# so only those libraries are optimized (our own code still compiles fast).
 [profile.dev.package.sha2]
 opt-level = 3
 

@@ -1,6 +1,6 @@
 [package]
 name = "locall-web"
-description = "Genera la web de Locall (páginas estáticas) a partir del catálogo firmado."
+description = "Generates the Locall website (static pages) from the signed catalog."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

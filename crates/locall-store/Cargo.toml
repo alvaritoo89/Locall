@@ -1,6 +1,6 @@
 [package]
 name = "locall-store"
-description = "Almacén de modelos de Locall: archivos guardados una sola vez por su huella sha256 y verificados."
+description = "Locall's model store: files stored once, by their sha256 fingerprint, and verified."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -11,10 +11,10 @@ publish.workspace = true
 [dependencies]
 sha2 = "0.11.1"
 
-# Solo en Windows: preguntar el espacio libre del disco y cuántos nombres (enlaces duros) tiene un archivo.
+# Windows only: query free disk space and how many names (hard links) a file has.
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Storage_FileSystem"] }
 
-# Solo para las pruebas: comprobar con el lector GGUF que la snapshot de un modelo dividido funciona.
+# Tests only: check with the GGUF reader that the snapshot of a split model works.
 [dev-dependencies]
 locall-gguf = { path = "../locall-gguf" }

@@ -1,6 +1,6 @@
 [package]
 name = "locall-app"
-description = "Aplicación de escritorio de Locall (Tauri): un cliente más de la API local."
+description = "Locall's desktop app (Tauri): just another client of the local API."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -16,14 +16,14 @@ path = "src/main.rs"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-# La parte Rust de la app habla con Locall igual que la CLI: reutiliza su cliente y el arranque bajo demanda.
+# The Rust side of the app talks to Locall just like the CLI: it reuses its client and on-demand startup.
 locall-cli = { path = "../locall-cli" }
 locall-config = { path = "../locall-config" }
-# El portapapeles de Windows (botón «Copiar»): no depende de los permisos del navegador integrado.
+# The Windows clipboard (the «Copiar» button): does not depend on the embedded browser's permissions.
 locall-system = { path = "../locall-system" }
-# La ventana normal de Windows para elegir un archivo (importar un .gguf). MIT. En Windows solo usa `windows-sys` y
-# `raw-window-handle`, que ya estaban en el proyecto (ADR 0020).
+# The standard Windows file picker (to import a .gguf). MIT. On Windows it only uses `windows-sys` and
+# `raw-window-handle`, which were already in the project (ADR 0020).
 rfd = { version = "=0.17.2", default-features = false }
 serde_json = "1.0.154"
-# Ventana con la interfaz web (WebView2 de Windows). ADR 0018.
+# Window with the web UI (Windows WebView2). ADR 0018.
 tauri = { version = "2.12", features = [] }
