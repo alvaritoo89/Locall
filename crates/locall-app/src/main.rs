@@ -1,10 +1,10 @@
-//! La aplicación de escritorio de Locall (ADR 0018).
+//! Locall's desktop app (ADR 0018).
 //!
-//! Esta parte en Rust es **un cliente más de la API local**, como la CLI (regla 9): reutiliza su cliente y su
-//! arranque bajo demanda. La interfaz (React, en `ui/`) no habla nunca con la API: le pide las cosas a esta parte
-//! con `invoke(...)`. Así **el token nunca llega a JavaScript**, y la API sigue rechazando las peticiones de webs.
+//! This Rust side is **just another client of the local API**, like the CLI (rule 9): it reuses its client and its
+//! on-demand startup. The UI (React, in `ui/`) never talks to the API: it asks this side for things with
+//! `invoke(...)`. So **the token never reaches JavaScript**, and the API keeps rejecting requests from websites.
 
-// En la versión final no se abre una consola junto a la ventana.
+// In the release build, no console window opens next to the app window.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::collections::HashMap;
@@ -21,15 +21,15 @@ use locall_config::Rutas;
 use serde_json::{Value, json};
 use tauri::ipc::Channel;
 
-// ─── Conexión con Locall ──────────────────────────────────────────────────────
+// ─── Connection to Locall ─────────────────────────────────────────────────────
 
-/// La conexión con Locall, compartida por las órdenes de la interfaz. Se crea al primer uso (y se rehace si Locall
-/// se ha cerrado entretanto).
+/// The connection to Locall, shared by the UI commands. Created on first use (and re-created if Locall has shut
+/// down in the meantime).
 #[derive(Default, Clone)]
 struct Conexion(Arc<Mutex<Option<Cliente>>>);
 
 impl Conexion {
-    /// Un cliente; si no hay, conecta (o arranca Locall en segundo plano).
+    /// A client; if there is none, connects (or starts Locall in the background).
     fn cliente(&self) -> Result<Cliente, String> {
         let mut guardado = self.0.lock().unwrap_or_else(PoisonError::into_inner);
         if let Some(c) = guardado.as_ref() {
@@ -42,13 +42,13 @@ impl Conexion {
         Ok(cliente)
     }
 
-    /// Olvida el cliente (por ejemplo, porque Locall se cerró por inactividad): el siguiente uso reconecta.
+    /// Forgets the client (for example, because Locall shut down from inactivity): the next use reconnects.
     fn olvidar(&self) {
         *self.0.lock().unwrap_or_else(PoisonError::into_inner) = None;
     }
 
-    /// Ejecuta `f` con un cliente. Si falla **la conexión** (Locall se cerró), reconecta una vez y lo reintenta; los
-    /// errores de la API (un modelo que no existe…) se devuelven tal cual, sin reintentar.
+    /// Runs `f` with a client. If **the connection** fails (Locall shut down), it reconnects once and retries; API errors
+    /// (a model that does not exist…) are returned as-is, without retrying.
     fn con_cliente<T>(&self, f: impl Fn(&Cliente) -> Result<T, ErrorCli>) -> Result<T, String> {
         match f(&self.cliente()?) {
             Ok(v) => Ok(v),
@@ -61,8 +61,8 @@ impl Conexion {
     }
 }
 
-/// `locall.exe`: `LOCALL_EXE` si está definida; si no, junto a esta app (donde lo dejará el instalador, y donde está
-/// en desarrollo: `target\debug`).
+/// `locall.exe`: `LOCALL_EXE` if set; otherwise next to this app (where the installer will put it, and where it is
+/// in development: `target\debug`).
 fn ruta_de_locall() -> Result<PathBuf, String> {
     if let Some(ruta) = std::env::var_os("LOCALL_EXE").filter(|v| !v.is_empty()) {
         return Ok(PathBuf::from(ruta));
@@ -79,7 +79,7 @@ fn ruta_de_locall() -> Result<PathBuf, String> {
     }
 }
 
-/// Ejecuta trabajo bloqueante (peticiones HTTP) en un hilo aparte, para no congelar la ventana.
+/// Runs blocking work (HTTP requests) on a separate thread so the window does not freeze.
 async fn en_hilo<T: Send + 'static>(
     trabajo: impl FnOnce() -> Result<T, String> + Send + 'static,
 ) -> Result<T, String> {
@@ -88,9 +88,9 @@ async fn en_hilo<T: Send + 'static>(
         .map_err(|e| e.to_string())?
 }
 
-// ─── Órdenes: estado ──────────────────────────────────────────────────────────
+// ─── Commands: status ─────────────────────────────────────────────────────────
 
-/// Lo que muestra la barra de estado (y el Inicio): versión, motor, modelo cargado, su memoria y la del equipo.
+/// What the status bar (and Home) shows: version, engine, loaded model, its memory and the machine's.
 #[tauri::command]
 async fn estado(conexion: tauri::State<'_, Conexion>) -> Result<Value, String> {
     let conexion = conexion.inner().clone();
@@ -118,16 +118,16 @@ async fn estado(conexion: tauri::State<'_, Conexion>) -> Result<Value, String> {
     .await
 }
 
-// ─── Órdenes: ajustes ─────────────────────────────────────────────────────────
+// ─── Commands: settings ───────────────────────────────────────────────────────
 
-/// Los ajustes en uso y los guardados en `config.toml` (`GET /api/settings`).
+/// The settings in use and the ones saved in `config.toml` (`GET /api/settings`).
 #[tauri::command]
 async fn ajustes(conexion: tauri::State<'_, Conexion>) -> Result<Value, String> {
     let conexion = conexion.inner().clone();
     en_hilo(move || conexion.con_cliente(|c| c.get("/api/settings"))).await
 }
 
-/// Guarda cambios de ajustes (`{"context": 8192, …}`). Se aplican al reiniciar Locall.
+/// Saves settings changes (`{"context": 8192, …}`). They apply when Locall restarts.
 #[tauri::command]
 async fn guardar_ajustes(
     conexion: tauri::State<'_, Conexion>,
@@ -137,8 +137,8 @@ async fn guardar_ajustes(
     en_hilo(move || conexion.con_cliente(|c| c.patch("/api/settings", &cambios))).await
 }
 
-/// Cierra Locall para que se vuelva a abrir con los ajustes nuevos. No hace falta abrirlo: la próxima petición de la
-/// app (la barra de estado pregunta cada 2 s) lo abre sola, igual que hace la línea de comandos.
+/// Shuts Locall down so it starts again with the new settings. There is no need to start it: the app's next request
+/// (the status bar asks every 2 s) starts it, just as the command line does.
 #[tauri::command]
 async fn reiniciar_locall(conexion: tauri::State<'_, Conexion>) -> Result<(), String> {
     let conexion = conexion.inner().clone();
@@ -148,8 +148,8 @@ async fn reiniciar_locall(conexion: tauri::State<'_, Conexion>) -> Result<(), St
             .post("/api/shutdown", &json!({}))
             .map_err(|e| e.to_string())?;
         conexion.olvidar();
-        // Esperar (como mucho 15 s) a que el Locall viejo se cierre de verdad: si no, la siguiente petición podría
-        // llegarle a él, con los ajustes antiguos.
+        // Wait (at most 15 s) for the old Locall to really exit: otherwise the next request could reach it, with the old
+        // settings.
         for _ in 0..150 {
             if !cliente.responde() {
                 return Ok(());
@@ -161,8 +161,8 @@ async fn reiniciar_locall(conexion: tauri::State<'_, Conexion>) -> Result<(), St
     .await
 }
 
-/// Abre en el Explorador de Windows la carpeta de datos de Locall (`"datos"`) o la de los modelos (`"modelos"`). La
-/// ruta la da Locall, no la interfaz: la interfaz solo elige cuál de las dos.
+/// Opens Locall's data folder (`"datos"`) or the models folder (`"modelos"`) in Windows File Explorer. Locall
+/// provides the path, not the UI: the UI only chooses which of the two.
 #[tauri::command]
 async fn abrir_carpeta(conexion: tauri::State<'_, Conexion>, cual: String) -> Result<(), String> {
     let conexion = conexion.inner().clone();
@@ -178,7 +178,7 @@ async fn abrir_carpeta(conexion: tauri::State<'_, Conexion>, cual: String) -> Re
         if !ruta.is_dir() {
             return Err(format!("la carpeta {} no existe", ruta.display()));
         }
-        // El Explorador devuelve un código de salida distinto de 0 aunque abra bien la carpeta: no se mira.
+        // File Explorer returns a non-zero exit code even when it opens the folder fine: it is not checked.
         std::process::Command::new("explorer.exe")
             .arg(&ruta)
             .spawn()
@@ -188,19 +188,19 @@ async fn abrir_carpeta(conexion: tauri::State<'_, Conexion>, cual: String) -> Re
     .await
 }
 
-// ─── Órdenes: modelos ─────────────────────────────────────────────────────────
+// ─── Commands: models ─────────────────────────────────────────────────────────
 
-/// Los modelos instalados, con si caben en el equipo.
+/// The installed models, with whether they fit on the machine.
 #[tauri::command]
 async fn modelos(conexion: tauri::State<'_, Conexion>) -> Result<Value, String> {
     let conexion = conexion.inner().clone();
     en_hilo(move || conexion.con_cliente(|c| Ok(c.get("/api/models")?["models"].take()))).await
 }
 
-/// Importa un `.gguf` que ya tienes en el equipo. Abre la ventana normal de Windows para elegirlo (la ruta la elige
-/// la persona en esa ventana, nunca la interfaz). En cuanto se elige, envía el nombre del archivo por `canal` (para
-/// mostrar «Importando…»: comprobar un modelo grande tarda unos segundos). Devuelve el modelo importado, o `null` si
-/// se cerró la ventana sin elegir nada.
+/// Imports a `.gguf` you already have on the machine. Opens the standard Windows dialog to choose it (the person
+/// chooses the path in that dialog, never the UI). As soon as it is chosen, sends the file name through `canal` (to
+/// show «Importando…»: checking a large model takes a few seconds). Returns the imported model, or `null` if the
+/// dialog was closed without choosing anything.
 #[tauri::command]
 async fn importar_gguf(
     conexion: tauri::State<'_, Conexion>,
@@ -231,7 +231,7 @@ async fn importar_gguf(
     .await
 }
 
-/// Elimina un modelo. Devuelve los bytes liberados.
+/// Deletes a model. Returns the bytes freed.
 #[tauri::command]
 async fn eliminar(conexion: tauri::State<'_, Conexion>, id: String) -> Result<u64, String> {
     let conexion = conexion.inner().clone();
@@ -244,7 +244,7 @@ async fn eliminar(conexion: tauri::State<'_, Conexion>, id: String) -> Result<u6
     .await
 }
 
-/// Los GGUF de un repositorio de Hugging Face (`propietario/nombre`).
+/// The GGUFs of a Hugging Face repository (`owner/name`).
 #[tauri::command]
 async fn consultar_repo(
     conexion: tauri::State<'_, Conexion>,
@@ -265,7 +265,7 @@ async fn consultar_repo(
     .await
 }
 
-/// Busca en Hugging Face repositorios con GGUF por nombre (los más descargados primero).
+/// Searches Hugging Face for repositories with GGUFs by name (most downloaded first).
 #[tauri::command]
 async fn buscar_modelos(
     conexion: tauri::State<'_, Conexion>,
@@ -280,12 +280,12 @@ async fn buscar_modelos(
     .await
 }
 
-/// Instalaciones en marcha, con su aviso de cancelar (clave: `repo/archivo`).
+/// Installs in progress, with their cancel flag (key: `repo/file`).
 #[derive(Default, Clone)]
 struct Instalaciones(Arc<Mutex<HashMap<String, Arc<AtomicBool>>>>);
 
-/// Instala un modelo de Hugging Face. Cada evento de progreso se envía a la interfaz por `canal` en cuanto llega;
-/// al terminar devuelve el modelo instalado. Si se cancela, la descarga queda a medias y la próxima vez continúa.
+/// Installs a model from Hugging Face. Each progress event is sent to the UI through `canal` as soon as it arrives;
+/// when done it returns the installed model. If cancelled, the download is left halfway and resumes next time.
 #[tauri::command]
 async fn instalar(
     conexion: tauri::State<'_, Conexion>,
@@ -306,8 +306,8 @@ async fn instalar(
     .await
 }
 
-/// Instala un modelo del catálogo por su nombre (`qwen3-4b`). Locall comprueba antes de descargar que lo que ofrece
-/// Hugging Face coincide con lo firmado en el catálogo. Para cancelarla: `cancelar_instalacion("catalogo", nombre)`.
+/// Installs a catalog model by name (`qwen3-4b`). Before downloading, Locall checks that what Hugging Face offers
+/// matches what is signed in the catalog. To cancel it: `cancelar_instalacion("catalogo", nombre)`.
 #[tauri::command]
 async fn instalar_catalogo(
     conexion: tauri::State<'_, Conexion>,
@@ -327,8 +327,8 @@ async fn instalar_catalogo(
     .await
 }
 
-/// El catálogo de modelos compatibles. Antes mira si hay uno nuevo en GitHub (Locall lo hace como mucho una vez al
-/// día); si no se puede (sin internet…), devuelve el que hay con un aviso en `warning`.
+/// The catalog of compatible models. First checks GitHub for a newer one (Locall does it at most once a day); if it
+/// cannot (no internet…), returns the current one with a notice in `warning`.
 #[tauri::command]
 async fn catalogo(conexion: tauri::State<'_, Conexion>) -> Result<Value, String> {
     let conexion = conexion.inner().clone();
@@ -348,7 +348,8 @@ async fn catalogo(conexion: tauri::State<'_, Conexion>) -> Result<Value, String>
     .await
 }
 
-/// Lo común a instalar de Hugging Face o del catálogo: progreso por `canal`, cancelación por `clave`.
+/// What installing from Hugging Face and from the catalog have in common: progress through `canal`, cancellation
+/// by `clave`.
 async fn instalar_con(
     conexion: &Conexion,
     instalaciones: &Instalaciones,
@@ -372,7 +373,7 @@ async fn instalar_con(
             .map_err(|e| e.to_string())?;
         for linea in BufReader::new(respuesta.into_body().into_reader()).lines() {
             if cancelar.load(Ordering::Relaxed) {
-                // Al soltar la respuesta se cierra la conexión: Locall pausa la descarga (se puede continuar).
+                // Dropping the response closes the connection: Locall pauses the download (it can be resumed).
                 return Err("cancelada (lo descargado se conserva para continuar)".to_owned());
             }
             let linea = linea.map_err(|e| format!("la descarga se cortó: {e}"))?;
@@ -405,9 +406,9 @@ async fn instalar_con(
     resultado
 }
 
-// ─── Órdenes: conversaciones guardadas ────────────────────────────────────────
+// ─── Commands: saved conversations ────────────────────────────────────────────
 
-/// Las conversaciones guardadas, de la más reciente a la más antigua (sin los mensajes).
+/// The saved conversations, most recent first (without the messages).
 #[tauri::command]
 async fn conversaciones(conexion: tauri::State<'_, Conexion>) -> Result<Value, String> {
     let conexion = conexion.inner().clone();
@@ -417,7 +418,7 @@ async fn conversaciones(conexion: tauri::State<'_, Conexion>) -> Result<Value, S
     .await
 }
 
-/// Una conversación con sus mensajes.
+/// A conversation with its messages.
 #[tauri::command]
 async fn abrir_conversacion(
     conexion: tauri::State<'_, Conexion>,
@@ -427,7 +428,7 @@ async fn abrir_conversacion(
     en_hilo(move || conexion.con_cliente(|c| c.get(&format!("/api/conversations/{id}")))).await
 }
 
-/// Crea una conversación vacía con este título.
+/// Creates an empty conversation with this title.
 #[tauri::command]
 async fn crear_conversacion(
     conexion: tauri::State<'_, Conexion>,
@@ -440,7 +441,7 @@ async fn crear_conversacion(
     .await
 }
 
-/// Cambia el título de una conversación. Devuelve la conversación cambiada.
+/// Changes a conversation's title. Returns the changed conversation.
 #[tauri::command]
 async fn renombrar_conversacion(
     conexion: tauri::State<'_, Conexion>,
@@ -459,7 +460,7 @@ async fn renombrar_conversacion(
     .await
 }
 
-/// Elimina una conversación de verdad (también del disco).
+/// Deletes a conversation for real (from disk too).
 #[tauri::command]
 async fn eliminar_conversacion(
     conexion: tauri::State<'_, Conexion>,
@@ -472,19 +473,19 @@ async fn eliminar_conversacion(
     .await
 }
 
-// ─── Órdenes: conversar ───────────────────────────────────────────────────────
+// ─── Commands: chat ───────────────────────────────────────────────────────────
 
-/// Respuestas en marcha, con su aviso de parar (clave: el identificador que elige la interfaz).
+/// Answers in progress, with their stop flag (key: the identifier chosen by the UI).
 #[derive(Default, Clone)]
 struct Respuestas(Arc<Mutex<HashMap<String, Arc<AtomicBool>>>>);
 
-/// Escribe `contenido` en la conversación guardada `conversacion` y pide la respuesta a `modelo`. Locall envía al
-/// modelo la conversación entera y guarda la pregunta y la respuesta. Cada trozo (texto, razonamiento, progreso de
-/// lectura) se envía a la interfaz por `canal` en cuanto llega; al terminar devuelve el último evento (`finish`,
-/// `usage`, `speed`, y la conversación y el mensaje guardados). Si se para, devuelve `finish: "cancelled"`: la
-/// interfaz ya tiene el texto, y Locall guarda lo que llegó marcado como cortado.
+/// Writes `contenido` into the saved conversation `conversacion` and asks `modelo` for the answer. Locall sends the
+/// model the whole conversation and saves the question and the answer. Each chunk (text, reasoning, prompt-processing
+/// progress) is sent to the UI through `canal` as soon as it arrives; when done it returns the last event (`finish`,
+/// `usage`, `speed`, and the saved conversation and message). If stopped, it returns `finish: "cancelled"`: the UI
+/// already has the text, and Locall saves what arrived marked as cut off.
 #[tauri::command]
-#[allow(clippy::too_many_arguments)] // las órdenes de Tauri reciben cada dato de la interfaz como argumento
+#[allow(clippy::too_many_arguments)] // Tauri commands receive each piece of data from the UI as an argument
 async fn conversar(
     conexion: tauri::State<'_, Conexion>,
     respuestas: tauri::State<'_, Respuestas>,
@@ -521,7 +522,7 @@ async fn conversar(
             .map_err(|e| e.to_string())?;
         for linea in BufReader::new(respuesta.into_body().into_reader()).lines() {
             if parar.load(Ordering::Relaxed) {
-                // Al soltar la respuesta se cierra la conexión: el motor deja de generar (Fase 3).
+                // Dropping the response closes the connection: the engine stops generating (Phase 3).
                 return Ok(json!({"finish": "cancelled"}));
             }
             let linea = linea.map_err(|e| format!("la respuesta se cortó: {e}"))?;
@@ -553,7 +554,7 @@ async fn conversar(
     resultado
 }
 
-/// Pide parar una respuesta en marcha.
+/// Asks to stop an answer in progress.
 #[tauri::command]
 fn parar(respuestas: tauri::State<'_, Respuestas>, peticion: String) {
     if let Some(aviso) = respuestas
@@ -566,14 +567,14 @@ fn parar(respuestas: tauri::State<'_, Respuestas>, peticion: String) {
     }
 }
 
-/// Copia un texto al portapapeles de Windows (botón «Copiar»). Lo hace Rust y no el navegador integrado, que puede
-/// tener el portapapeles bloqueado.
+/// Copies text to the Windows clipboard (the «Copiar» button). Done by Rust rather than the embedded browser, which
+/// may have the clipboard blocked.
 #[tauri::command]
 fn copiar(texto: String) -> Result<(), String> {
     locall_system::copiar_al_portapapeles(&texto).map_err(|e| format!("no se pudo copiar: {e}"))
 }
 
-/// Pide cancelar una instalación en marcha.
+/// Asks to cancel an install in progress.
 #[tauri::command]
 fn cancelar_instalacion(
     instalaciones: tauri::State<'_, Instalaciones>,
@@ -592,7 +593,7 @@ fn cancelar_instalacion(
 
 fn main() {
     let resultado = tauri::Builder::default()
-        // La ventana arranca oculta (tauri.conf.json) y se muestra ya colocada donde estaba la última vez.
+        // The window starts hidden (tauri.conf.json) and is shown already placed where it was last time.
         .setup(|app| {
             if let Some(principal) = tauri::Manager::get_webview_window(app, "main") {
                 ventana::restaurar(&principal);
@@ -632,8 +633,8 @@ fn main() {
             copiar
         ])
         .run(tauri::generate_context!());
-    // En la versión final no hay consola: si la ventana no puede abrirse (por ejemplo, porque falta WebView2), se dice
-    // con una ventana de Windows en vez de cerrarse sin explicación.
+    // The release build has no console: if the window cannot open (for example, because WebView2 is missing), it says
+    // so with a Windows dialog instead of exiting without explanation.
     if let Err(error) = resultado {
         rfd::MessageDialog::new()
             .set_level(rfd::MessageLevel::Error)

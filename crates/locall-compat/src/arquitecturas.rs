@@ -1,9 +1,9 @@
-//! Arquitecturas que reconoce el motor fijado (llama.cpp build 12189).
+//! Architectures recognized by the pinned engine (llama.cpp build 12189).
 //!
-//! Generado a partir de `src/llama-arch.cpp` (tabla `LLM_ARCH_NAMES`) del commit etiquetado `b12189` de
-//! https://github.com/ggml-org/llama.cpp (licencia MIT). Al cambiar de build hay que regenerar esta lista.
+//! Generated from `src/llama-arch.cpp` (the `LLM_ARCH_NAMES` table) at the commit tagged `b12189` of
+//! https://github.com/ggml-org/llama.cpp (MIT license). This list must be regenerated when the build changes.
 
-/// Nombres tal como aparecen en `general.architecture` de los GGUF.
+/// Names as they appear in the GGUF's `general.architecture`.
 pub const ARQUITECTURAS_B12189: &[&str] = &[
     "clip",
     "llama",

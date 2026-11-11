@@ -1,7 +1,7 @@
-//! Ejemplo: ¿cabe este modelo en mi equipo AHORA MISMO?
+//! Example: does this model fit on my machine RIGHT NOW?
 //!
-//! Uso:  cargo run -p locall-compat --example cabe -- <archivo.gguf> [contexto]
-//! En un modelo dividido, indica la primera parte: se suman todas las partes que estén junto a ella.
+//! Usage:  cargo run -p locall-compat --example cabe -- <file.gguf> [context]
+//! For a split model, give the first part: all the parts next to it are added up.
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -53,7 +53,7 @@ fn main() -> ExitCode {
     ExitCode::SUCCESS
 }
 
-/// Suma el tamaño de las partes `-0000N-of-0000M.gguf` que haya junto al archivo indicado.
+/// Adds up the size of the `-0000N-of-0000M.gguf` parts found next to the given file.
 fn tamano_de_todas_las_partes(primera: &Path, partes: Option<u64>) -> u64 {
     let tamano = |p: &Path| std::fs::metadata(p).map(|m| m.len()).unwrap_or(0);
     let (Some(total), Some(nombre)) = (partes, primera.file_name().and_then(|n| n.to_str())) else {

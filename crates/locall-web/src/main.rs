@@ -1,13 +1,13 @@
-//! `locall-web [carpeta-de-salida]`: genera la web de Locall en la carpeta indicada (por defecto `target/web`).
+//! `locall-web [output-folder]`: generates the Locall website in the given folder (`target/web` by default).
 //!
-//! Lee `catalogo/catalogo.json` y su firma, y **se niega a generar nada si la firma no es buena** con la clave
-//! oficial: así nunca se publica un catálogo sin firmar. Se ejecuta desde la raíz del repositorio (lo hace GitHub
-//! Actions al publicar).
+//! Reads `catalogo/catalogo.json` and its signature, and **refuses to generate anything if the signature is not valid**
+//! with the official key: so an unsigned catalog is never published. Run it from the repository root (GitHub Actions
+//! does this when publishing).
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-/// Archivo que deja el generador en la carpeta de salida: solo una carpeta con esta marca se vacía al regenerar.
+/// File the generator leaves in the output folder: only a folder carrying this marker is emptied when regenerating.
 const MARCA: &str = ".generada-por-locall-web";
 
 fn main() -> ExitCode {
@@ -36,8 +36,8 @@ fn generar(destino: &Path) -> Result<usize, String> {
         .map_err(|e| format!("no se puede leer la firma del catálogo ({e})"))?;
     let catalogo = locall_catalogo::verificar(&datos, &firma, locall_catalogo::CLAVE_PUBLICA)
         .map_err(|e| format!("{e}. No se genera la web con un catálogo sin firma buena."))?;
-    // Empezar de cero (que no quede la página de un modelo que ya no está), pero SOLO si la carpeta la creó este
-    // programa (lleva su marca): nunca se vacía una carpeta cualquiera por un error al escribir la ruta.
+    // Start from scratch (so no page is left for a model that is gone), but ONLY if the folder was created by this
+    // program (it carries its marker): an arbitrary folder is never emptied because of a typo in the path.
     let vacia = std::fs::read_dir(destino).is_ok_and(|mut d| d.next().is_none());
     if destino.exists() && !vacia {
         if !destino.join(MARCA).is_file() {

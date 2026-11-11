@@ -1,5 +1,5 @@
-//! `locall run` **de principio a fin** con el motor real: se importa el modelo de la Fase 0 con la CLI y se le
-//! pregunta. Se salta si faltan el motor o el modelo.
+//! `locall run` **end to end** with the real engine: the Phase 0 model is imported with the CLI and asked a question.
+//! Skipped if the engine or the model is missing.
 
 use std::io::Write;
 use std::path::PathBuf;
@@ -35,7 +35,7 @@ impl Entorno {
         Some(Entorno { datos })
     }
 
-    /// `locall <argumentos>` con `entrada` por la entrada estándar; devuelve (código, salida, errores).
+    /// `locall <arguments>` with `entrada` on standard input; returns (exit code, stdout, stderr).
     fn locall(&self, argumentos: &[&str], entrada: &str) -> (i32, String, String) {
         let mut hijo = Command::new(env!("CARGO_BIN_EXE_locall"))
             .args(argumentos)
@@ -76,7 +76,7 @@ fn importa_y_responde_con_el_motor_real() {
     assert_eq!(codigo, 0, "{errores}");
     assert!(salida.contains("Pruébalo: locall run qwen"), "{salida}");
 
-    // La pregunta como argumentos (sin comillas: las palabras se juntan).
+    // The question as arguments (no quotes: the words are joined).
     let (codigo, salida, errores) = e.locall(
         &[
             "run",
@@ -91,16 +91,16 @@ fn importa_y_responde_con_el_motor_real() {
     );
     eprintln!("respuesta: {salida:?}");
     assert_eq!(codigo, 0, "{errores}");
-    // La CLI no fija temperatura ni semilla (el modelo responde con algo de azar, como en un chat normal), así que
-    // aquí no se comprueba QUÉ dice, sino que responde. Que las respuestas son correctas lo prueban las pruebas de la
-    // API con temperatura 0.
+    // The CLI sets neither temperature nor seed (the model answers with some randomness, as in a normal chat), so this
+    // does not check WHAT it says, only that it answers. That answers are correct is tested by the API tests with
+    // temperature 0.
     assert!(salida.trim().len() > 1, "respuesta vacía: {salida:?}");
     assert!(
         errores.contains("Cargando el modelo"),
         "la primera vez avisa: {errores}"
     );
 
-    // La pregunta por la entrada (como en `echo … | locall run qwen`). El modelo ya está cargado: no avisa.
+    // The question on standard input (as in `echo … | locall run qwen`). The model is already loaded: no notice.
     let (codigo, salida, errores) =
         e.locall(&["run", "qwen"], "¿Capital de Italia? Una palabra.\n");
     eprintln!("respuesta: {salida:?}");
@@ -108,7 +108,7 @@ fn importa_y_responde_con_el_motor_real() {
     assert!(salida.trim().len() > 1, "respuesta vacía: {salida:?}");
     assert!(!errores.contains("Cargando"), "{errores}");
 
-    // Errores claros.
+    // Clear errors.
     let (codigo, _, errores) = e.locall(&["run", "no-esta", "hola"], "");
     assert_eq!(codigo, 1);
     assert!(

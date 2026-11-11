@@ -1,15 +1,15 @@
 //! # locall-compat
 //!
-//! Responde a la pregunta clave de Locall: **¿cabe este modelo en tu equipo y lo entiende el motor?**
+//! Answers Locall's key question: **does this model fit on your machine, and can the engine run it?**
 //!
-//! - [`estimar_memoria`]: RAM que necesitará el modelo = tamaño de sus archivos + caché KV para el contexto pedido
-//!   (ADR 0005: con carga sin mapeo, la memoria real es ~1,05–1,1 veces el archivo; la fórmula se comparó con lo
-//!   medido en la Fase 0: 3,10 GB estimados frente a 2,95 GB medidos con el 4B y contexto de 4K).
-//! - [`encaje`]: veredicto según la memoria **disponible de verdad** (no la que informa Vulkan, ADR 0007).
-//! - [`comprobar`]: problemas que impiden cargar el modelo (arquitectura o cuantización que el motor fijado no
-//!   conoce) y avisos que no lo impiden.
+//! - [`estimar_memoria`]: RAM the model will need = the size of its files + KV cache for the requested context
+//!   (ADR 0005: when loading without mmap, real memory is ~1.05–1.1 times the file; the formula was compared with the
+//!   Phase 0 measurements: 3.10 GB estimated vs 2.95 GB measured for the 4B with a 4K context).
+//! - [`encaje`]: verdict based on memory **actually available** (not what Vulkan reports, ADR 0007).
+//! - [`comprobar`]: problems that prevent loading the model (an architecture or quantization the pinned engine does
+//!   not know) and warnings that do not.
 //!
-//! Todo son funciones puras (sin acceso al disco ni al sistema), fáciles de probar.
+//! These are all pure functions (no disk or system access), easy to test.
 
 mod arquitecturas;
 
@@ -19,35 +19,35 @@ use std::fmt;
 
 use locall_gguf::Cabecera;
 
-/// Memoria que siempre se deja libre para Windows y el resto de programas: 1,5 GB, la misma regla que usó el
-/// vigilante de las pruebas de la Fase 0.
+/// Memory always left free for Windows and other programs: 1.5 GB, the same rule the watchdog used in the Phase 0
+/// tests.
 pub const RESERVA_SISTEMA: u64 = 1_500_000_000;
 
-/// Si después de cargar el modelo quedan menos de 4 GB libres, el equipo va "justo": funciona, pero conviene
-/// cerrar otros programas (con el 7B en la Fase 0 quedaron ~3,2 GB).
+/// If less than 4 GB is left free after loading the model, the machine is "tight": it works, but closing other
+/// programs is advisable (with the 7B in Phase 0, ~3.2 GB were left).
 pub const UMBRAL_JUSTO: u64 = 4_000_000_000;
 
-/// Número de tipos de tensor de ggml en la build 12189 (`GGML_TYPE_COUNT`).
+/// Number of ggml tensor types in build 12189 (`GGML_TYPE_COUNT`).
 const TIPOS_DE_TENSOR: u32 = 44;
-/// Tipos de tensor que ggml eliminó del formato (`ggml.h`, build 12189): los GGUF que los usen ya no cargan.
+/// Tensor types that ggml removed from the format (`ggml.h`, build 12189): GGUFs that use them no longer load.
 const TIPOS_ELIMINADOS: [u32; 8] = [4, 5, 31, 32, 33, 36, 37, 38];
 
-// ─── Memoria ──────────────────────────────────────────────────────────────────
+// ─── Memory ───────────────────────────────────────────────────────────────────
 
-/// Memoria estimada para usar un modelo, en bytes.
+/// Estimated memory needed to use a model, in bytes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Estimacion {
-    /// Los pesos: el tamaño de los archivos del modelo.
+    /// The weights: the size of the model's files.
     pub pesos: u64,
-    /// La caché KV para el contexto pedido (`None` si la cabecera no trae los datos necesarios).
+    /// The KV cache for the requested context (`None` if the header lacks the necessary data).
     pub cache_kv: Option<u64>,
-    /// Lo que se usará en total.
+    /// What will be used in total.
     pub total: u64,
 }
 
-/// Estima la RAM que necesitará un modelo con un contexto de `contexto` tokens (caché KV en f16).
+/// Estimates the RAM a model will need with a context of `contexto` tokens (KV cache in f16).
 ///
-/// `bytes_archivos` es la suma del tamaño de todos sus archivos (en un modelo dividido, todas las partes).
+/// `bytes_archivos` is the sum of the size of all its files (for a split model, every part).
 pub fn estimar_memoria(cabecera: &Cabecera, bytes_archivos: u64, contexto: u64) -> Estimacion {
     let cache_kv = cabecera.cache_kv_bytes(contexto, 2);
     Estimacion {
@@ -57,21 +57,21 @@ pub fn estimar_memoria(cabecera: &Cabecera, bytes_archivos: u64, contexto: u64) 
     }
 }
 
-/// Qué tal cabe un modelo en la memoria disponible.
+/// How well a model fits in the available memory.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Encaje {
-    /// Ocupa como mucho una cuarta parte de lo disponible.
+    /// Takes at most a quarter of what is available.
     Holgado,
-    /// Cabe con margen.
+    /// Fits with room to spare.
     Cabe,
-    /// Cabe, pero quedarán menos de 4 GB libres: conviene cerrar otros programas.
+    /// Fits, but less than 4 GB will be left free: closing other programs is advisable.
     Justo,
-    /// No cabe respetando la reserva del sistema.
+    /// Does not fit while respecting the system reserve.
     NoCabe,
 }
 
 impl Encaje {
-    /// Texto corto para la interfaz.
+    /// Short text for the UI.
     pub fn descripcion(self) -> &'static str {
         match self {
             Encaje::Holgado => "Cabe con holgura",
@@ -82,7 +82,7 @@ impl Encaje {
     }
 }
 
-/// Veredicto para un modelo que necesita `estimado` bytes cuando hay `disponible` bytes libres.
+/// Verdict for a model that needs `estimado` bytes when `disponible` bytes are free.
 pub fn encaje(estimado: u64, disponible: u64) -> Encaje {
     let utilizable = disponible.saturating_sub(RESERVA_SISTEMA);
     if estimado > utilizable {
@@ -96,25 +96,25 @@ pub fn encaje(estimado: u64, disponible: u64) -> Encaje {
     }
 }
 
-// ─── Compatibilidad con el motor ──────────────────────────────────────────────
+// ─── Engine compatibility ─────────────────────────────────────────────────────
 
-/// Algo que impide usar el modelo con el motor fijado (build 12189).
+/// Something that prevents using the model with the pinned engine (build 12189).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Problema {
-    /// La cabecera no dice qué arquitectura es.
+    /// The header does not say which architecture it is.
     SinArquitectura,
-    /// El motor no conoce esta arquitectura.
+    /// The engine does not know this architecture.
     ArquitecturaNoSoportada(String),
-    /// El modelo usa un tipo de tensor (cuantización) que el motor ya no o todavía no admite.
+    /// The model uses a tensor type (quantization) that the engine no longer supports or does not support yet.
     TipoDeTensorNoSoportado(u32),
 }
 
-/// Algo que no impide usar el modelo, pero conviene saber.
+/// Something that does not prevent using the model but is worth knowing.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Aviso {
-    /// Sin plantilla de chat: el motor usará una genérica y las respuestas pueden salir mal formateadas.
+    /// No chat template: the engine will use a generic one and answers may come out badly formatted.
     SinPlantillaChat,
-    /// Se pidió más contexto del que admite el modelo; el motor lo recortará al máximo.
+    /// More context than the model supports was requested; the engine will cap it at the maximum.
     ContextoRecortado { pedido: u64, maximo: u64 },
 }
 
@@ -147,7 +147,7 @@ impl fmt::Display for Aviso {
     }
 }
 
-/// Resultado de comprobar un modelo contra el motor.
+/// Result of checking a model against the engine.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Comprobacion {
     pub problemas: Vec<Problema>,
@@ -155,13 +155,13 @@ pub struct Comprobacion {
 }
 
 impl Comprobacion {
-    /// ¿Se puede usar el modelo?
+    /// Can the model be used?
     pub fn es_compatible(&self) -> bool {
         self.problemas.is_empty()
     }
 }
 
-/// Comprueba si el motor fijado puede usar el modelo con el contexto pedido.
+/// Checks whether the pinned engine can use the model with the requested context.
 pub fn comprobar(cabecera: &Cabecera, contexto: u64) -> Comprobacion {
     let mut c = Comprobacion::default();
     let resumen = cabecera.resumen();
@@ -194,9 +194,9 @@ pub fn comprobar(cabecera: &Cabecera, contexto: u64) -> Comprobacion {
     c
 }
 
-// ─── Todo junto ───────────────────────────────────────────────────────────────
+// ─── All together ─────────────────────────────────────────────────────────────
 
-/// La evaluación completa de un modelo para un equipo.
+/// The complete evaluation of a model for a machine.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Evaluacion {
     pub estimacion: Estimacion,
@@ -204,14 +204,14 @@ pub struct Evaluacion {
     pub comprobacion: Comprobacion,
 }
 
-/// Evalúa un modelo: memoria, encaje y compatibilidad.
+/// Evaluates a model: memory, fit and compatibility.
 pub fn evaluar(
     cabecera: &Cabecera,
     bytes_archivos: u64,
     contexto: u64,
     memoria_disponible: u64,
 ) -> Evaluacion {
-    // Si se pide más contexto del que admite el modelo, se estima con el que se usará de verdad.
+    // If more context than the model supports is requested, the estimate uses the one that will really be used.
     let contexto_real = cabecera
         .resumen()
         .contexto_max
@@ -224,7 +224,7 @@ pub fn evaluar(
     }
 }
 
-// ─── Pruebas ──────────────────────────────────────────────────────────────────
+// ─── Tests ────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod pruebas {
@@ -234,7 +234,7 @@ mod pruebas {
 
     use super::*;
 
-    /// Una cabecera hecha a mano con los datos de Qwen3 4B (los de la Fase 0).
+    /// A hand-made header with Qwen3 4B's data (the Phase 0 one).
     fn cabecera_4b(arquitectura: &str, tipos: &[u32], plantilla: bool) -> Cabecera {
         let mut m = BTreeMap::new();
         let mut u = |k: &str, v: u32| {
@@ -268,13 +268,13 @@ mod pruebas {
         let c = cabecera_4b("qwen3", &[0, 12, 14], true);
         let e = estimar_memoria(&c, 2_497_280_256, 4_096);
         assert_eq!(e.cache_kv, Some(576 * 1024 * 1024));
-        // 2,50 GB de archivo + 0,60 GB de caché = 3,10 GB (la Fase 0 midió 2,95 GB: la estimación es prudente).
+        // 2.50 GB of file + 0.60 GB of cache = 3.10 GB (Phase 0 measured 2.95 GB: the estimate is conservative).
         assert_eq!(e.total, 2_497_280_256 + 603_979_776);
     }
 
     #[test]
     fn da_el_veredicto_esperado_en_el_equipo_de_referencia() {
-        // Con ~8,15 GB disponibles, como en la Fase 0:
+        // With ~8.15 GB available, as in Phase 0:
         let disponible = 8_150_000_000;
         assert_eq!(encaje(1_300_000_000, disponible), Encaje::Holgado); // 1.5B
         assert_eq!(encaje(3_100_000_000, disponible), Encaje::Cabe); // 4B
@@ -299,8 +299,8 @@ mod pruebas {
         assert!(r.problemas.contains(&Problema::ArquitecturaNoSoportada(
             "arquitectura-inventada".into()
         )));
-        assert!(r.problemas.contains(&Problema::TipoDeTensorNoSoportado(31))); // eliminado de ggml
-        assert!(r.problemas.contains(&Problema::TipoDeTensorNoSoportado(99))); // no existe
+        assert!(r.problemas.contains(&Problema::TipoDeTensorNoSoportado(31))); // removed from ggml
+        assert!(r.problemas.contains(&Problema::TipoDeTensorNoSoportado(99))); // does not exist
     }
 
     #[test]

@@ -1,7 +1,7 @@
-//! `locall pull`, `import` y `rm` **de principio a fin**: el `locall.exe` real, un Hugging Face falso y una carpeta
-//! de datos y un puerto temporales.
+//! `locall pull`, `import` and `rm` **end to end**: the real `locall.exe`, a fake Hugging Face and a temporary data
+//! folder and port.
 
-// El Hugging Face falso de las pruebas de la API (el mismo archivo, sin copiarlo).
+// The fake Hugging Face from the API tests (the same file, not a copy).
 #[path = "../../locall-api/tests/comun/hf.rs"]
 mod hf;
 
@@ -37,7 +37,7 @@ impl Entorno {
         }
     }
 
-    /// `locall <argumentos>` (sin terminal en la entrada); devuelve (código, salida, errores).
+    /// `locall <arguments>` (no terminal on standard input); returns (exit code, stdout, stderr).
     fn locall(&self, argumentos: &[&str]) -> (i32, String, String) {
         let salida = Command::new(env!("CARGO_BIN_EXE_locall"))
             .args(argumentos)
@@ -106,7 +106,7 @@ fn pull_lista_e_instala() {
         ],
     );
 
-    // Sin archivo: lista los GGUF y dice cómo instalar uno.
+    // Without a file: lists the GGUFs and says how to install one.
     let (codigo, salida, errores) = e.locall(&["pull", "prueba/modelos"]);
     assert_eq!(codigo, 0, "{errores}");
     assert!(
@@ -119,7 +119,7 @@ fn pull_lista_e_instala() {
         "{salida}"
     );
 
-    // Con archivo: instala, con progreso en stderr (sin terminal: una línea cada 10 %) y el resultado en stdout.
+    // With a file: installs, with progress on stderr (no terminal: one line every 10%) and the result on stdout.
     let (codigo, salida, errores) = e.locall(&["pull", "prueba/modelos", "Pequeno-Q4_K_M.gguf"]);
     assert_eq!(codigo, 0, "{errores}");
     assert!(salida.contains("Instalado «pequeno-q4_k_m»"), "{salida}");
@@ -131,13 +131,13 @@ fn pull_lista_e_instala() {
     let (_, lista, _) = e.locall(&["list"]);
     assert!(lista.contains("pequeno-q4_k_m"), "{lista}");
 
-    // Con --id, otro nombre.
+    // With --id, another name.
     let (codigo, salida, _) =
         e.locall(&["pull", "prueba/modelos", "Pequeno-Q8_0.gguf", "--id", "q8"]);
     assert_eq!(codigo, 0);
     assert!(salida.contains("Instalado «q8»"), "{salida}");
 
-    // Errores claros, código 1.
+    // Clear errors, exit code 1.
     let casos = [
         (
             vec!["pull", "prueba/modelos", "Pequeno-Q4_K_M.gguf"],
@@ -162,12 +162,12 @@ fn import_y_rm() {
     let e = Entorno::nuevo("importar", vec![]);
     std::fs::write(e.datos.join("Local-Q8_0.gguf"), llama(5_000)).unwrap();
 
-    // Ruta relativa a la carpeta actual.
+    // A path relative to the current folder.
     let (codigo, salida, errores) = e.locall(&["import", "Local-Q8_0.gguf"]);
     assert_eq!(codigo, 0, "{errores}");
     assert!(salida.contains("Importado «local-q8_0»"), "{salida}");
 
-    // Sin terminal y sin --yes, no borra: pide --yes (código 2).
+    // Without a terminal and without --yes, nothing is deleted: it asks for --yes (exit code 2).
     let (codigo, _, errores) = e.locall(&["rm", "local-q8_0"]);
     assert_eq!(codigo, 2);
     assert!(errores.contains("añade --yes"), "{errores}");

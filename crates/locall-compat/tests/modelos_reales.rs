@@ -1,5 +1,5 @@
-//! Los tres modelos reales de la Fase 0 deben ser compatibles con el motor fijado (build 12189), que los cargó.
-//! Se salta si no están (ver `LOCALL_MODELOS`).
+//! The three real Phase 0 models must be compatible with the pinned engine (build 12189), which loaded them.
+//! Skipped if they are not present (see `LOCALL_MODELOS`).
 
 use std::path::PathBuf;
 

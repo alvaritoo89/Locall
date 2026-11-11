@@ -1,5 +1,5 @@
-//! La línea de comandos **de principio a fin**: se ejecuta el `locall.exe` de verdad, con una carpeta de datos y un
-//! puerto temporales (no toca el Locall del usuario).
+//! The command line **end to end**: the real `locall.exe` runs, with a temporary data folder and port (it does not
+//! touch the user's Locall).
 
 use std::path::PathBuf;
 use std::process::Command;
@@ -7,7 +7,7 @@ use std::process::Command;
 use locall_config::Rutas;
 use serde_json::json;
 
-/// Una carpeta de datos temporal. Al terminar, cierra el Locall que se haya abierto y la borra.
+/// A temporary data folder. When done, it shuts down any Locall that was started and deletes the folder.
 struct Entorno {
     datos: PathBuf,
     puerto: u16,
@@ -19,7 +19,7 @@ impl Entorno {
             std::env::temp_dir().join(format!("locall-cli-{nombre}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&datos);
         std::fs::create_dir_all(&datos).unwrap();
-        // Un puerto libre (y, por si una prueba fallara a medias, cierre automático tras 1 minuto sin uso).
+        // A free port (and, in case a test fails halfway, automatic shutdown after 1 minute without use).
         let puerto = std::net::TcpListener::bind("127.0.0.1:0")
             .unwrap()
             .local_addr()
@@ -33,7 +33,7 @@ impl Entorno {
         Entorno { datos, puerto }
     }
 
-    /// Ejecuta `locall <argumentos>`; devuelve (código de salida, salida, errores).
+    /// Runs `locall <arguments>`; returns (exit code, stdout, stderr).
     fn locall(&self, argumentos: &[&str]) -> (i32, String, String) {
         let salida = Command::new(env!("CARGO_BIN_EXE_locall"))
             .args(argumentos)
@@ -78,16 +78,16 @@ fn ayuda_version_y_errores_de_uso() {
 fn abre_locall_cuando_hace_falta_y_lo_cierra_con_stop() {
     let e = Entorno::nuevo("ciclo");
 
-    // 1) Sin abrir: status lo dice y NO lo abre.
+    // 1) Not running: status says so and does NOT start it.
     let (codigo, salida, _) = e.locall(&["status"]);
     assert_eq!(codigo, 0);
     assert!(salida.contains("no está abierto"), "{salida}");
 
-    // 2) list lo abre en segundo plano.
+    // 2) list starts it in the background.
     let (codigo, salida, errores) = e.locall(&["list"]);
     assert_eq!(codigo, 0, "{errores}");
     assert!(salida.contains("No hay modelos instalados"), "{salida}");
-    // Avisa de que lo abre, y con qué carpeta (por stderr: la salida normal queda limpia).
+    // It says it is starting it, and with which folder (on stderr: normal output stays clean).
     assert!(
         errores.contains("Abriendo Locall en segundo plano"),
         "{errores}"
@@ -102,7 +102,7 @@ fn abre_locall_cuando_hace_falta_y_lo_cierra_con_stop() {
         "ya estaba abierto: {errores}"
     );
 
-    // 3) Ahora status lo ve abierto, en nuestro puerto.
+    // 3) Now status sees it running, on our port.
     let (_, salida, _) = e.locall(&["status"]);
     assert!(
         salida.contains(&format!("http://127.0.0.1:{}", e.puerto)),
@@ -110,7 +110,7 @@ fn abre_locall_cuando_hace_falta_y_lo_cierra_con_stop() {
     );
     assert!(salida.contains("Ningún modelo cargado"), "{salida}");
 
-    // 4) Con un modelo instalado (por la API), list y show lo muestran.
+    // 4) With a model installed (through the API), list and show display it.
     let token = std::fs::read_to_string(Rutas::en(e.datos.clone()).token()).unwrap();
     let cliente =
         locall_cli::Cliente::nuevo(format!("http://127.0.0.1:{}", e.puerto), token.trim());
@@ -143,7 +143,7 @@ fn abre_locall_cuando_hace_falta_y_lo_cierra_con_stop() {
     assert!(salida.contains("Arquitectura   llama"), "{salida}");
     assert!(salida.contains("Mini-Q4_0.gguf"), "{salida}");
 
-    // 5) Un modelo que no existe: error claro y código 1.
+    // 5) A model that does not exist: a clear error and exit code 1.
     let (codigo, _, errores) = e.locall(&["show", "no-esta"]);
     assert_eq!(codigo, 1);
     assert!(
@@ -151,7 +151,7 @@ fn abre_locall_cuando_hace_falta_y_lo_cierra_con_stop() {
         "{errores}"
     );
 
-    // 6) stop lo cierra de verdad.
+    // 6) stop really shuts it down.
     let (codigo, salida, _) = e.locall(&["stop"]);
     assert_eq!((codigo, salida.trim()), (0, "Locall cerrado."));
     let (_, salida, _) = e.locall(&["status"]);

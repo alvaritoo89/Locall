@@ -1,4 +1,4 @@
-//! Pruebas del generador, con el catálogo oficial (el que va dentro de Locall) y con uno malicioso.
+//! Generator tests, with the official catalog (the one shipped inside Locall) and with a malicious one.
 
 use std::path::PathBuf;
 
@@ -18,7 +18,7 @@ fn escapa_todo_lo_que_podria_ser_html() {
 
 #[test]
 fn un_texto_malicioso_del_catalogo_no_se_cuela_en_la_web() {
-    // Aunque el catálogo vaya firmado, la web no confía en él para el HTML.
+    // Even though the catalog is signed, the website does not trust it for HTML.
     let mut c = oficial();
     c.modelos[0].descripcion = r#"<img src=x onerror="alert(1)">"#.into();
     c.modelos[0].titulo = "<b>Malo</b>".into();
@@ -58,14 +58,14 @@ fn cada_modelo_lleva_su_comando_y_nunca_dice_probado() {
             m.nombre
         );
     }
-    // Decisión del autor (ADR 0022): «compatible», nunca «probado» como afirmación.
+    // The author's decision (ADR 0022): «compatible», never «probado» (tested) as a claim.
     assert!(!todo.contains("probado en"));
     assert!(todo.contains("compatible"));
 }
 
 #[test]
 fn solo_enlaza_a_github_y_hugging_face() {
-    // Ni fuentes, ni scripts, ni estadísticas de otros sitios.
+    // No fonts, scripts or analytics from other sites.
     let todo: String = paginas(&oficial()).into_iter().map(|(_, h)| h).collect();
     for (i, _) in todo.match_indices("https://") {
         let resto = &todo[i..];
@@ -115,7 +115,7 @@ fn genera_la_web_completa_en_una_carpeta() {
     ] {
         assert!(destino.join(archivo).is_file(), "falta {archivo}");
     }
-    // La copia del catálogo en la web es idéntica byte a byte (su firma sigue valiendo).
+    // The catalog copy on the website is identical byte for byte (its signature remains valid).
     let copia = std::fs::read(destino.join("catalogo/catalogo.json")).unwrap();
     let firma = std::fs::read_to_string(destino.join("catalogo/catalogo.json.minisig")).unwrap();
     assert!(locall_catalogo::verificar(&copia, &firma, locall_catalogo::CLAVE_PUBLICA).is_ok());

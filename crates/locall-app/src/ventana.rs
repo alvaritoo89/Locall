@@ -1,10 +1,10 @@
-//! Recordar el tamaño y la posición de la ventana entre usos.
+//! Remembering the window's size and position between uses.
 //!
-//! Al cerrar, se guardan en `app-ventana.txt` (en la carpeta de datos de Locall) como una línea de texto:
-//! `x y ancho alto maximizada`, en píxeles reales de la pantalla. Al abrir, se recuperan **solo si la barra de título
-//! cae dentro de una pantalla conectada**: si se desconectó un monitor, la ventana no aparece fuera de la vista.
+//! On close they are saved in `app-ventana.txt` (in Locall's data folder) as one line of text:
+//! `x y width height maximized`, in real screen pixels. On open they are restored **only if the title bar falls
+//! within a connected screen**: if a monitor was disconnected, the window does not appear out of view.
 //!
-//! Sin dependencias: el complemento oficial (`tauri-plugin-window-state`) haría lo mismo con un crate más.
+//! No dependencies: the official plugin (`tauri-plugin-window-state`) would do the same with one more crate.
 
 use std::path::PathBuf;
 
@@ -13,10 +13,10 @@ use tauri::{Monitor, PhysicalPosition, PhysicalSize, WebviewWindow, Window};
 
 const ARCHIVO: &str = "app-ventana.txt";
 
-/// Tamaño mínimo razonable (el de `tauri.conf.json`); algo más pequeño en el archivo se ignora.
+/// Reasonable minimum size (the one in `tauri.conf.json`); anything smaller in the file is ignored.
 const MINIMO: (u32, u32) = (600, 400);
 
-/// Dónde y cómo estaba la ventana.
+/// Where and how the window was.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Geometria {
     pub x: i32,
@@ -27,7 +27,7 @@ pub struct Geometria {
 }
 
 impl Geometria {
-    /// Lee la línea del archivo. Cualquier cosa rara (archivo de otra versión, editado a mano…) se ignora.
+    /// Reads the file's line. Anything odd (a file from another version, edited by hand…) is ignored.
     pub fn leer(texto: &str) -> Option<Geometria> {
         let mut partes = texto.split_whitespace();
         let g = Geometria {
@@ -60,8 +60,8 @@ impl Geometria {
         )
     }
 
-    /// ¿Cae la barra de título (un punto cerca de la esquina superior izquierda) dentro de alguna de estas pantallas
-    /// (posición y tamaño de cada una)?
+    /// Does the title bar (a point near the top-left corner) fall within any of these screens (position and size of
+    /// each)?
     pub fn se_ve_en(&self, pantallas: &[(i32, i32, u32, u32)]) -> bool {
         let (px, py) = (i64::from(self.x) + 80, i64::from(self.y) + 16);
         pantallas.iter().any(|&(x, y, ancho, alto)| {
@@ -93,7 +93,7 @@ fn pantallas(monitores: &[Monitor]) -> Vec<(i32, i32, u32, u32)> {
         .collect()
 }
 
-/// Coloca la ventana como estaba la última vez (si se puede) y la muestra. Se llama al arrancar.
+/// Places the window as it was last time (if possible) and shows it. Called at startup.
 pub fn restaurar(ventana: &WebviewWindow) {
     if let Some(g) = guardada() {
         let monitores = ventana.available_monitors().unwrap_or_default();
@@ -109,16 +109,15 @@ pub fn restaurar(ventana: &WebviewWindow) {
     let _ = ventana.set_focus();
 }
 
-/// Guarda cómo está la ventana. Se llama al cerrarla. Si falla, no pasa nada: la próxima vez se abre en el centro.
+/// Saves the window's state. Called when it closes. If it fails, nothing happens: next time it opens centered.
 pub fn guardar(ventana: &Window) {
     let Some(ruta) = ruta() else { return };
     if ventana.is_minimized().unwrap_or(false) {
-        return; // minimizada, la posición no significa nada
+        return; // minimized, the position means nothing
     }
     let maximizada = ventana.is_maximized().unwrap_or(false);
     let g = if maximizada {
-        // Maximizada: se recuerda que lo estaba, pero se conserva el tamaño normal de la última vez (para cuando
-        // se restaure).
+        // Maximized: remember that it was, but keep last time's normal size (for when it is restored).
         match guardada() {
             Some(anterior) => Geometria {
                 maximizada: true,
@@ -194,7 +193,7 @@ mod pruebas {
             maximizada: false,
         };
         let una = [(0, 0, 1920, 1080)];
-        let dos = [(0, 0, 1920, 1080), (-2560, 0, 2560, 1440)]; // otra pantalla a la izquierda
+        let dos = [(0, 0, 1920, 1080), (-2560, 0, 2560, 1440)]; // another screen to the left
         assert!(g(100, 100).se_ve_en(&una));
         assert!(
             !g(-1500, 100).se_ve_en(&una),

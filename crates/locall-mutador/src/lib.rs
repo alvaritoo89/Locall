@@ -1,31 +1,31 @@
-//! # locall-mutador (solo para pruebas)
+//! # locall-mutador (tests only)
 //!
-//! Pruebas de «entradas basura» (en inglés, *fuzzing*) sin dependencias (ADR 0026): se cogen entradas **válidas**,
-//! se estropean a propósito de muchas maneras y se comprueba que el lector **siempre** termina con un resultado
-//! controlado (normalmente un error), sin:
+//! Malformed-input testing (*fuzzing*) without dependencies (ADR 0026): **valid** inputs are taken, corrupted on
+//! purpose in many ways, and the reader is checked to **always** finish with a controlled result (usually an error),
+//! without:
 //!
-//! - cerrarse de golpe (un `panic`: índice fuera de rango, desbordamiento, `unwrap` de algo que no estaba…);
-//! - pedir de una vez más memoria de la razonable (un número enorme en un campo de tamaño no debe llevar a reservar
-//!   gigas). Lo mide [`MedidorDeMemoria`], que se instala como reservador global en el programa de pruebas.
+//! - crashing (a `panic`: index out of bounds, overflow, `unwrap` of something that was not there…);
+//! - allocating more memory at once than is reasonable (a huge number in a size field must not lead to allocating
+//!   gigabytes). This is measured by [`MedidorDeMemoria`], installed as the global allocator in the test program.
 //!
-//! Todo es **reproducible**: el estropeado sale de una semilla fija. Si una entrada falla, se guarda en un archivo y el
-//! mensaje dice cuál y cómo repetirla. `LOCALL_BASURA=<n>` cambia el número de entradas (por defecto, pocas, para que
-//! `cargo test` siga siendo rápido; para una pasada larga, por ejemplo `LOCALL_BASURA=200000`).
+//! Everything is **reproducible**: corruption comes from a fixed seed. If an input fails, it is saved to a file and the
+//! message says which one and how to repeat it. `LOCALL_BASURA=<n>` changes the number of inputs (few by default, so
+//! that `cargo test` stays fast; for a long pass, for example `LOCALL_BASURA=200000`).
 
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-/// Reservas por encima de esto se consideran un fallo (ningún lector de Locall necesita tanto de una vez para las
-/// entradas de prueba, que son pequeñas).
+/// Allocations above this are considered a failure (no Locall reader needs that much at once for the test inputs,
+/// which are small).
 pub const RESERVA_MAXIMA: usize = 16 * 1024 * 1024;
 
-// ─── Medidor de memoria ───────────────────────────────────────────────────────
+// ─── Memory meter ─────────────────────────────────────────────────────────────
 
 static MAYOR_RESERVA: AtomicUsize = AtomicUsize::new(0);
 
-/// Reservador de memoria que apunta la reserva más grande que se ha pedido. Se instala así en el archivo de pruebas:
+/// Memory allocator that records the largest allocation requested. Install it like this in the test file:
 ///
 /// ```ignore
 /// #[global_allocator]
@@ -33,36 +33,36 @@ static MAYOR_RESERVA: AtomicUsize = AtomicUsize::new(0);
 /// ```
 pub struct MedidorDeMemoria;
 
-// SAFETY: delega todo en el reservador del sistema; solo añade apuntar un número (sin reservar nada).
+// SAFETY: delegates everything to the system allocator; it only adds recording a number (without allocating).
 unsafe impl GlobalAlloc for MedidorDeMemoria {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         MAYOR_RESERVA.fetch_max(layout.size(), Ordering::Relaxed);
-        // SAFETY: mismo `layout` que nos han dado; las reglas de `alloc` las cumple quien llama.
+        // SAFETY: the same `layout` we were given; the caller upholds `alloc`'s rules.
         unsafe { System.alloc(layout) }
     }
 
     unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
         MAYOR_RESERVA.fetch_max(layout.size(), Ordering::Relaxed);
-        // SAFETY: igual que `alloc`.
+        // SAFETY: same as `alloc`.
         unsafe { System.alloc_zeroed(layout) }
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        // SAFETY: `ptr` lo dio este mismo reservador (que es el del sistema) con este `layout`.
+        // SAFETY: `ptr` came from this same allocator (which is the system's) with this `layout`.
         unsafe { System.dealloc(ptr, layout) }
     }
 
     unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, nuevo: usize) -> *mut u8 {
         MAYOR_RESERVA.fetch_max(nuevo, Ordering::Relaxed);
-        // SAFETY: igual que `dealloc` y `alloc`.
+        // SAFETY: same as `dealloc` and `alloc`.
         unsafe { System.realloc(ptr, layout, nuevo) }
     }
 }
 
-// ─── Estropear entradas ───────────────────────────────────────────────────────
+// ─── Corrupting inputs ────────────────────────────────────────────────────────
 
-/// Generador de números pseudoaleatorios (xorshift64*): rápido, sin dependencias y reproducible. **No** sirve para
-/// nada de seguridad; solo para elegir cómo estropear.
+/// Pseudo-random number generator (xorshift64*): fast, dependency-free and reproducible. **Not** suitable for
+/// anything security-related; only for choosing how to corrupt.
 pub struct Mutador(u64);
 
 impl Mutador {
@@ -79,12 +79,12 @@ impl Mutador {
         x.wrapping_mul(0x2545_F491_4F6C_DD1D)
     }
 
-    /// Un número de `0` a `tope - 1` (`tope` > 0).
+    /// A number from `0` to `tope - 1` (`tope` > 0).
     pub fn hasta(&mut self, tope: usize) -> usize {
         (self.numero() % tope as u64) as usize
     }
 
-    /// Estropea `datos` con 1 a 4 cambios al azar.
+    /// Corrupts `datos` with 1 to 4 random changes.
     pub fn estropear(&mut self, datos: &mut Vec<u8>) {
         for _ in 0..=self.hasta(4) {
             self.un_cambio(datos);
@@ -98,13 +98,13 @@ impl Mutador {
         }
         let pos = self.hasta(datos.len());
         match self.hasta(9) {
-            // Cambiar un bit.
+            // Flip a bit.
             0 => datos[pos] ^= 1 << self.hasta(8),
-            // Cambiar un byte por cualquiera.
+            // Replace a byte with any byte.
             1 => datos[pos] = self.numero() as u8,
-            // Valores «peligrosos» de un byte.
+            // "Dangerous" single-byte values.
             2 => datos[pos] = [0x00, 0xFF, 0x7F, 0x80, b'"', b'\\', b'\n', b'{'][self.hasta(8)],
-            // Un número enorme (o cero) de 4 u 8 bytes donde suele ir un tamaño o un contador.
+            // A huge number (or zero) of 4 or 8 bytes where a size or a counter usually goes.
             3 => {
                 let ancho = if self.hasta(2) == 0 { 4 } else { 8 };
                 let valor: u64 =
@@ -116,27 +116,27 @@ impl Mutador {
                     }
                 }
             }
-            // Meter bytes al azar.
+            // Insert random bytes.
             4 => {
                 let n = 1 + self.hasta(16);
                 let nuevos: Vec<u8> = (0..n).map(|_| self.numero() as u8).collect();
                 datos.splice(pos..pos, nuevos);
             }
-            // Quitar un trozo.
+            // Remove a chunk.
             5 => {
                 let fin = (pos + 1 + self.hasta(32)).min(datos.len());
                 datos.drain(pos..fin);
             }
-            // Repetir un trozo.
+            // Repeat a chunk.
             6 => {
                 let fin = (pos + 1 + self.hasta(64)).min(datos.len());
                 let trozo = datos[pos..fin].to_vec();
                 let donde = self.hasta(datos.len() + 1);
                 datos.splice(donde..donde, trozo);
             }
-            // Cortar el final.
+            // Cut off the end.
             7 => datos.truncate(pos),
-            // Intercambiar dos bytes.
+            // Swap two bytes.
             _ => {
                 let otra = self.hasta(datos.len());
                 datos.swap(pos, otra);
@@ -145,9 +145,9 @@ impl Mutador {
     }
 }
 
-// ─── La prueba ────────────────────────────────────────────────────────────────
+// ─── The test ─────────────────────────────────────────────────────────────────
 
-/// Cuántas entradas probar: `LOCALL_BASURA` o `por_defecto`.
+/// How many inputs to try: `LOCALL_BASURA` or `por_defecto`.
 pub fn iteraciones(por_defecto: usize) -> usize {
     std::env::var("LOCALL_BASURA")
         .ok()
@@ -155,11 +155,11 @@ pub fn iteraciones(por_defecto: usize) -> usize {
         .unwrap_or(por_defecto)
 }
 
-/// Prueba `lector` con `iteraciones(por_defecto)` entradas estropeadas a partir de `bases`. Falla (con la entrada
-/// guardada en un archivo) si alguna hace que el lector se cierre de golpe o reserve más de [`RESERVA_MAXIMA`] de una
-/// vez. Para que lo segundo funcione, el programa de pruebas debe usar [`MedidorDeMemoria`].
+/// Tests `lector` with `iteraciones(por_defecto)` inputs corrupted from `bases`. Fails (saving the input to a file)
+/// if any of them makes the reader crash or allocate more than [`RESERVA_MAXIMA`] at once. For the latter to work, the
+/// test program must use [`MedidorDeMemoria`].
 ///
-/// También se prueban las bases tal cual y una entrada vacía.
+/// The bases themselves and an empty input are tested too.
 pub fn probar(
     nombre: &str,
     semilla: u64,
@@ -231,7 +231,7 @@ mod pruebas {
     #[should_panic(expected = "se cerró de golpe")]
     fn detecta_un_lector_que_se_cierra() {
         probar("prueba-panic", 1, 100, &[b"abc".to_vec()], |e| {
-            let _ = e[2]; // falla con las entradas cortas
+            let _ = e[2]; // fails on short inputs
         });
     }
 }

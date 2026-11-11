@@ -1,8 +1,8 @@
-//! `locall`: el programa. Un solo ejecutable para el núcleo y la línea de comandos (ADR 0015):
+//! `locall`: the program. A single executable for the core and the command line (ADR 0015):
 //!
-//! - `locall serve` abre el núcleo y la API local (lo atiende este archivo, que tiene el servidor);
-//! - el resto de órdenes son la CLI (`locall-cli`), un cliente de esa API que la abre en segundo plano cuando hace
-//!   falta (ADR 0017).
+//! - `locall serve` starts the core and the local API (handled by this file, which holds the server);
+//! - every other command is the CLI (`locall-cli`), a client of that API that starts it in the background when
+//!   needed (ADR 0017).
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -62,7 +62,8 @@ fn servir() -> Result<(), String> {
     registros::iniciar(&rutas.registros(), config.registros_dias).map_err(|e| e.to_string())?;
     log::info!("Locall {} arrancando", env!("CARGO_PKG_VERSION"));
 
-    // Primero el puerto: si ya hay otro Locall abierto, salir sin tocar nada (ni la base de datos ni el almacén).
+    // The port first: if another Locall is already running, exit without touching anything (neither the database nor
+    // the store).
     let puerto = config.puerto;
     let cierre = config.cierre_inactividad();
     let escucha = std::net::TcpListener::bind(("127.0.0.1", puerto)).map_err(|e| {
@@ -76,7 +77,7 @@ fn servir() -> Result<(), String> {
         }
     })?;
     escucha
-        .set_nonblocking(true) // lo exige tokio
+        .set_nonblocking(true) // tokio requires it
         .map_err(|e| format!("no se pudo preparar el puerto {puerto}: {e}"))?;
 
     let motor = ruta_del_motor();
@@ -88,7 +89,7 @@ fn servir() -> Result<(), String> {
         );
     }
     let mut opciones = OpcionesNucleo::nuevas(rutas.clone(), motor);
-    // Un espejo de Hugging Face (o, en las pruebas, uno falso). Por defecto, el de verdad.
+    // A Hugging Face mirror (or, in tests, a fake one). The real one by default.
     if let Some(hf) = std::env::var_os("LOCALL_HUGGING_FACE").filter(|v| !v.is_empty()) {
         opciones.hugging_face = hf.to_string_lossy().into_owned();
     }
@@ -105,7 +106,7 @@ fn servir() -> Result<(), String> {
     })?;
 
     let tiempo_de_ejecucion = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(2) // la API atiende a pocos clientes locales; el trabajo pesado va en hilos aparte
+        .worker_threads(2) // the API serves few local clients; heavy work runs on separate threads
         .enable_all()
         .build()
         .map_err(|e| format!("no se pudo iniciar el servidor: {e}"))?;
@@ -126,7 +127,7 @@ fn servir() -> Result<(), String> {
         }
         log::info!("API escuchando en 127.0.0.1:{puerto}");
 
-        // Se para con Ctrl+C, con `locall stop` (POST /api/shutdown) o tras un rato sin uso: lo que llegue antes.
+        // Stops on Ctrl+C, on `locall stop` (POST /api/shutdown) or after a while without use: whichever comes first.
         let parar = Arc::new(tokio::sync::Notify::new());
         let (rutas_api, actividad) =
             locall_api::rutas_vigiladas(Arc::clone(&nucleo), token, puerto, Arc::clone(&parar));
@@ -153,14 +154,14 @@ fn servir() -> Result<(), String> {
             .await
             .map_err(|e| format!("el servidor se detuvo por un error: {e}"))
     })?;
-    // Cerrar las tareas pendientes (el vigilante guarda una copia del núcleo): al soltarse la última copia del
-    // núcleo, el planificador para el motor.
+    // Finish pending tasks (the watcher holds a copy of the core): when the last copy of the core is dropped, the
+    // scheduler stops the engine.
     drop(tiempo_de_ejecucion);
     log::info!("Locall parado");
     Ok(())
 }
 
-/// `LOCALL_MOTOR`, o `motor\llama-server.exe` junto a `locall.exe` (donde lo dejará el instalador).
+/// `LOCALL_MOTOR`, or `motor\llama-server.exe` next to `locall.exe` (where the installer will put it).
 fn ruta_del_motor() -> PathBuf {
     if let Some(ruta) = std::env::var_os("LOCALL_MOTOR").filter(|v| !v.is_empty()) {
         return PathBuf::from(ruta);

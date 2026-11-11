@@ -1,12 +1,12 @@
 //! # locall-web
 //!
-//! Genera la web de Locall (ADR 0024): páginas HTML estáticas a partir del **catálogo firmado**, para que la web y la
-//! app digan siempre lo mismo. Sin dependencias nuevas: el HTML se escribe a mano y **todo texto del catálogo se
-//! escapa** ([`escapar`]), aunque venga firmado.
+//! Generates the Locall website (ADR 0024): static HTML pages from the **signed catalog**, so the website and the app
+//! always say the same thing. No new dependencies: the HTML is written by hand and **all catalog text is escaped**
+//! ([`escapar`]), even though it is signed.
 //!
-//! Páginas: inicio, descargar («Próximamente» hasta la Fase 8), la biblioteca de modelos (con filtros), una página
-//! por modelo, privacidad y la de error 404. Los enlaces son relativos, para que la web funcione igual en
-//! `alvaritoo89.github.io/Locall/` que en un dominio propio o en local.
+//! Pages: home, download («Próximamente» until Phase 8), the model library (with filters), one page per model,
+//! privacy and the 404 error page. Links are relative, so the site works the same at `alvaritoo89.github.io/Locall/`
+//! as on a custom domain or locally.
 
 use std::fmt::Write as _;
 use std::io;
@@ -14,14 +14,14 @@ use std::path::{Path, PathBuf};
 
 use locall_catalogo::{Catalogo, ModeloCatalogo};
 
-/// Dónde está el código (enlaces de la cabecera y el pie).
+/// Where the code lives (header and footer links).
 pub const REPOSITORIO: &str = "https://github.com/alvaritoo89/Locall";
 
-/// La ruta de la web en GitHub Pages. Solo la usa la página 404, que GitHub sirve en cualquier ruta (los enlaces
-/// relativos no servirían ahí).
+/// The site's path on GitHub Pages. Only used by the 404 page, which GitHub serves at any path (relative links would
+/// not work there).
 pub const BASE_404: &str = "/Locall/";
 
-/// Escapa un texto para meterlo en HTML (contenido o atributo entre comillas dobles).
+/// Escapes text for HTML (content, or an attribute in double quotes).
 pub fn escapar(texto: &str) -> String {
     let mut s = String::with_capacity(texto.len());
     for c in texto.chars() {
@@ -37,7 +37,7 @@ pub fn escapar(texto: &str) -> String {
     s
 }
 
-/// `2497280256` → `2,5 GB` (unidades decimales, como la app y Hugging Face).
+/// `2497280256` → `2,5 GB` (decimal units, like the app and Hugging Face; Spanish decimal comma).
 pub fn tamano(bytes: u64) -> String {
     let gb = bytes as f64 / 1e9;
     if gb >= 1.0 {
@@ -47,7 +47,7 @@ pub fn tamano(bytes: u64) -> String {
     }
 }
 
-/// `40960` → `40.960`
+/// `40960` → `40.960` (Spanish thousands separator)
 fn miles(n: u64) -> String {
     let s = n.to_string();
     let mut r = String::new();
@@ -60,9 +60,9 @@ fn miles(n: u64) -> String {
     r
 }
 
-// ─── Plantilla común ──────────────────────────────────────────────────────────
+// ─── Common template ──────────────────────────────────────────────────────────
 
-/// Qué entrada del menú está marcada.
+/// Which menu entry is highlighted.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Seccion {
     Inicio,
@@ -71,7 +71,7 @@ enum Seccion {
     Otra,
 }
 
-/// Una página completa. `raiz` es la ruta relativa a la raíz de la web (`""` o `"../"`); el contenido ya va escapado.
+/// A complete page. `raiz` is the path relative to the site root (`""` or `"../"`); the content is already escaped.
 fn pagina(
     raiz: &str,
     titulo: &str,
@@ -132,7 +132,7 @@ fn pagina(
     )
 }
 
-/// Un comando con su botón «Copiar» (el botón solo aparece con JavaScript).
+/// A command with its «Copiar» (copy) button (the button only appears with JavaScript).
 fn comando(texto: &str) -> String {
     format!(
         r##"<div class="comando"><code>{}</code><button type="button" class="copiar" aria-label="Copiar el comando">Copiar</button></div>"##,
@@ -143,7 +143,7 @@ fn comando(texto: &str) -> String {
 const AVISO_COMPATIBLE: &str = "Todos los modelos del catálogo son <strong>compatibles</strong>: el motor de Locall \
 reconoce su formato. No se han probado uno a uno. Al instalarlo, la app te dice si cabe en tu equipo.";
 
-// ─── Páginas ──────────────────────────────────────────────────────────────────
+// ─── Pages ────────────────────────────────────────────────────────────────────
 
 fn inicio(catalogo: &Catalogo) -> String {
     let contenido = format!(
@@ -212,7 +212,7 @@ en tu equipo antes de descargarlo.</li>
     )
 }
 
-/// Los usos que tienen filtro, con su nombre para mostrar.
+/// The uses that have a filter, with their display name.
 const USOS: [(&str, &str); 2] = [("conversar", "Conversar"), ("razonar", "Razonar")];
 
 fn biblioteca(catalogo: &Catalogo) -> String {
@@ -379,7 +379,7 @@ para mirar en GitHub si hay un catálogo de modelos nuevo.</li>
 }
 
 fn no_encontrada() -> String {
-    // GitHub sirve esta página en cualquier ruta que no exista: los enlaces relativos no sirven, se usa la base.
+    // GitHub serves this page at any path that does not exist: relative links would break, so the base is used.
     pagina(
         BASE_404,
         "Página no encontrada · Locall",
@@ -392,9 +392,9 @@ fn no_encontrada() -> String {
     )
 }
 
-// ─── Generar ──────────────────────────────────────────────────────────────────
+// ─── Generating ───────────────────────────────────────────────────────────────
 
-/// Las páginas de la web: (ruta relativa, contenido).
+/// The site's pages: (relative path, content).
 pub fn paginas(catalogo: &Catalogo) -> Vec<(PathBuf, String)> {
     let mut lista = vec![
         (PathBuf::from("index.html"), inicio(catalogo)),
@@ -415,8 +415,8 @@ pub fn paginas(catalogo: &Catalogo) -> Vec<(PathBuf, String)> {
     lista
 }
 
-/// Escribe la web en `destino`: las páginas, los archivos de `estaticos` (estilo, script, fuentes, logos) y una copia
-/// del catálogo con su firma en `catalogo/`. Devuelve los archivos escritos.
+/// Writes the site to `destino`: the pages, the files in `estaticos` (style, script, fonts, logos) and a copy of the
+/// catalog with its signature in `catalogo/`. Returns the files written.
 pub fn generar(
     catalogo: &Catalogo,
     datos_catalogo: &[u8],
