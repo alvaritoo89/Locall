@@ -26,13 +26,24 @@ use windows_sys::Win32::System::Registry::{HKEY_LOCAL_MACHINE, RRF_RT_REG_SZ, Re
 use windows_sys::Win32::System::SystemInformation::{
     GetLocalTime, GlobalMemoryStatusEx, MEMORYSTATUSEX,
 };
-use windows_sys::Win32::System::Threading::{OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION};
+use windows_sys::Win32::System::Threading::{
+    OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION, WaitForSingleObject,
+};
 
 use crate::{FechaHora, Memoria};
 
 /// Convierte un texto a UTF-16 terminado en 0, como lo quiere Windows.
 fn ancho(texto: &str) -> Vec<u16> {
     texto.encode_utf16().chain([0]).collect()
+}
+
+/// `WAIT_TIMEOUT`: el proceso no ha terminado (la espera de 0 ms se agotó).
+const SIGUE_EN_MARCHA: u32 = 0x102;
+
+pub fn proceso_vivo(proceso: &Child) -> bool {
+    // SAFETY: el identificador del proceso es válido mientras `proceso` exista (lo tenemos prestado); esperar 0 ms
+    // solo pregunta si ha terminado, sin bloquear ni cambiar nada.
+    unsafe { WaitForSingleObject(proceso.as_raw_handle() as _, 0) == SIGUE_EN_MARCHA }
 }
 
 /// Formato del portapapeles para texto UTF-16 (`CF_UNICODETEXT`).

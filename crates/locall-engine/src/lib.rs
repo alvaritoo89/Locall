@@ -371,9 +371,14 @@ impl Motor {
         }
     }
 
-    /// ¿Sigue vivo el proceso del motor?
-    pub fn sigue_vivo(&mut self) -> bool {
-        matches!(self.proceso.try_wait(), Ok(None))
+    /// ¿Sigue vivo el proceso del motor? (Se puede preguntar con el motor compartido: no necesita `&mut`.)
+    pub fn sigue_vivo(&self) -> bool {
+        locall_system::proceso_vivo(&self.proceso)
+    }
+
+    /// Por qué se cerró el motor, según lo que dejó escrito en su registro (falta de memoria, modelo dañado…).
+    pub fn causa_del_cierre(&self) -> Causa {
+        errores::causa_en_archivo(&self.registro)
     }
 
     /// Puerto local donde escucha el motor.

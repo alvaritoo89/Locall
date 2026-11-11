@@ -134,6 +134,22 @@ pub fn no_heredar_entrada_salida() {
     windows::no_heredar_entrada_salida();
 }
 
+// ─── Procesos ──────────────────────────────────────────────────────────────────
+
+/// ¿Sigue en marcha este proceso? Pregunta a Windows sin esperar, y sin necesitar acceso exclusivo al proceso (a
+/// diferencia de `Child::try_wait`), así que se puede usar con un motor compartido entre hilos.
+pub fn proceso_vivo(proceso: &std::process::Child) -> bool {
+    #[cfg(windows)]
+    {
+        windows::proceso_vivo(proceso)
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = proceso;
+        true
+    }
+}
+
 // ─── Portapapeles ──────────────────────────────────────────────────────────────
 
 /// Pone `texto` en el portapapeles de Windows (lo usa el botón «Copiar» de la app). Solo escribe: Locall nunca lee

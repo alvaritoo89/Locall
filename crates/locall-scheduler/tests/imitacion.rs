@@ -33,6 +33,8 @@ struct Imitacion {
 struct MotorFalso {
     modelo: String,
     registro: Arc<Registro>,
+    /// La prueba lo pone a `true` para imitar un motor cuyo proceso se ha cerrado solo.
+    muerto: AtomicBool,
 }
 
 impl Drop for MotorFalso {
@@ -71,7 +73,12 @@ impl Arrancador for Imitacion {
         Ok(MotorFalso {
             modelo: carga.modelo.clone(),
             registro: Arc::clone(&self.registro),
+            muerto: AtomicBool::new(false),
         })
+    }
+
+    fn sigue_vivo(&self, motor: &MotorFalso) -> bool {
+        !motor.muerto.load(Ordering::SeqCst)
     }
 }
 
@@ -485,4 +492,61 @@ fn consulta_el_motor_sin_contarlo_como_uso() {
         },
         "consultar no es prestar"
     );
+}
+
+// ─── Motor que se cierra solo (Fase 7a) ──────────────────────────────────────
+
+#[test]
+fn si_el_motor_se_cierra_solo_se_vuelve_a_cargar() {
+    let (plan, reg) = planificador(0, None);
+    let prestamo = plan.usar(&carga("a")).unwrap();
+    prestamo.muerto.store(true, Ordering::SeqCst); // el proceso del motor se cierra (falta de memoria…)
+    drop(prestamo);
+
+    // Al pedir el mismo modelo, no se presta el motor muerto: se retira y se carga otro.
+    let otro = plan.usar(&carga("a")).unwrap();
+    assert!(
+        !otro.muerto.load(Ordering::SeqCst),
+        "el motor prestado está vivo"
+    );
+    assert_eq!(cargas(&reg), ["a", "a"]);
+    assert_eq!(reg.vivos.load(Ordering::SeqCst), 1, "el muerto se soltó");
+}
+
+#[test]
+fn el_vigilante_retira_un_motor_que_se_cerro_solo() {
+    // Sin descarga por inactividad: aun así, un motor muerto no debe quedarse como «listo».
+    let (plan, reg) = planificador(0, None);
+    let prestamo = plan.usar(&carga("a")).unwrap();
+    prestamo.muerto.store(true, Ordering::SeqCst);
+    drop(prestamo);
+    assert!(matches!(plan.estado(), Estado::Listo { .. }));
+
+    let limite = Instant::now() + Duration::from_secs(5);
+    while plan.estado() != Estado::Vacio && Instant::now() < limite {
+        thread::sleep(Duration::from_millis(50));
+    }
+    assert_eq!(plan.estado(), Estado::Vacio, "el vigilante lo retiró");
+    assert_eq!(reg.vivos.load(Ordering::SeqCst), 0);
+}
+
+#[test]
+fn un_motor_muerto_no_se_retira_mientras_alguien_lo_tiene_prestado() {
+    let (plan, reg) = planificador(0, None);
+    let plan = Arc::new(plan);
+    let primero = plan.usar(&carga("a")).unwrap();
+    primero.muerto.store(true, Ordering::SeqCst);
+
+    // Otro pide el mismo modelo: no se le presta el muerto, y tampoco se le quita al primero (su petición fallará
+    // por su cuenta): espera a que lo suelte y entonces se carga uno nuevo.
+    let otro_plan = Arc::clone(&plan);
+    let segundo = thread::spawn(move || {
+        let p = otro_plan.usar(&carga("a")).unwrap();
+        !p.muerto.load(Ordering::SeqCst)
+    });
+    thread::sleep(Duration::from_millis(200));
+    assert_eq!(cargas(&reg), ["a"], "todavía no ha recargado");
+    drop(primero);
+    assert!(segundo.join().unwrap(), "al segundo le tocó un motor vivo");
+    assert_eq!(cargas(&reg), ["a", "a"]);
 }

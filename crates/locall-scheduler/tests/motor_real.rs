@@ -162,3 +162,46 @@ fn dos_conversaciones_a_la_vez_con_un_solo_hueco() {
     drop(plan);
     let _ = std::fs::remove_file(&pequeno.config.registro);
 }
+
+#[test]
+fn si_el_motor_real_se_cierra_solo_se_recupera() {
+    let Some(pequeno) = carga("se-cierra", "qwen2.5-1.5b-instruct-q4_k_m.gguf") else {
+        return;
+    };
+    let plan = Planificador::nuevo(ArrancadorReal::default(), Opciones { inactividad: None });
+    let pid = plan.usar(&pequeno).unwrap().pid();
+
+    // Imitar que el motor se cierra solo (como si Windows lo cerrara por falta de memoria): la prueba termina el
+    // proceso del motor que ella misma ha arrancado.
+    let cerrado = std::process::Command::new("taskkill")
+        .args(["/PID", &pid.to_string(), "/F"])
+        .output()
+        .unwrap();
+    assert!(
+        cerrado.status.success(),
+        "no se pudo cerrar el motor de la prueba"
+    );
+    assert!(espera_a_que_muera(pid));
+
+    // El vigilante lo retira: el estado deja de decir «listo» (mira cada 2 s).
+    let limite = Instant::now() + Duration::from_secs(10);
+    while plan.estado() != Estado::Vacio && Instant::now() < limite {
+        thread::sleep(Duration::from_millis(100));
+    }
+    assert_eq!(
+        plan.estado(),
+        Estado::Vacio,
+        "el motor muerto sigue como «listo»"
+    );
+
+    // Y al volver a pedirlo, se carga otro motor que responde.
+    let prestamo = plan.usar(&pequeno).unwrap();
+    assert_ne!(prestamo.pid(), pid, "es un motor nuevo");
+    let resumen = prestamo
+        .chat(&pregunta(), &AtomicBool::new(false), |_| {})
+        .unwrap();
+    assert!(resumen.tokens_generados > 0);
+    drop(prestamo);
+    drop(plan);
+    let _ = std::fs::remove_file(&pequeno.config.registro);
+}

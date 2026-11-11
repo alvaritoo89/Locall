@@ -50,6 +50,13 @@ pub trait Arrancador: Send + Sync + 'static {
 
     /// Arranca un motor con `carga` y espera a que esté listo.
     fn arrancar(&self, carga: &Carga) -> Result<Self::Motor, Self::Error>;
+
+    /// ¿Sigue vivo este motor? Si su proceso se ha cerrado solo (por falta de memoria, por un fallo…), el
+    /// planificador lo retira y, si se vuelve a pedir ese modelo, lo carga de nuevo. Por defecto, siempre vivo.
+    fn sigue_vivo(&self, motor: &Self::Motor) -> bool {
+        let _ = motor;
+        true
+    }
 }
 
 /// El arrancador de verdad: `llama-server` mediante `locall-engine`.
@@ -90,6 +97,16 @@ impl Arrancador for ArrancadorReal {
         let (motor, _tiempo) =
             Motor::arrancar_listo(&carga.config, self.espera_maxima, &AtomicBool::new(false))?;
         Ok(motor)
+    }
+
+    fn sigue_vivo(&self, motor: &Motor) -> bool {
+        let vivo = motor.sigue_vivo();
+        if !vivo {
+            // El motor deja escrito por qué se cerró (falta de memoria, modelo dañado…): se apunta en el registro.
+            let causa = motor.causa_del_cierre();
+            log::warn!("el motor se ha cerrado solo (causa: {causa:?})");
+        }
+        vivo
     }
 }
 
@@ -266,6 +283,18 @@ impl<A: Arrancador> Planificador<A> {
                     .as_ref()
                     .filter(|actual| actual.carga == *carga)
                     .map(|actual| Arc::clone(&actual.motor));
+                // a') …pero si su proceso se ha cerrado solo, no se presta un motor muerto: en cuanto nadie lo use,
+                //     se retira y se carga de nuevo (más abajo, como un cambio de modelo).
+                let mismo = match mismo {
+                    Some(motor) if !c.arrancador.sigue_vivo(&motor) => {
+                        if estado.prestamos == 0 {
+                            soltar_actual(&mut estado, "el motor se cerró solo");
+                            break;
+                        }
+                        None // alguien lo tiene prestado: su petición fallará y lo soltará; esperar
+                    }
+                    otro => otro,
+                };
                 if let Some(motor) = mismo {
                     estado.cola.pop_front();
                     estado.prestamos += 1;
@@ -476,9 +505,13 @@ fn soltar_actual<M>(estado: &mut Interno<M>, motivo: &str) {
     }
 }
 
+/// Cada cuánto mira el vigilante si el motor sigue vivo (mientras hay un modelo cargado que nadie usa).
+const VIGILAR_MOTOR: Duration = Duration::from_secs(2);
+
 // ─── El vigilante de inactividad ─────────────────────────────────────────────
 
-/// Hilo que descarga el modelo cuando lleva `inactividad` sin préstamos.
+/// Hilo que descarga el modelo cuando lleva `inactividad` sin préstamos, y que retira el motor si su proceso se ha
+/// cerrado solo (así el estado no dice «listo» con un motor muerto).
 fn vigilar<A: Arrancador>(c: &Compartido<A>) {
     let mut estado = c.bloquear();
     loop {
@@ -486,10 +519,21 @@ fn vigilar<A: Arrancador>(c: &Compartido<A>) {
             return;
         }
         let mut espera = None; // None = dormir hasta el próximo cambio
+        let libre = estado.actual.is_some() && estado.prestamos == 0 && estado.cargando.is_none();
+        if libre {
+            let muerto = estado
+                .actual
+                .as_ref()
+                .is_some_and(|actual| !c.arrancador.sigue_vivo(&actual.motor));
+            if muerto {
+                soltar_actual(&mut estado, "el motor se cerró solo");
+                c.cambio.notify_all();
+                continue;
+            }
+            espera = Some(VIGILAR_MOTOR);
+        }
         if let Some(limite) = c.opciones.inactividad
-            && estado.actual.is_some()
-            && estado.prestamos == 0
-            && estado.cargando.is_none()
+            && libre
         {
             let pasado = estado.ultimo_uso.elapsed();
             if pasado >= limite {
@@ -497,7 +541,7 @@ fn vigilar<A: Arrancador>(c: &Compartido<A>) {
                 c.cambio.notify_all();
                 continue;
             }
-            espera = Some(limite - pasado);
+            espera = Some((limite - pasado).min(VIGILAR_MOTOR));
         }
         estado = match espera {
             Some(d) => {
