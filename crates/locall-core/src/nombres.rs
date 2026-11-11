@@ -1,7 +1,7 @@
-//! Nombres: validar repositorios de Hugging Face, reconocer modelos divididos y deducir el identificador, el nombre
-//! para mostrar y la cuantización a partir del nombre del archivo.
+//! Names: validating Hugging Face repositories, recognizing split models and deducing the identifier, the display
+//! name and the quantization from the file name.
 
-/// ¿Es `owner/nombre` un repositorio válido de Hugging Face?
+/// Is `owner/name` a valid Hugging Face repository?
 pub(crate) fn repo_valido(repo: &str) -> bool {
     let Some((dueno, nombre)) = repo.split_once('/') else {
         return false;
@@ -16,7 +16,7 @@ pub(crate) fn repo_valido(repo: &str) -> bool {
     })
 }
 
-/// ¿Es una revisión válida (rama, etiqueta o commit)? Se permite `/` (por ejemplo `refs/pr/1`), pero nunca `..`.
+/// Is it a valid revision (branch, tag or commit)? `/` is allowed (for example `refs/pr/1`), but never `..`.
 pub(crate) fn revision_valida(revision: &str) -> bool {
     !revision.is_empty()
         && revision.len() <= 128
@@ -27,10 +27,10 @@ pub(crate) fn revision_valida(revision: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-' | '/'))
 }
 
-/// Si `nombre` es una parte de un modelo dividido (`base-00001-of-00003.gguf`), devuelve `(base, parte, partes)`.
+/// If `nombre` is a part of a split model (`base-00001-of-00003.gguf`), returns `(base, part, parts)`.
 pub(crate) fn parte_de(nombre: &str) -> Option<(&str, u32, u32)> {
     let sin_extension = nombre.strip_suffix(".gguf")?;
-    // "...-00001-of-00003": los últimos 15 caracteres.
+    // "...-00001-of-00003": the last 15 characters.
     let (base, cola) = sin_extension.split_at_checked(sin_extension.len().checked_sub(15)?)?;
     let cola = cola.strip_prefix('-')?;
     let (parte, partes) = cola.split_once("-of-")?;
@@ -41,12 +41,12 @@ pub(crate) fn parte_de(nombre: &str) -> Option<(&str, u32, u32)> {
     (parte >= 1 && parte <= partes && partes >= 2).then_some((base, parte, partes))
 }
 
-/// Nombre de la parte `i` de `n` de un modelo dividido.
+/// Name of part `i` of `n` of a split model.
 pub(crate) fn nombre_de_parte(base: &str, i: u32, n: u32) -> String {
     format!("{base}-{i:05}-of-{n:05}.gguf")
 }
 
-/// El nombre del archivo sin `.gguf` ni el sufijo de parte: `Qwen3-4B-Q4_K_M`.
+/// The file name without `.gguf` or the part suffix: `Qwen3-4B-Q4_K_M`.
 pub(crate) fn nombre_para_mostrar(archivo: &str) -> String {
     if let Some((base, _, _)) = parte_de(archivo) {
         return base.to_owned();
@@ -54,7 +54,7 @@ pub(crate) fn nombre_para_mostrar(archivo: &str) -> String {
     archivo.strip_suffix(".gguf").unwrap_or(archivo).to_owned()
 }
 
-/// Identificador corto y válido para el almacén: `qwen3-4b-q4_k_m`.
+/// Short, valid identifier for the store: `qwen3-4b-q4_k_m`.
 pub(crate) fn id_desde_archivo(archivo: &str) -> String {
     let mut id = String::new();
     for c in nombre_para_mostrar(archivo).chars() {
@@ -74,7 +74,7 @@ pub(crate) fn id_desde_archivo(archivo: &str) -> String {
     }
 }
 
-/// Cuantizaciones conocidas, de más larga a más corta (para que `Q4_K_M` gane a `Q4_K`).
+/// Known quantizations, from longest to shortest (so `Q4_K_M` wins over `Q4_K`).
 const CUANTIZACIONES: [&str; 34] = [
     "IQ2_XXS", "IQ3_XXS", "IQ2_XS", "IQ3_XS", "IQ4_XS", "IQ4_NL", "Q2_K_S", "Q3_K_S", "Q3_K_M",
     "Q3_K_L", "Q4_K_S", "Q4_K_M", "Q5_K_S", "Q5_K_M", "IQ1_S", "IQ1_M", "IQ2_S", "IQ2_M", "IQ3_S",
@@ -82,7 +82,7 @@ const CUANTIZACIONES: [&str; 34] = [
     "BF16", "F16", "F32", "Q3_K",
 ];
 
-/// La cuantización que aparece en el nombre del archivo (`Qwen3-4B-Q4_K_M.gguf` → `Q4_K_M`), si la hay.
+/// The quantization that appears in the file name (`Qwen3-4B-Q4_K_M.gguf` → `Q4_K_M`), if any.
 pub(crate) fn cuantizacion(archivo: &str) -> Option<String> {
     let nombre = nombre_para_mostrar(archivo).to_ascii_uppercase();
     let mut candidatas: Vec<&str> = CUANTIZACIONES.to_vec();

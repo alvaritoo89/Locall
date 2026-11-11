@@ -1,12 +1,12 @@
-//! El catálogo de modelos compatibles dentro del núcleo (ADR 0022 y 0023).
+//! The catalog of compatible models inside the core (ADR 0022 and 0023).
 //!
-//! - **Al abrir**, Locall usa el catálogo más nuevo que tenga con firma buena: el que lleva dentro
-//!   ([`locall_catalogo::incluido`]) o uno descargado antes (en `<datos>\catalogo\`).
-//! - [`Nucleo::actualizar_catalogo`] mira en GitHub si hay uno nuevo, **como mucho una vez al día** (salvo que se
-//!   fuerce). Solo lo acepta si la firma es buena **y** es más nuevo que el que ya tiene (`published`): así nadie
-//!   puede devolver a Locall un catálogo antiguo aunque esté bien firmado.
-//! - [`Nucleo::instalar_del_catalogo`] instala por nombre (`qwen3-4b`) y, **antes de descargar**, comprueba que lo que
-//!   ofrece Hugging Face en ese commit coincide exactamente (rutas, tamaños y sha256) con lo firmado en el catálogo.
+//! - **On opening**, Locall uses the newest catalog it has with a good signature: the one shipped inside it
+//!   ([`locall_catalogo::incluido`]) or one downloaded earlier (in `<data>\catalogo\`).
+//! - [`Nucleo::actualizar_catalogo`] checks GitHub for a new one, **at most once a day** (unless forced). It only
+//!   accepts it if the signature is good **and** it is newer than the one it already has (`published`): this way
+//!   nobody can push an old catalog back onto Locall even if it is properly signed.
+//! - [`Nucleo::instalar_del_catalogo`] installs by name (`qwen3-4b`) and, **before downloading**, checks that what
+//!   Hugging Face offers at that commit matches exactly (paths, sizes and sha256) what is signed in the catalog.
 
 use std::path::Path;
 use std::sync::atomic::AtomicBool;
@@ -17,42 +17,42 @@ use locall_registry::Modelo;
 
 use crate::{ErrorNucleo, Nucleo, PeticionInstalar, ProgresoInstalacion, elegir_partes};
 
-/// Dónde está el catálogo oficial (el archivo y, al lado, su firma `.minisig`).
+/// Where the official catalog is (the file and, next to it, its `.minisig` signature).
 pub const URL_CATALOGO: &str =
     "https://raw.githubusercontent.com/alvaritoo89/Locall/main/catalogo/catalogo.json";
 
-/// Cada cuánto se mira, como mucho, si hay un catálogo nuevo.
+/// At most how often to check for a new catalog.
 pub const INTERVALO_COMPROBACION: Duration = Duration::from_secs(24 * 60 * 60);
 
-/// Una firma de minisign ocupa unos 300 bytes: más de esto no es una firma.
+/// A minisign signature takes about 300 bytes: anything larger is not a signature.
 const FIRMA_MAX: u64 = 4096;
 
-/// De dónde salió el catálogo que se está usando.
+/// Where the catalog in use came from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OrigenCatalogo {
-    /// El que va dentro de este Locall.
+    /// The one shipped inside this Locall.
     Incluido,
-    /// Uno más nuevo, descargado de GitHub.
+    /// A newer one, downloaded from GitHub.
     Descargado,
 }
 
-/// El catálogo en uso y cuándo se miró por última vez si había otro.
+/// The catalog in use and when it was last checked whether there was another one.
 #[derive(Debug, Clone)]
 pub struct EstadoCatalogo {
     pub catalogo: Catalogo,
     pub origen: OrigenCatalogo,
-    /// Segundos desde 1970 de la última vez que se miró en GitHub (`None`: nunca).
+    /// Seconds since 1970 of the last time GitHub was checked (`None`: never).
     pub comprobado: Option<u64>,
 }
 
-/// Lo que pasó al buscar un catálogo nuevo.
+/// What happened when looking for a new catalog.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Actualizacion {
-    /// Se miró hace menos de un día: no se ha vuelto a mirar.
+    /// It was checked less than a day ago: it has not been checked again.
     NoTocaba,
-    /// Se miró y el que hay es igual o más nuevo.
+    /// It was checked and the current one is the same or newer.
     SinNovedades,
-    /// Había uno nuevo con firma buena: ya se está usando.
+    /// There was a new one with a good signature: it is already in use.
     Actualizado,
 }
 
@@ -60,7 +60,8 @@ const ARCHIVO: &str = "catalogo.json";
 const FIRMA: &str = "catalogo.json.minisig";
 const COMPROBADO: &str = "comprobado";
 
-/// El catálogo con el que arranca el núcleo: el más nuevo entre el incluido y el guardado (si su firma es buena).
+/// The catalog the core starts with: the newest between the shipped one and the saved one (if its signature is
+/// good).
 pub(crate) fn cargar(carpeta: &Path, clave: &str) -> EstadoCatalogo {
     let incluido = locall_catalogo::incluido().ok();
     let guardado = std::fs::read(carpeta.join(ARCHIVO))
@@ -83,7 +84,7 @@ pub(crate) fn cargar(carpeta: &Path, clave: &str) -> EstadoCatalogo {
         (Some(i), _) => (i, OrigenCatalogo::Incluido),
         (None, Some(g)) => (g, OrigenCatalogo::Descargado),
         (None, None) => {
-            // Solo pasaría si se compila Locall con un catálogo mal firmado (una prueba lo impide).
+            // Would only happen if Locall were built with a badly signed catalog (a test prevents it).
             log::warn!("no hay ningún catálogo con firma buena");
             (
                 Catalogo {
@@ -102,12 +103,12 @@ pub(crate) fn cargar(carpeta: &Path, clave: &str) -> EstadoCatalogo {
 }
 
 impl Nucleo {
-    /// El catálogo en uso.
+    /// The catalog in use.
     pub fn catalogo(&self) -> EstadoCatalogo {
         self.estado_catalogo().clone()
     }
 
-    /// Mira en GitHub si hay un catálogo nuevo (como mucho una vez al día, salvo con `forzar`).
+    /// Checks GitHub for a new catalog (at most once a day, unless `forzar`).
     pub fn actualizar_catalogo(&self, forzar: bool) -> Result<Actualizacion, ErrorNucleo> {
         let ahora = locall_registry::ahora();
         {
@@ -121,7 +122,7 @@ impl Nucleo {
             }
         }
         let carpeta = self.rutas.catalogo();
-        // Se apunta que se ha mirado aunque falle, para no insistir cada vez si GitHub no responde.
+        // The check is recorded even if it fails, so as not to insist every time if GitHub does not answer.
         self.estado_catalogo().comprobado = Some(ahora);
         let _ = std::fs::create_dir_all(&carpeta);
         let _ = std::fs::write(carpeta.join(COMPROBADO), ahora.to_string());
@@ -148,8 +149,8 @@ impl Nucleo {
             }
             return Ok(Actualizacion::SinNovedades);
         }
-        // Guardar primero (archivo temporal + renombrar): si se corta a medias, al abrir la firma no cuadra y se usa
-        // el incluido; nunca uno a medias.
+        // Save first (temporary file + rename): if it is cut halfway, on opening the signature does not match and the
+        // shipped one is used; never a half-written one.
         escribir_seguro(&carpeta.join(ARCHIVO), &datos)?;
         escribir_seguro(&carpeta.join(FIRMA), firma.as_bytes())?;
         log::info!(
@@ -162,10 +163,10 @@ impl Nucleo {
         Ok(Actualizacion::Actualizado)
     }
 
-    /// Instala un modelo del catálogo por su nombre (`qwen3-4b` o `qwen3-4b:q8_0`).
+    /// Installs a catalog model by its name (`qwen3-4b` or `qwen3-4b:q8_0`).
     ///
-    /// El identificador en Locall es el nombre del modelo para la variante de por defecto (`qwen3-4b`) y
-    /// `nombre-variante` para las demás (`qwen3-4b-q8_0`).
+    /// The identifier in Locall is the model name for the default variant (`qwen3-4b`) and `name-variant` for the others
+    /// (`qwen3-4b-q8_0`).
     pub fn instalar_del_catalogo(
         &self,
         texto: &str,
@@ -198,8 +199,8 @@ impl Nucleo {
         )
     }
 
-    /// Lo que Hugging Face tiene en ese commit debe ser **exactamente** lo firmado en el catálogo: las mismas partes,
-    /// con el mismo tamaño y el mismo sha256. Si no, no se descarga nada.
+    /// What Hugging Face has at that commit must be **exactly** what is signed in the catalog: the same parts, with the
+    /// same size and the same sha256. Otherwise, nothing is downloaded.
     fn comprobar_contra_hugging_face(
         &self,
         modelo: &ModeloCatalogo,
@@ -240,9 +241,9 @@ impl Nucleo {
         Ok(())
     }
 
-    /// ¿Cabría un modelo de `bytes` en este equipo? **Aproximado**: sin el archivo no se puede leer su cabecera, así
-    /// que se estima como el archivo + un 10 % + 512 MB (contexto y motor). Devuelve la memoria estimada y el encaje.
-    /// Como en [`Nucleo::evaluar`], la memoria del modelo cargado cuenta como disponible (se sustituiría).
+    /// Would a model of `bytes` fit on this computer? **Approximate**: without the file its header cannot be read, so it
+    /// is estimated as the file + 10 % + 512 MB (context and engine). Returns the estimated memory and the fit.
+    /// As in [`Nucleo::evaluar`], the memory of the loaded model counts as available (it would be replaced).
     pub fn encaje_aproximado(&self, bytes: u64) -> (u64, locall_compat::Encaje) {
         let estimado = bytes
             .saturating_add(bytes / 10)
@@ -260,7 +261,7 @@ impl Nucleo {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
-    /// Descarga un archivo pequeño, sin pasar de `maximo` bytes.
+    /// Downloads a small file, without exceeding `maximo` bytes.
     fn descargar_limitado(&self, url: &str, maximo: u64) -> Result<Vec<u8>, ErrorNucleo> {
         let respuesta = self
             .agente_catalogo
@@ -280,7 +281,7 @@ impl Nucleo {
     }
 }
 
-/// Escribe en un archivo temporal y lo renombra encima del destino.
+/// Writes to a temporary file and renames it over the destination.
 fn escribir_seguro(ruta: &Path, datos: &[u8]) -> Result<(), ErrorNucleo> {
     let temporal = ruta.with_extension("nuevo");
     let error =

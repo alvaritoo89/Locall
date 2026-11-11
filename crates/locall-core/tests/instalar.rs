@@ -1,4 +1,4 @@
-//! Instalar, listar y eliminar modelos contra un Hugging Face falso (sin internet).
+//! Installing, listing and removing models against a fake Hugging Face (no internet).
 
 mod comun;
 
@@ -24,7 +24,7 @@ fn repo(nombre: &str, archivos: Vec<Archivo>) -> Repo {
     }
 }
 
-/// Un modelo "llama" pequeño (300 KB) que el motor reconocería.
+/// A small "llama" model (300 KB) the engine would recognize.
 fn modelo_llama(relleno: usize) -> Vec<u8> {
     gguf(
         &[
@@ -90,12 +90,12 @@ fn instala_un_modelo_fijado_al_commit() {
     assert_eq!((ultimo.parte, ultimo.partes), (1, 1));
     assert_eq!(ultimo.descargados, ultimo.total);
 
-    // Aparece en la lista y el motor lo encontraría en su carpeta.
+    // It appears in the list and the engine would find it in its folder.
     assert_eq!(nucleo.modelos().unwrap().len(), 1);
     let carga = nucleo.carga("pequeno-q4_k_m").unwrap();
     assert_eq!(std::fs::read(&carga.config.modelo).unwrap(), datos);
 
-    // Lo que se pidió: revisión, lista, cabecera y el archivo (todo fijado al commit).
+    // What was requested: revision, list, header and the file (all pinned to the commit).
     let pedidas = hf.pedidas.lock().unwrap().clone();
     assert!(pedidas.iter().any(|r| r.ends_with("/revision/main")));
     assert!(
@@ -112,7 +112,7 @@ fn instala_todas_las_partes_de_un_modelo_dividido() {
             &[("split.count", 2)],
             50_000,
         );
-        d.push(n); // contenido distinto en cada parte
+        d.push(n); // different content in each part
         d
     };
     let hf = hf_falso(vec![repo(
@@ -125,7 +125,7 @@ fn instala_todas_las_partes_de_un_modelo_dividido() {
     let carpeta = CarpetaDePrueba::nueva("dividido");
     let nucleo = nucleo(&carpeta, Some(&hf));
 
-    // Se puede pedir por cualquiera de sus partes, y con o sin carpeta.
+    // It can be requested by any of its parts, with or without a folder.
     let modelo = instalar(
         &nucleo,
         &pedir("prueba/dividido", "grande-q4_k_m-00002-of-00002.gguf"),
@@ -145,7 +145,7 @@ fn instala_todas_las_partes_de_un_modelo_dividido() {
             "grande-q4_k_m-00002-of-00002.gguf"
         ]
     );
-    // El motor recibe la primera parte, y la segunda está a su lado con su nombre original.
+    // The engine receives the first part, and the second one is next to it with its original name.
     let carga = nucleo.carga("grande-q4_k_m").unwrap();
     assert!(
         carga
@@ -177,7 +177,7 @@ fn no_descarga_un_modelo_incompatible() {
     let error = instalar(&nucleo, &pedir("prueba/raro", "raro.gguf")).unwrap_err();
     assert!(matches!(error, ErrorNucleo::Incompatible(_)), "{error:?}");
     assert!(error.to_string().contains("«inventada»"), "{error}");
-    // Solo se leyó la cabecera: no hay nada en el almacén ni a medias.
+    // Only the header was read: there is nothing in the store, not even half-done.
     let blobs = carpeta.0.join("modelos").join("blobs");
     assert_eq!(std::fs::read_dir(blobs).unwrap().count(), 0);
     let tmp = carpeta.0.join("modelos").join("tmp");
@@ -265,16 +265,16 @@ fn eliminar_libera_solo_lo_que_nadie_usa() {
     let carpeta = CarpetaDePrueba::nueva("eliminar");
     let nucleo = nucleo(&carpeta, Some(&hf));
 
-    // El mismo archivo instalado con dos nombres: un solo blob en el almacén.
+    // The same file installed under two names: a single blob in the store.
     instalar(&nucleo, &pedir("prueba/m", "m.gguf")).unwrap();
     let mut otro = pedir("prueba/m", "m.gguf");
     otro.id = Some("copia".into());
     instalar(&nucleo, &otro).unwrap();
 
-    // Eliminar uno no borra el archivo que usa el otro.
+    // Removing one does not delete the file the other uses.
     assert_eq!(nucleo.eliminar("m").unwrap(), 0);
     assert!(nucleo.carga("copia").unwrap().config.modelo.is_file());
-    // Eliminar el último sí lo libera.
+    // Removing the last one does free it.
     assert_eq!(nucleo.eliminar("copia").unwrap(), compartido.len() as u64);
     assert!(nucleo.modelos().unwrap().is_empty());
     assert!(matches!(
@@ -304,7 +304,7 @@ fn una_instalacion_cancelada_continua_despues() {
     assert!(matches!(error, ErrorNucleo::Cancelado), "{error:?}");
     assert!(nucleo.modelos().unwrap().is_empty());
 
-    // Al volver a pedirlo, continúa (con Range) y termina.
+    // When requested again, it continues (with Range) and finishes.
     let mut primero = None;
     nucleo
         .instalar(&pedir("prueba/m", "m.gguf"), &AtomicBool::new(false), |p| {

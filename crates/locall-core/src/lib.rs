@@ -1,15 +1,15 @@
 //! # locall-core
 //!
-//! El **núcleo** de Locall: une las piezas de la Fase 2 en un solo servicio, sin nada de HTTP (eso es `locall-api`,
-//! regla 9). La API, la CLI y la app hablan con un [`Nucleo`].
+//! Locall's **core**: joins the Phase 2 pieces into a single service, without any HTTP (that is `locall-api`, rule 9).
+//! The API, the CLI and the app talk to a [`Nucleo`].
 //!
-//! - [`Nucleo::abrir`]: lee la configuración y abre el almacén, el registro y el planificador.
-//! - [`Nucleo::instalar`]: instala un modelo de Hugging Face fijado a un commit exacto, comprobando que es compatible
-//!   **antes** de descargarlo (solo se lee su cabecera por la red).
-//! - [`Nucleo::importar`]: incorpora un GGUF que ya está en el disco, sin copiarlo si se puede.
+//! - [`Nucleo::abrir`]: reads the configuration and opens the store, the registry and the scheduler.
+//! - [`Nucleo::instalar`]: installs a Hugging Face model pinned to an exact commit, checking that it is compatible
+//!   **before** downloading it (only its header is read over the network).
+//! - [`Nucleo::importar`]: brings in a GGUF that is already on disk, without copying it if possible.
 //! - [`Nucleo::modelos`], [`Nucleo::eliminar`], [`Nucleo::chat`], [`Nucleo::estado`].
 //!
-//! Todos los métodos toman `&self`: el núcleo se comparte entre hilos (`Arc<Nucleo>`).
+//! All methods take `&self`: the core is shared between threads (`Arc<Nucleo>`).
 
 use std::collections::BTreeSet;
 use std::fmt;
@@ -37,33 +37,33 @@ mod nombres;
 pub use catalogo::{
     Actualizacion, EstadoCatalogo, INTERVALO_COMPROBACION, OrigenCatalogo, URL_CATALOGO,
 };
-/// Los tipos del catálogo (para los clientes del núcleo).
+/// The catalog types (for the core's clients).
 pub use locall_catalogo::{ArchivoCatalogo, Catalogo, ErrorCatalogo, ModeloCatalogo, Variante};
 
-/// Resultados como mucho en una búsqueda en Hugging Face.
+/// Maximum results in a Hugging Face search.
 pub const BUSQUEDA_MAX: u32 = 50;
-/// Longitud máxima del texto de una búsqueda (en caracteres).
+/// Maximum length of a search text (in characters).
 pub const BUSQUEDA_TEXTO_MAX: usize = 100;
 
 use huggingface::HuggingFace;
 pub use huggingface::{ArchivoHf, HUGGING_FACE, InfoRevision, RepoEncontrado};
-/// Los tipos de las conversaciones guardadas (para los clientes del núcleo).
+/// The saved conversation types (for the core's clients).
 pub use locall_registry::{Autor, Conversacion, MensajeGuardado};
 
-// ─── Tipos públicos ───────────────────────────────────────────────────────────
+// ─── Public types ─────────────────────────────────────────────────────────────
 
-/// Con qué abrir el núcleo.
+/// What to open the core with.
 #[derive(Debug, Clone)]
 pub struct OpcionesNucleo {
     pub rutas: Rutas,
-    /// Ruta de `llama-server.exe` (la pondrá el instalador; en desarrollo, la del paquete de la Fase 0).
+    /// Path of `llama-server.exe` (the installer will set it; in development, the one from the Phase 0 package).
     pub motor: PathBuf,
-    /// Dirección de Hugging Face ([`HUGGING_FACE`]; otra solo en pruebas).
+    /// Hugging Face's address ([`HUGGING_FACE`]; another one only in tests).
     pub hugging_face: String,
-    /// Dirección del catálogo ([`URL_CATALOGO`]; otra solo en pruebas). La firma está al lado (`.minisig`).
+    /// The catalog's address ([`URL_CATALOGO`]; another one only in tests). The signature is next to it (`.minisig`).
     pub catalogo: String,
-    /// Clave pública con la que se comprueba un catálogo descargado ([`locall_catalogo::CLAVE_PUBLICA`]; otra solo en
-    /// pruebas). El catálogo que va dentro de Locall se comprueba siempre con la oficial.
+    /// Public key used to check a downloaded catalog ([`locall_catalogo::CLAVE_PUBLICA`]; another one only in tests).
+    /// The catalog shipped inside Locall is always checked with the official one.
     pub clave_catalogo: String,
 }
 
@@ -79,31 +79,31 @@ impl OpcionesNucleo {
     }
 }
 
-/// Qué modelo instalar de Hugging Face.
+/// Which Hugging Face model to install.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PeticionInstalar {
-    /// `owner/nombre`, por ejemplo `Qwen/Qwen3-4B-GGUF`.
+    /// `owner/name`, for example `Qwen/Qwen3-4B-GGUF`.
     pub repo: String,
-    /// Rama, etiqueta o commit (`main` si no se sabe). Se fija al commit exacto.
+    /// Branch, tag or commit (`main` if unknown). It is pinned to the exact commit.
     pub revision: String,
-    /// El archivo GGUF (en un modelo dividido, cualquiera de sus partes).
+    /// The GGUF file (in a split model, any of its parts).
     pub archivo: String,
-    /// Identificador para Locall. `None` = se deduce del nombre del archivo.
+    /// Identifier for Locall. `None` = deduced from the file name.
     pub id: Option<String>,
 }
 
-/// El resultado de [`Nucleo::conversar`].
+/// The result of [`Nucleo::conversar`].
 #[derive(Debug, Clone)]
 pub struct RespuestaGuardada {
-    /// La conversación, ya actualizada.
+    /// The conversation, already updated.
     pub conversacion: Conversacion,
-    /// La respuesta guardada (`None` si se paró antes de que llegara nada).
+    /// The saved answer (`None` if it was stopped before anything arrived).
     pub respuesta: Option<MensajeGuardado>,
-    /// Las cifras de la respuesta.
+    /// The answer's figures.
     pub resumen: Resumen,
 }
 
-/// El turno de una conversación (ver `Nucleo::conversando`): al soltarlo, queda libre.
+/// A conversation's turn (see `Nucleo::conversando`): dropping it frees it.
 struct TurnoConversacion<'a> {
     nucleo: &'a Nucleo,
     id: i64,
@@ -120,7 +120,7 @@ impl Drop for TurnoConversacion<'_> {
     }
 }
 
-/// Convierte el «no encontrado» del registro en el error propio de las conversaciones.
+/// Converts the registry's «not found» into the conversations' own error.
 fn no_encontrada(e: ErrorRegistro, id: i64) -> ErrorNucleo {
     match e {
         ErrorRegistro::NoEncontrado(_) => ErrorNucleo::ConversacionNoEncontrada(id),
@@ -128,40 +128,40 @@ fn no_encontrada(e: ErrorRegistro, id: i64) -> ErrorNucleo {
     }
 }
 
-/// Progreso de una instalación.
+/// Progress of an installation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ProgresoInstalacion {
-    /// Parte que se está descargando (1, 2…) de `partes`.
+    /// Part being downloaded (1, 2…) of `partes`.
     pub parte: usize,
     pub partes: usize,
-    /// Bytes descargados en total (todas las partes) de `total`.
+    /// Bytes downloaded in total (all parts) of `total`.
     pub descargados: u64,
     pub total: u64,
 }
 
-// ─── El núcleo ────────────────────────────────────────────────────────────────
+// ─── The core ─────────────────────────────────────────────────────────────────
 
-/// El núcleo de Locall.
+/// Locall's core.
 pub struct Nucleo {
     rutas: Rutas,
     config: Config,
     avisos: Vec<String>,
     motor: PathBuf,
     almacen: Almacen,
-    /// Con candado: SQLite solo admite un escritor y la conexión no se comparte entre hilos.
+    /// Behind a lock: SQLite only allows one writer and the connection is not shared between threads.
     registro: Mutex<Registro>,
     hf: HuggingFace,
     descargador: Descargador,
     planificador: Planificador<ArrancadorReal>,
-    /// Identificadores que se están instalando ahora (dos instalaciones del mismo modelo a la vez se pisarían).
+    /// Identifiers being installed right now (two installations of the same model at once would clash).
     instalando: Mutex<BTreeSet<String>>,
-    /// Conversaciones que están recibiendo un mensaje ahora. Cada una atiende **un mensaje cada vez**: si llega otro
-    /// (por ejemplo, justo después de parar una respuesta), espera a que el anterior termine de guardarse, para que
-    /// los mensajes no se guarden desordenados.
+    /// Conversations receiving a message right now. Each one handles **one message at a time**: if another arrives (for
+    /// example, right after stopping an answer), it waits for the previous one to finish saving, so messages are not
+    /// saved out of order.
     conversando: (Mutex<BTreeSet<i64>>, Condvar),
-    /// Para que dos cambios de ajustes a la vez no se pisen al escribir `config.toml`.
+    /// So two settings changes at once do not clash when writing `config.toml`.
     guardando_ajustes: Mutex<()>,
-    /// El catálogo en uso (ver `catalogo.rs`).
+    /// The catalog in use (see `catalogo.rs`).
     catalogo: Mutex<EstadoCatalogo>,
     url_catalogo: String,
     clave_catalogo: String,
@@ -169,7 +169,7 @@ pub struct Nucleo {
 }
 
 impl Nucleo {
-    /// Lee la configuración y abre todo. Crea las carpetas que falten.
+    /// Reads the configuration and opens everything. Creates the missing folders.
     pub fn abrir(opciones: OpcionesNucleo) -> Result<Nucleo, ErrorNucleo> {
         let rutas = opciones.rutas;
         let rutas_catalogo = rutas.catalogo();
@@ -225,19 +225,19 @@ impl Nucleo {
         })
     }
 
-    /// Avisos al abrir (ajustes desconocidos, almacén en OneDrive…), para mostrarlos al usuario.
+    /// Warnings on opening (unknown settings, store in OneDrive…), to show to the user.
     pub fn avisos(&self) -> &[String] {
         &self.avisos
     }
 
-    /// Los ajustes que hay ahora en `config.toml` (pueden diferir de [`Nucleo::config`], los que se leyeron al
-    /// abrir, si se han cambiado después: se aplican al volver a abrir Locall).
+    /// The settings currently in `config.toml` (they may differ from [`Nucleo::config`], those read on opening, if they
+    /// were changed afterwards: they take effect when Locall is reopened).
     pub fn ajustes_guardados(&self) -> Result<Config, ErrorNucleo> {
         Ok(Config::leer(&self.rutas.config())?.0)
     }
 
-    /// Guarda estos cambios en `config.toml` (ver [`Config::guardar_cambios`]) y devuelve los ajustes guardados.
-    /// Se aplican la próxima vez que se abra Locall.
+    /// Saves these changes to `config.toml` (see [`Config::guardar_cambios`]) and returns the saved settings.
+    /// They take effect the next time Locall is opened.
     pub fn guardar_ajustes(
         &self,
         cambios: &[(&str, locall_config::lector::Valor)],
@@ -265,7 +265,7 @@ impl Nucleo {
         &self.rutas
     }
 
-    /// ¿Está trabajando? (instalando un modelo, cargándolo o respondiendo). Un modelo cargado sin usar no cuenta.
+    /// Is it working? (installing a model, loading it or answering). A loaded model that is not in use does not count.
     pub fn ocupado(&self) -> bool {
         let instalando = !self
             .instalando
@@ -280,21 +280,21 @@ impl Nucleo {
             }
     }
 
-    /// Memoria que ocupa ahora el motor con el modelo cargado (`None` si no hay ninguno).
+    /// Memory the engine with the loaded model takes right now (`None` if there is none).
     pub fn memoria_del_modelo(&self) -> Option<u64> {
         let pid = self.planificador.con_motor(|motor| motor.pid())?;
         locall_system::memoria_de_proceso(pid).ok()
     }
 
-    /// Cuánto falta para que el modelo cargado se descargue por inactividad (ver el planificador).
+    /// How long until the loaded model unloads due to inactivity (see the scheduler).
     pub fn se_descarga_en(&self) -> Option<std::time::Duration> {
         self.planificador.se_descarga_en()
     }
 
-    /// ¿Cabe este modelo en el equipo, con el contexto de la configuración? (`locall-compat`)
+    /// Does this model fit on the computer, with the configured context? (`locall-compat`)
     ///
-    /// Cargar un modelo **sustituye** al que haya cargado, así que la memoria de ese cuenta como disponible: si no, la
-    /// app diría «no cabe» de modelos que sí caben.
+    /// Loading a model **replaces** the one that is loaded, so that one's memory counts as available: otherwise the app
+    /// would say «does not fit» for models that do fit.
     pub fn evaluar(&self, id: &str) -> Result<Evaluacion, ErrorNucleo> {
         let modelo = self
             .modelo(id)?
@@ -313,17 +313,17 @@ impl Nucleo {
         ))
     }
 
-    /// Qué está haciendo el planificador (qué modelo está cargado).
+    /// What the scheduler is doing (which model is loaded).
     pub fn estado(&self) -> Estado {
         self.planificador.estado()
     }
 
-    /// Los modelos instalados.
+    /// The installed models.
     pub fn modelos(&self) -> Result<Vec<Modelo>, ErrorNucleo> {
         Ok(self.registro().listar()?)
     }
 
-    /// Un modelo instalado, o `None`.
+    /// An installed model, or `None`.
     pub fn modelo(&self, id: &str) -> Result<Option<Modelo>, ErrorNucleo> {
         let Ok(id) = Segmento::nuevo(id) else {
             return Ok(None);
@@ -333,7 +333,7 @@ impl Nucleo {
 
     // ─── Hugging Face ─────────────────────────────────────────────────────────
 
-    /// Consulta un repositorio: su commit exacto, licencia y los GGUF que contiene.
+    /// Queries a repository: its exact commit, license and the GGUFs it contains.
     pub fn consultar(
         &self,
         repo: &str,
@@ -355,8 +355,8 @@ impl Nucleo {
         Ok((info, ggufs))
     }
 
-    /// Busca en Hugging Face repositorios con modelos GGUF cuyo nombre contenga `texto`, los más descargados primero
-    /// (como mucho [`BUSQUEDA_MAX`]). Solo se envía a Hugging Face el texto buscado.
+    /// Searches Hugging Face for repositories with GGUF models whose name contains `texto`, most downloaded first (at
+    /// most [`BUSQUEDA_MAX`]). Only the searched text is sent to Hugging Face.
     pub fn buscar(&self, texto: &str, limite: u32) -> Result<Vec<RepoEncontrado>, ErrorNucleo> {
         let texto = texto.trim();
         if texto.is_empty()
@@ -370,9 +370,9 @@ impl Nucleo {
         self.hf.buscar(texto, limite.clamp(1, BUSQUEDA_MAX))
     }
 
-    /// Instala un modelo de Hugging Face.
+    /// Installs a Hugging Face model.
     ///
-    /// Si se cancela (`cancelar`), lo descargado se conserva y la próxima vez continúa donde se quedó.
+    /// If it is cancelled (`cancelar`), what was downloaded is kept and next time it continues where it left off.
     pub fn instalar(
         &self,
         peticion: &PeticionInstalar,
@@ -397,12 +397,12 @@ impl Nucleo {
         let id = self.id_libre(peticion.id.as_deref(), &nombre_principal)?;
         let _turno = self.reservar(&id)?;
 
-        // Comprobar la compatibilidad leyendo solo la cabecera, antes de descargar nada.
+        // Check compatibility by reading only the header, before downloading anything.
         let url_principal = self.hf.url_archivo(repo, &info.commit, &partes[0].ruta);
         let cabecera = self.hf.leer_cabecera(&url_principal)?;
         comprobar(&cabecera, self.config.contexto)?;
 
-        // Espacio para lo que falte por descargar.
+        // Space for what is left to download.
         let total: u64 = partes.iter().map(|p| p.bytes).sum();
         let faltan: u64 = partes
             .iter()
@@ -460,7 +460,7 @@ impl Nucleo {
             licencia: info.licencia.clone(),
             arquitectura: cabecera.resumen().arquitectura,
             contexto_max: cabecera.resumen().contexto_max,
-            verificado: false, // el catálogo verificado llegará más adelante
+            verificado: false, // the verified catalog will come later
             archivos,
         };
         let modelo = self.registrar(nuevo)?;
@@ -468,10 +468,10 @@ impl Nucleo {
         Ok(modelo)
     }
 
-    /// Incorpora un GGUF que ya está en el disco (en un modelo dividido, su primera parte).
+    /// Brings in a GGUF that is already on disk (in a split model, its first part).
     ///
-    /// Si está en el mismo disco que el almacén, **no se copia** (enlace duro): no ocupa el doble. Al eliminar el
-    /// modelo de Locall, el archivo original no se toca.
+    /// If it is on the same disk as the store, **it is not copied** (hard link): it does not take twice the space. When
+    /// the model is removed from Locall, the original file is not touched.
     pub fn importar(&self, ruta: &Path, id: Option<&str>) -> Result<Modelo, ErrorNucleo> {
         let cabecera = locall_gguf::leer_archivo(ruta).map_err(ErrorNucleo::Cabecera)?;
         comprobar(&cabecera, self.config.contexto)?;
@@ -503,7 +503,7 @@ impl Nucleo {
                         .into_owned(),
                 ));
             }
-            // Enlace duro si se puede; si está en otro disco, copia (con su verificación de espacio).
+            // Hard link if possible; if it is on another disk, copy (with its space check).
             let huella = match self.almacen.adoptar_archivo(parte, None) {
                 Ok(h) => h,
                 Err(ErrorAlmacen::Io { .. }) => self.almacen.guardar_archivo(parte, None)?,
@@ -540,8 +540,8 @@ impl Nucleo {
         Ok(modelo)
     }
 
-    /// Elimina un modelo: su registro, su carpeta y los archivos del almacén que **ningún otro modelo** use.
-    /// Devuelve los bytes liberados. Un archivo importado con enlace duro no se borra (es el original del usuario).
+    /// Removes a model: its registry entry, its folder and the store files that **no other model** uses.
+    /// Returns the bytes freed. A file imported with a hard link is not deleted (it is the user's original).
     pub fn eliminar(&self, id: &str) -> Result<u64, ErrorNucleo> {
         let seg = Segmento::nuevo(id).map_err(|_| ErrorNucleo::NoInstalado(id.to_owned()))?;
         let mut registro = self.registro();
@@ -549,7 +549,7 @@ impl Nucleo {
             .obtener(&seg)?
             .ok_or_else(|| ErrorNucleo::NoInstalado(id.to_owned()))?;
 
-        // Si está cargado, descargarlo de la memoria (si alguien lo usa, no se puede eliminar ahora).
+        // If it is loaded, unload it from memory (if someone is using it, it cannot be removed now).
         let (es_este, en_uso) = match self.planificador.estado() {
             Estado::Cargando { modelo } => (modelo == id, true),
             Estado::Listo { modelo, en_uso } => (modelo == id, en_uso > 0),
@@ -559,7 +559,7 @@ impl Nucleo {
             return Err(ErrorNucleo::EnUso(id.to_owned()));
         }
 
-        // Primero el registro (así el modelo deja de existir para todos) y después la carpeta y los archivos.
+        // The registry first (so the model stops existing for everyone) and then the folder and the files.
         let huellas = registro.eliminar(&seg)?;
         let en_uso = registro.huellas_en_uso()?;
         drop(registro);
@@ -572,7 +572,7 @@ impl Nucleo {
         for huella in huellas.iter().filter(|h| !en_uso.contains(*h)) {
             match self.almacen.eliminar_blob(huella) {
                 Ok(bytes) => liberados += bytes,
-                // Importado con enlace duro (el original sigue siendo del usuario) o ya no estaba: nada que hacer.
+                // Imported with a hard link (the original still belongs to the user) or it was already gone: nothing to do.
                 Err(ErrorAlmacen::BlobEnUso(_) | ErrorAlmacen::BlobNoEncontrado(_)) => {}
                 Err(e) => log::warn!("no se pudo borrar un archivo de «{id}»: {e}"),
             }
@@ -581,10 +581,10 @@ impl Nucleo {
         Ok(liberados)
     }
 
-    // ─── Conversación ─────────────────────────────────────────────────────────
+    // ─── Conversation ─────────────────────────────────────────────────────────
 
-    /// Conversa con un modelo instalado. Lo carga si hace falta (esperando su turno; `cancelar` también sirve
-    /// para irse de la cola) y entrega la respuesta por trozos.
+    /// Chats with an installed model. Loads it if needed (waiting for its turn; `cancelar` also leaves the queue) and
+    /// delivers the answer in chunks.
     pub fn chat(
         &self,
         id: &str,
@@ -608,14 +608,14 @@ impl Nucleo {
         Ok(prestamo.chat(peticion, cancelar, al_recibir)?)
     }
 
-    // ─── Conversaciones guardadas ─────────────────────────────────────────────
+    // ─── Saved conversations ──────────────────────────────────────────────────
 
-    /// Las conversaciones guardadas, de la más reciente a la más antigua.
+    /// The saved conversations, from the most recent to the oldest.
     pub fn conversaciones(&self) -> Result<Vec<Conversacion>, ErrorNucleo> {
         Ok(self.registro().conversaciones()?)
     }
 
-    /// Una conversación con sus mensajes.
+    /// A conversation with its messages.
     pub fn conversacion(
         &self,
         id: i64,
@@ -627,7 +627,7 @@ impl Nucleo {
         Ok((c, registro.mensajes(id)?))
     }
 
-    /// Crea una conversación vacía.
+    /// Creates an empty conversation.
     pub fn crear_conversacion(&self, titulo: &str) -> Result<Conversacion, ErrorNucleo> {
         let titulo = if titulo.trim().is_empty() {
             "Nueva conversación"
@@ -645,7 +645,7 @@ impl Nucleo {
             .map_err(|e| no_encontrada(e, id))
     }
 
-    /// Elimina una conversación de verdad (también del disco: ver `locall-registry`).
+    /// Deletes a conversation for real (also from disk: see `locall-registry`).
     pub fn eliminar_conversacion(&self, id: i64) -> Result<(), ErrorNucleo> {
         self.registro()
             .eliminar_conversacion(id)
@@ -654,11 +654,11 @@ impl Nucleo {
         Ok(())
     }
 
-    /// Escribe `contenido` en la conversación `id` y guarda la respuesta del modelo.
+    /// Writes `contenido` to conversation `id` and saves the model's answer.
     ///
-    /// Se envía al modelo **toda la conversación guardada** (con las instrucciones del sistema). Si el modelo falla
-    /// (por ejemplo, porque la conversación ya no cabe), la pregunta se quita, para que al reintentar no quede
-    /// repetida. Si se para antes de que llegue nada, también.
+    /// The **whole saved conversation** is sent to the model (with the system instructions). If the model fails (for
+    /// example, because the conversation no longer fits), the question is removed, so it is not duplicated on retry. The
+    /// same if it is stopped before anything arrives.
     #[allow(clippy::too_many_arguments)]
     pub fn conversar(
         &self,
@@ -671,14 +671,14 @@ impl Nucleo {
         al_recibir: impl FnMut(Evento<'_>),
     ) -> Result<RespuestaGuardada, ErrorNucleo> {
         let _turno = self.turno_de_conversacion(id, cancelar)?;
-        // 0) Que existan la conversación y el modelo (en ese orden), antes de guardar nada.
+        // 0) The conversation and the model must exist (in that order), before saving anything.
         if self.registro().conversacion(id)?.is_none() {
             return Err(ErrorNucleo::ConversacionNoEncontrada(id));
         }
         if self.modelo(modelo)?.is_none() {
             return Err(ErrorNucleo::NoInstalado(modelo.to_owned()));
         }
-        // 1) Guardar la pregunta y los ajustes, y leer la conversación entera.
+        // 1) Save the question and the settings, and read the whole conversation.
         let historial = {
             let mut registro = self.registro();
             registro
@@ -692,7 +692,7 @@ impl Nucleo {
             registro.mensajes(id)?
         };
 
-        // 2) Preguntar al modelo.
+        // 2) Ask the model.
         let mut mensajes = Vec::with_capacity(historial.len() + 1);
         if !sistema.trim().is_empty() {
             mensajes.push(Mensaje::nuevo(Rol::Sistema, sistema.trim()));
@@ -718,10 +718,10 @@ impl Nucleo {
             }
         };
 
-        // 3) Guardar la respuesta (también si se paró a medias, marcada como cortada).
+        // 3) Save the answer (also if it was stopped halfway, marked as cut).
         let mut registro = self.registro();
         let respuesta = if resumen.texto.is_empty() && resumen.razonamiento.is_empty() {
-            registro.quitar_ultimo_mensaje(id)?; // se paró antes de que llegara nada
+            registro.quitar_ultimo_mensaje(id)?; // it was stopped before anything arrived
             None
         } else {
             Some(
@@ -739,7 +739,7 @@ impl Nucleo {
                         },
                         locall_registry::ahora(),
                     )
-                    // (si se eliminó la conversación mientras respondía)
+                    // (if the conversation was deleted while it was answering)
                     .map_err(|e| no_encontrada(e, id))?,
             )
         };
@@ -753,8 +753,8 @@ impl Nucleo {
         })
     }
 
-    /// Espera a que la conversación `id` no esté atendiendo otro mensaje y la marca como ocupada hasta que se suelte
-    /// lo devuelto. Mientras espera, mira `cancelar`.
+    /// Waits until conversation `id` is not handling another message and marks it as busy until the returned value is
+    /// dropped. While waiting, it checks `cancelar`.
     fn turno_de_conversacion<'a>(
         &'a self,
         id: i64,
@@ -775,7 +775,7 @@ impl Nucleo {
         Ok(TurnoConversacion { nucleo: self, id })
     }
 
-    /// Cómo arrancar el motor para un modelo instalado, con los ajustes del usuario.
+    /// How to start the engine for an installed model, with the user's settings.
     pub fn carga(&self, id: &str) -> Result<Carga, ErrorNucleo> {
         let modelo = self
             .modelo(id)?
@@ -794,20 +794,20 @@ impl Nucleo {
                 modelo: carpeta.join(principal.nombre.to_string()),
                 contexto: self.config.contexto,
                 hilos: self.config.hilos_para_motor(),
-                capas_gpu: 0, // la gráfica se activará cuando esté validada (D1)
+                capas_gpu: 0, // the GPU will be enabled once it is validated (D1)
                 paralelo: self.config.paralelo,
                 registro: self.rutas.registros().join("motor.log"),
             },
         })
     }
 
-    // ─── Ayudantes ────────────────────────────────────────────────────────────
+    // ─── Helpers ──────────────────────────────────────────────────────────────
 
     fn registro(&self) -> MutexGuard<'_, Registro> {
         self.registro.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    /// El identificador pedido (o el deducido del archivo), validado y sin usar.
+    /// The requested identifier (or the one deduced from the file), validated and unused.
     fn id_libre(&self, pedido: Option<&str>, archivo: &str) -> Result<Segmento, ErrorNucleo> {
         let texto = pedido.map_or_else(|| nombres::id_desde_archivo(archivo), str::to_owned);
         let id = Segmento::nuevo(&texto).map_err(|_| ErrorNucleo::IdInvalido(texto.clone()))?;
@@ -817,7 +817,7 @@ impl Nucleo {
         Ok(id)
     }
 
-    /// Marca el identificador como "instalándose" hasta que se suelte el turno.
+    /// Marks the identifier as "installing" until the turn is released.
     fn reservar(&self, id: &Segmento) -> Result<Turno<'_>, ErrorNucleo> {
         let mut instalando = self
             .instalando
@@ -832,7 +832,7 @@ impl Nucleo {
         })
     }
 
-    /// Crea el snapshot y registra el modelo (si el registro falla, se deshace el snapshot).
+    /// Creates the snapshot and registers the model (if registering fails, the snapshot is undone).
     fn registrar(&self, nuevo: ModeloNuevo) -> Result<Modelo, ErrorNucleo> {
         let revision = Segmento::nuevo(&nuevo.revision)?;
         let enlaces: Vec<(NombreArchivo, Huella)> = nuevo
@@ -863,7 +863,7 @@ impl fmt::Debug for Nucleo {
     }
 }
 
-/// Mientras exista, el identificador consta como "instalándose".
+/// While it exists, the identifier is listed as "installing".
 struct Turno<'a> {
     instalando: &'a Mutex<BTreeSet<String>>,
     id: String,
@@ -878,7 +878,7 @@ impl Drop for Turno<'_> {
     }
 }
 
-/// Comprueba la compatibilidad con el motor (los avisos no impiden instalar).
+/// Checks compatibility with the engine (warnings do not prevent installing).
 fn comprobar(cabecera: &Cabecera, contexto: u32) -> Result<(), ErrorNucleo> {
     let comprobacion = locall_compat::comprobar(cabecera, u64::from(contexto));
     if comprobacion.es_compatible() {
@@ -888,7 +888,7 @@ fn comprobar(cabecera: &Cabecera, contexto: u32) -> Result<(), ErrorNucleo> {
     }
 }
 
-/// Elige del repositorio el archivo pedido y, si es un modelo dividido, todas sus partes (en orden).
+/// Picks the requested file from the repository and, if it is a split model, all its parts (in order).
 fn elegir_partes(ggufs: &[ArchivoHf], pedido: &str) -> Result<Vec<ArchivoHf>, ErrorNucleo> {
     let elegido = ggufs
         .iter()
@@ -917,68 +917,68 @@ fn elegir_partes(ggufs: &[ArchivoHf], pedido: &str) -> Result<Vec<ArchivoHf>, Er
         .collect()
 }
 
-// ─── Errores ──────────────────────────────────────────────────────────────────
+// ─── Errors ───────────────────────────────────────────────────────────────────
 
-/// Lo que puede salir mal en el núcleo.
+/// What can go wrong in the core.
 #[derive(Debug)]
 pub enum ErrorNucleo {
     Config(ErrorConfig),
-    /// Un ajuste que se quiso cambiar no es válido (o no se puede cambiar así).
+    /// A setting someone tried to change is not valid (or cannot be changed this way).
     AjusteInvalido(String),
-    /// Ese nombre no está en el catálogo.
+    /// That name is not in the catalog.
     NoEnCatalogo(String),
-    /// Lo que hay en Hugging Face no coincide con lo firmado en el catálogo.
+    /// What is on Hugging Face does not match what is signed in the catalog.
     CatalogoNoCoincide(String),
-    /// El catálogo descargado no sirve (firma, formato…).
+    /// The downloaded catalog is not usable (signature, format…).
     Catalogo(ErrorCatalogo),
-    /// GitHub no ha dado el catálogo (código HTTP).
+    /// GitHub did not provide the catalog (HTTP code).
     CatalogoNoDisponible(u16),
     Almacen(ErrorAlmacen),
     Registro(ErrorRegistro),
-    /// `owner/nombre` no válido.
+    /// Invalid `owner/name`.
     RepoInvalido(String),
     RevisionInvalida(String),
-    /// El texto de una búsqueda está vacío, es demasiado largo o tiene caracteres de control.
+    /// The search text is empty, too long or has control characters.
     BusquedaInvalida(String),
-    /// El identificador pedido no es válido para Locall.
+    /// The requested identifier is not valid for Locall.
     IdInvalido(String),
-    /// Hugging Face no tiene ese repositorio (o es privado).
+    /// Hugging Face does not have that repository (or it is private).
     RepoNoEncontrado(String),
-    /// Hay que aceptar condiciones con una cuenta de Hugging Face (no se admite en la v1).
+    /// Conditions must be accepted with a Hugging Face account (not supported in v1).
     Protegido(String),
-    /// Hugging Face respondió con un error.
+    /// Hugging Face answered with an error.
     HuggingFace {
         estado: u16,
     },
-    /// Hugging Face respondió algo que no entendemos.
+    /// Hugging Face answered something we do not understand.
     RespuestaHf(String),
-    /// Sin conexión, o se cortó.
+    /// No connection, or it dropped.
     Red(String),
-    /// El repositorio no tiene ese archivo.
+    /// The repository does not have that file.
     ArchivoNoEncontrado {
         archivo: String,
         disponibles: Vec<String>,
     },
-    /// Falta una parte de un modelo dividido.
+    /// A part of a split model is missing.
     FaltaParte(String),
-    /// El archivo no trae huella sha256: no se podría verificar la descarga.
+    /// The file has no sha256 hash: the download could not be verified.
     SinHuella(String),
     Cabecera(ErrorGguf),
-    /// El motor no puede usar este modelo.
+    /// The engine cannot use this model.
     Incompatible(Vec<Problema>),
     YaInstalado(String),
     YaInstalandose(String),
     NoInstalado(String),
-    /// No hay ninguna conversación con ese número.
+    /// There is no conversation with that number.
     ConversacionNoEncontrada(i64),
-    /// El modelo se está usando o cargando ahora mismo.
+    /// The model is being used or loaded right now.
     EnUso(String),
     Descarga(ErrorDescarga),
-    /// Cancelado a petición (una descarga a medias se conserva para continuar).
+    /// Cancelled on request (a half-finished download is kept to continue).
     Cancelado,
-    /// El modelo no se pudo cargar.
+    /// The model could not be loaded.
     Carga(ErrorCarga),
-    /// Fallo del motor durante la conversación.
+    /// Engine failure during the conversation.
     Motor(ErrorMotor),
 }
 

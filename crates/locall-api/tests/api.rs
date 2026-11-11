@@ -1,7 +1,7 @@
-//! La API con un servidor de verdad (puerto libre en 127.0.0.1) y un núcleo en una carpeta temporal.
+//! The API with a real server (free port on 127.0.0.1) and a core in a temporary folder.
 //!
-//! Las peticiones se escriben a mano sobre TCP para poder poner cabeceras como las pondría un atacante
-//! (`Host` falso, `Origin` de una web).
+//! Requests are written by hand over TCP so headers can be set as an attacker would set them (fake `Host`, a
+//! website's `Origin`).
 
 use std::io::{Read, Write};
 use std::net::TcpStream;
@@ -24,14 +24,14 @@ impl Drop for Prueba {
     }
 }
 
-/// Arranca la API en un puerto libre, con un modelo importado («pequeno»).
+/// Starts the API on a free port, with an imported model («pequeno»).
 fn arrancar(nombre: &str) -> Prueba {
     let carpeta = std::env::temp_dir().join(format!("locall-api-{nombre}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&carpeta);
     let rutas = Rutas::en(carpeta.clone());
     let nucleo = Nucleo::abrir(OpcionesNucleo::nuevas(rutas.clone(), "no-hay-motor.exe")).unwrap();
 
-    // Un GGUF mínimo para tener algo en la lista: versión 3, 0 tensores, 1 metadato
+    // A minimal GGUF to have something in the list: version 3, 0 tensors, 1 metadata entry
     // (general.architecture = "llama").
     let mut gguf = b"GGUF".to_vec();
     gguf.extend(3u32.to_le_bytes());
@@ -40,7 +40,7 @@ fn arrancar(nombre: &str) -> Prueba {
     let clave = "general.architecture";
     gguf.extend((clave.len() as u64).to_le_bytes());
     gguf.extend(clave.as_bytes());
-    gguf.extend(8u32.to_le_bytes()); // tipo: texto
+    gguf.extend(8u32.to_le_bytes()); // type: text
     gguf.extend(5u64.to_le_bytes());
     gguf.extend(b"llama");
     let archivo = carpeta.join("Pequeno-Q4_0.gguf");
@@ -71,7 +71,7 @@ fn arrancar(nombre: &str) -> Prueba {
 }
 
 impl Prueba {
-    /// Una petición con estas cabeceras (si no se da `Host`, se pone el correcto). Devuelve (estado, JSON).
+    /// A request with these headers (if `Host` is not given, the correct one is set). Returns (status, JSON).
     fn pedir(&self, metodo: &str, ruta: &str, cabeceras: &[(&str, String)]) -> (u16, Value) {
         let mut texto = format!("{metodo} {ruta} HTTP/1.1\r\n");
         if !cabeceras
@@ -117,7 +117,7 @@ fn sin_token_no_se_puede_usar() {
     let (estado, json) = api.pedir("GET", "/api/models", &[malo]);
     assert_eq!((estado, codigo(&json)), (401, "token_invalid"));
 
-    // Ni siquiera se puede saber qué rutas existen sin token.
+    // Without a token you cannot even find out which routes exist.
     let (estado, _) = api.pedir("GET", "/no/existe", &[]);
     assert_eq!(estado, 401);
 }
@@ -125,7 +125,7 @@ fn sin_token_no_se_puede_usar() {
 #[test]
 fn rechaza_un_host_que_no_es_localhost() {
     let api = arrancar("host");
-    // DNS rebinding: la web «malvada.example» apunta su dominio a 127.0.0.1.
+    // DNS rebinding: the website «malvada.example» points its domain to 127.0.0.1.
     for host in [
         "malvada.example".to_owned(),
         format!("malvada.example:{}", api.puerto),
@@ -158,10 +158,10 @@ fn rechaza_un_host_que_no_es_localhost() {
 fn rechaza_las_peticiones_de_paginas_web() {
     let api = arrancar("origen");
     let web = ("Origin", "https://malvada.example".to_owned());
-    // Aunque la web tuviera el token, no puede usar Locall.
+    // Even if the website had the token, it cannot use Locall.
     let (estado, json) = api.pedir("GET", "/api/models", &[web.clone(), api.con_token()]);
     assert_eq!((estado, codigo(&json)), (403, "origin_not_allowed"));
-    // La pregunta previa que hace el navegador ("preflight") también se rechaza, y sin cabeceras CORS.
+    // The browser's preliminary request ("preflight") is rejected too, and without CORS headers.
     let (estado, _) = api.pedir(
         "OPTIONS",
         "/api/models",
@@ -212,7 +212,7 @@ fn lista_los_modelos_sin_rutas_del_disco() {
     assert_eq!(m["architecture"], "llama");
     assert_eq!(m["source"], "local");
     assert_eq!(m["files"][0]["sha256"].as_str().unwrap().len(), 64);
-    // Un GGUF casi vacío cabe de sobra; el motor reconoce «llama».
+    // An almost empty GGUF fits easily; the engine recognizes «llama».
     assert_eq!(m["fit"], "comfortable");
     assert_eq!(m["compatible"], true);
     assert!(m["memory_estimate_bytes"].as_u64().is_some());

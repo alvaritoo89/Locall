@@ -1,4 +1,4 @@
-//! `GET` y `PATCH /api/settings`: ver los ajustes y cambiarlos (se aplican al volver a abrir Locall).
+//! `GET` and `PATCH /api/settings`: viewing the settings and changing them (applied when Locall is reopened).
 
 mod comun;
 
@@ -41,7 +41,7 @@ fn cambiar_ajustes_los_guarda_y_avisa_de_que_hay_que_reiniciar() {
         "los comentarios siguen ahí"
     );
 
-    // Volver a los valores en uso: ya no hace falta reiniciar.
+    // Back to the values in use: a restart is no longer needed.
     let (_, a) = api.json(
         "PATCH",
         "/api/settings",

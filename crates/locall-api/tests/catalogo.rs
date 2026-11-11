@@ -1,4 +1,5 @@
-//! El catálogo por la API (sin internet: el catálogo de GitHub se busca en el servidor falso, que no lo tiene).
+//! The catalog through the API (no internet: the GitHub catalog is looked up on the fake server, which does not have
+//! it).
 
 mod comun;
 
@@ -35,7 +36,7 @@ fn si_no_hay_catalogo_nuevo_lo_explica_y_sigue_con_el_suyo() {
     let (estado, r) = api.json("POST", "/api/catalog/update", Some(&json!({"force": true})));
     assert_eq!(estado, 502, "{r}");
     assert_eq!(r["error"]["code"], "catalog_unavailable");
-    // Ya miró: sin forzar, no vuelve a intentarlo hasta mañana.
+    // It already checked: without forcing, it does not try again until tomorrow.
     let (estado, r) = api.json("POST", "/api/catalog/update", None);
     assert_eq!(estado, 200, "{r}");
     assert_eq!(r["result"], "not_due");

@@ -1,46 +1,46 @@
-//! Errores comprensibles (decisión D8 de la Fase 0).
+//! Understandable errors (Phase 0 decision D8).
 //!
-//! `llama-server` explica sus fallos en inglés, a su manera y mezclados con datos privados (la ruta del modelo
-//! lleva el nombre de usuario de Windows). Aquí se **reconocen** los fallos más comunes y se convierten en una
-//! [`Causa`] con un mensaje propio en español, que nunca copia el texto del motor.
+//! `llama-server` explains its failures in English, its own way and mixed with private data (the model path carries
+//! the Windows user name). Here the most common failures are **recognized** and turned into a [`Causa`] with our own
+//! message in Spanish, which never copies the engine's text.
 //!
-//! Los textos que se buscan se han comprobado provocando cada fallo con la build b12189. Si una versión futura del
-//! motor cambia sus mensajes, el fallo se clasifica como [`Causa::Desconocida`] y se remite al registro: el error se
-//! sigue viendo, solo que con un mensaje menos concreto.
+//! The texts searched for were checked by triggering each failure with build b12189. If a future engine version
+//! changes its messages, the failure is classified as [`Causa::Desconocida`] and points to the log: the error is
+//! still visible, just with a less specific message.
 
 use std::fs::File;
 use std::io::{self, Read, Seek, SeekFrom};
 use std::path::Path;
 
-/// Cuánto del final del registro se lee para buscar la causa (los fallos de carga están al final).
+/// How much of the end of the log is read to look for the cause (load failures are at the end).
 const FINAL_DEL_REGISTRO: u64 = 64 * 1024;
 
-/// Qué ha pasado, en términos que entiende el usuario.
+/// What happened, in terms the user understands.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Causa {
-    /// Otro programa ocupó el puerto elegido justo antes de que el motor lo abriera.
+    /// Another program took the chosen port just before the engine opened it.
     PuertoOcupado,
-    /// No hay memoria para el modelo o para su contexto.
+    /// There is no memory for the model or for its context.
     MemoriaInsuficiente,
-    /// El archivo del modelo no es válido, está dañado o incompleto.
+    /// The model file is not valid, is damaged or incomplete.
     ModeloDanado,
-    /// Esta versión del motor no sabe ejecutar ese tipo de modelo.
+    /// This engine version cannot run that kind of model.
     ArquitecturaNoSoportada(String),
-    /// La conversación no cabe en el contexto.
+    /// The conversation does not fit in the context.
     ContextoExcedido {
         pedidos: Option<u64>,
         maximo: Option<u64>,
     },
-    /// El modelo todavía se está cargando.
+    /// The model is still loading.
     Cargando,
-    /// El motor rechazó la clave interna: es un fallo de Locall, no del usuario.
+    /// The engine rejected the internal key: it is a Locall bug, not the user's fault.
     ClaveRechazada,
-    /// No se ha reconocido.
+    /// Not recognized.
     Desconocida,
 }
 
 impl Causa {
-    /// Mensaje para el usuario, o `None` si la causa es desconocida.
+    /// Message for the user, or `None` if the cause is unknown.
     pub fn mensaje(&self) -> Option<String> {
         let texto = match self {
             Causa::PuertoOcupado => {
@@ -81,9 +81,9 @@ impl Causa {
     }
 }
 
-/// Busca la causa de un cierre durante la carga en el texto del registro del motor.
+/// Looks for the cause of an exit during loading in the engine's log text.
 pub(crate) fn causa_en_registro(registro: &str) -> Causa {
-    // Primero los mensajes más concretos: "failed to load model" aparece también en los demás fallos de carga.
+    // The most specific messages first: "failed to load model" also appears in the other load failures.
     if registro.contains("couldn't bind HTTP server socket") {
         return Causa::PuertoOcupado;
     }
@@ -104,13 +104,13 @@ pub(crate) fn causa_en_registro(registro: &str) -> Causa {
         return Causa::MemoriaInsuficiente;
     }
     if registro.contains("llama_model_loader: failed to load model from") {
-        // El cargador no reconoce el archivo (por ejemplo, no empieza por "GGUF").
+        // The loader does not recognize the file (for example, it does not start with "GGUF").
         return Causa::ModeloDanado;
     }
     Causa::Desconocida
 }
 
-/// Lee el final del registro y busca la causa. Si no se puede leer, la causa es desconocida.
+/// Reads the end of the log and looks for the cause. If it cannot be read, the cause is unknown.
 pub(crate) fn causa_en_archivo(ruta: &Path) -> Causa {
     leer_final(ruta).map_or(Causa::Desconocida, |texto| causa_en_registro(&texto))
 }
@@ -124,7 +124,7 @@ fn leer_final(ruta: &Path) -> io::Result<String> {
     Ok(String::from_utf8_lossy(&bytes).into_owned())
 }
 
-/// Causa de una respuesta de error del motor (por su tipo, que es más estable que el mensaje).
+/// Cause of an engine error response (by its type, which is more stable than the message).
 pub(crate) fn causa_de_respuesta(estado: u16, tipo: &str, mensaje: &str) -> Causa {
     match tipo {
         "exceed_context_size_error" => {
@@ -143,7 +143,7 @@ pub(crate) fn causa_de_respuesta(estado: u16, tipo: &str, mensaje: &str) -> Caus
     }
 }
 
-/// Los números que empiezan justo tras un `(`: en "(6030 tokens) … (2048 tokens)" → 6030, 2048.
+/// The numbers that start right after a `(`: in "(6030 tokens) … (2048 tokens)" → 6030, 2048.
 fn numeros_entre_parentesis(texto: &str) -> impl Iterator<Item = u64> + '_ {
     texto.split('(').skip(1).filter_map(|trozo| {
         let digitos: String = trozo.chars().take_while(char::is_ascii_digit).collect();

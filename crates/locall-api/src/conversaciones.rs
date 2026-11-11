@@ -1,24 +1,24 @@
-//! Conversaciones guardadas (Fase 5d). Las guarda el núcleo, así que la app y la CLI ven las mismas.
+//! Saved conversations (Phase 5d). The core stores them, so the app and the CLI see the same ones.
 //!
-//! | Ruta | Qué hace |
+//! | Route | What it does |
 //! |------|----------|
-//! | `GET /api/conversations` | Lista, de la más reciente a la más antigua (sin los mensajes). |
-//! | `POST /api/conversations` | Crea una vacía. Cuerpo opcional: `{"title": "..."}`. |
-//! | `GET /api/conversations/{id}` | Una conversación con sus mensajes. |
-//! | `PATCH /api/conversations/{id}` | Cambia el título: `{"title": "..."}`. |
-//! | `DELETE /api/conversations/{id}` | La elimina **de verdad**, también del disco (ver `locall-registry`). |
-//! | `POST /api/conversations/{id}/messages` | Escribe un mensaje y guarda la respuesta del modelo. |
+//! | `GET /api/conversations` | Lists them, from the most recent to the oldest (without messages). |
+//! | `POST /api/conversations` | Creates an empty one. Optional body: `{"title": "..."}`. |
+//! | `GET /api/conversations/{id}` | A conversation with its messages. |
+//! | `PATCH /api/conversations/{id}` | Changes the title: `{"title": "..."}`. |
+//! | `DELETE /api/conversations/{id}` | Deletes it **for real**, also from disk (see `locall-registry`). |
+//! | `POST /api/conversations/{id}/messages` | Writes a message and saves the model's answer. |
 //!
-//! El cuerpo de `messages` es `{"content": "...", "model": "...", "system": "...", "temperature": 0.7}` (`system` y
-//! `temperature` opcionales). Se envía al modelo **toda** la conversación guardada. La respuesta es NDJSON, como
-//! `/api/chat`, y el último evento lleva además la conversación y el mensaje guardados:
+//! The `messages` body is `{"content": "...", "model": "...", "system": "...", "temperature": 0.7}` (`system` and
+//! `temperature` optional). The **whole** saved conversation is sent to the model. The response is NDJSON, like
+//! `/api/chat`, and the last event also carries the saved conversation and message:
 //!
 //! ```text
 //! {"type":"text","text":"Hola"}
 //! {"type":"done","finish":"stop","usage":{...},"speed":{...},"conversation":{...},"message":{...}}
 //! ```
 //!
-//! Si el modelo falla o se para antes de responder nada, la pregunta **no** se queda guardada (`"message": null`).
+//! If the model fails or is stopped before answering anything, the question is **not** saved (`"message": null`).
 
 use std::sync::Arc;
 
@@ -37,7 +37,7 @@ fn invalida(mensaje: impl Into<String>) -> ErrorApi {
     ErrorApi::new(StatusCode::BAD_REQUEST, "invalid_request", mensaje)
 }
 
-/// El identificador de la ruta. (Se lee a mano para que un id mal escrito dé un error con nuestro formato.)
+/// The identifier from the route. (Read by hand so a malformed id gives an error in our format.)
 fn id_de(texto: &str) -> Result<i64, ErrorApi> {
     texto
         .parse::<i64>()
@@ -46,7 +46,7 @@ fn id_de(texto: &str) -> Result<i64, ErrorApi> {
         .ok_or_else(|| invalida(format!("«{texto}» no es un identificador de conversación")))
 }
 
-/// El cuerpo como JSON; un cuerpo vacío cuenta como `{}`.
+/// The body as JSON; an empty body counts as `{}`.
 fn json_de(cuerpo: &[u8]) -> Result<Value, ErrorApi> {
     if cuerpo.iter().all(u8::is_ascii_whitespace) {
         return Ok(json!({}));
@@ -118,7 +118,7 @@ pub(crate) async fn eliminar(
     Ok(Json(json!({ "deleted": id })))
 }
 
-/// Lo que pide `POST /api/conversations/{id}/messages`.
+/// What `POST /api/conversations/{id}/messages` asks for.
 pub(crate) struct Peticion {
     contenido: String,
     modelo: String,
@@ -176,8 +176,9 @@ pub(crate) async fn escribir(
     let p = leer_peticion(&cuerpo)?;
     let en_trozos = p.en_trozos;
 
-    // Igual que /api/chat: el núcleo trabaja en un hilo aparte y manda los eventos por un canal. Si la conversación
-    // o el modelo no existen, falla antes del primer evento y la respuesta es un error HTTP normal (404).
+    // Same as /api/chat: the core works on a separate thread and sends the events through a channel. If the
+    // conversation or the model does not exist, it fails before the first event and the response is a normal HTTP
+    // error (404).
     let (emisor, rx) = flujo::canal::<RespuestaGuardada>();
     let nucleo = Arc::clone(&c.nucleo);
     tokio::task::spawn_blocking(move || {
@@ -213,7 +214,7 @@ fn fin_json(r: &RespuestaGuardada) -> Value {
     json
 }
 
-/// Una conversación en JSON (sin los mensajes).
+/// A conversation as JSON (without the messages).
 fn conversacion_json(c: &Conversacion) -> Value {
     json!({
         "id": c.id,
@@ -227,7 +228,7 @@ fn conversacion_json(c: &Conversacion) -> Value {
     })
 }
 
-/// Un mensaje guardado en JSON.
+/// A saved message as JSON.
 fn mensaje_json(m: &MensajeGuardado) -> Value {
     json!({
         "index": m.orden,

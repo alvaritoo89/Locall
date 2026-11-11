@@ -1,15 +1,15 @@
 //! # locall-engine
 //!
-//! Maneja el motor de inferencia, `llama-server` de llama.cpp (ADR 0003), como un **proceso aparte**:
+//! Manages the inference engine, llama.cpp's `llama-server` (ADR 0003), as a **separate process**:
 //!
-//! - Lo arranca con las reglas de seguridad de la Fase 0 (ADR 0006): solo `127.0.0.1`, un puerto nuevo en cada
-//!   arranque, clave aleatoria pasada por **variable de entorno** (nunca como parámetro, que cualquier programa
-//!   puede leer), CORS limitado a `localhost` y sin la web incorporada.
-//! - Lo mete en un **Job Object** de Windows: si Locall muere, aunque sea de golpe, Windows mata el motor.
-//! - Espera a que el modelo esté cargado y detecta si el motor muere durante la carga.
-//! - Lo para siempre al soltarlo (`Drop`).
+//! - Starts it with the Phase 0 security rules (ADR 0006): only `127.0.0.1`, a new port on every start, a random
+//!   key passed through an **environment variable** (never as an argument, which any program can read), CORS limited
+//!   to `localhost` and without the built-in web UI.
+//! - Puts it in a Windows **Job Object**: if Locall dies, even abruptly, Windows kills the engine.
+//! - Waits for the model to be loaded and detects whether the engine dies while loading.
+//! - Always stops it when dropped (`Drop`).
 //!
-//! Este crate no decide qué modelo cargar ni cuándo: eso es el planificador (regla 9).
+//! This crate does not decide which model to load or when: that is the scheduler (rule 9).
 
 use std::ffi::OsString;
 use std::fmt;
@@ -34,38 +34,38 @@ mod pruebas;
 pub use chat::{Evento, Fin, Mensaje, PeticionChat, Resumen, Rol};
 pub use errores::Causa;
 
-/// Veces que se intenta arrancar si otro programa ocupa el puerto elegido.
+/// Attempts to start if another program takes the chosen port.
 pub const INTENTOS_PUERTO: u32 = 3;
 
-/// Cada cuánto se pregunta al motor si ya está listo.
+/// How often the engine is asked whether it is ready yet.
 const INTERVALO_SALUD: Duration = Duration::from_millis(250);
 
-// ─── Configuración ────────────────────────────────────────────────────────────
+// ─── Configuration ────────────────────────────────────────────────────────────
 
-/// Con qué arrancar el motor.
+/// What to start the engine with.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConfigMotor {
-    /// Ruta de `llama-server.exe`. La carpeta elige el tipo de motor (CPU o Vulkan, D6).
+    /// Path of `llama-server.exe`. The folder chooses the engine type (CPU or Vulkan, D6).
     pub ejecutable: PathBuf,
-    /// Ruta del modelo (en un modelo dividido, la primera parte).
+    /// Model path (in a split model, the first part).
     pub modelo: PathBuf,
-    /// Tamaño del contexto en tokens.
+    /// Context size in tokens.
     pub contexto: u32,
-    /// Hilos del procesador (se validan contra los del equipo, D5).
+    /// Processor threads (validated against the computer's, D5).
     pub hilos: usize,
-    /// Capas que se pasan a la gráfica. 0 = solo procesador.
+    /// Layers offloaded to the GPU. 0 = processor only.
     pub capas_gpu: u32,
-    /// Conversaciones que el motor atiende a la vez ("huecos"). Locall usa [`PARALELO_POR_DEFECTO`] = 1
-    /// (ADR 0012): cada conversación dispone de todo el contexto y de toda la velocidad; las demás esperan turno.
+    /// Conversations the engine serves at once ("slots"). Locall uses [`PARALELO_POR_DEFECTO`] = 1 (ADR 0012): each
+    /// conversation gets the whole context and the full speed; the others wait their turn.
     pub paralelo: u32,
-    /// Archivo donde se guardan los mensajes del motor (se sobrescribe en cada arranque).
+    /// File where the engine's messages are kept (overwritten on every start).
     pub registro: PathBuf,
 }
 
-/// Conversaciones a la vez por defecto (ADR 0012).
+/// Default simultaneous conversations (ADR 0012).
 pub const PARALELO_POR_DEFECTO: u32 = 1;
 
-/// Argumentos de `llama-server`. **No incluye la clave**: esa va por variable de entorno (D3).
+/// `llama-server` arguments. **The key is not included**: it goes through an environment variable (D3).
 pub fn argumentos(config: &ConfigMotor, puerto: u16) -> Vec<OsString> {
     let mut args: Vec<OsString> = Vec::new();
     let mut par = |nombre: &str, valor: OsString| {
@@ -73,49 +73,49 @@ pub fn argumentos(config: &ConfigMotor, puerto: u16) -> Vec<OsString> {
         args.push(valor);
     };
     par("--model", config.modelo.clone().into());
-    par("--host", "127.0.0.1".into()); // D4: solo este equipo
+    par("--host", "127.0.0.1".into()); // D4: this computer only
     par("--port", puerto.to_string().into());
-    par("--load-mode", "none".into()); // D2: sin mapeo de memoria
+    par("--load-mode", "none".into()); // D2: no memory mapping
     par("--threads", config.hilos.to_string().into()); // D5
     par("--ctx-size", config.contexto.to_string().into());
     par("--n-gpu-layers", config.capas_gpu.to_string().into());
     par("--parallel", config.paralelo.to_string().into());
-    par("--cors-origins", "localhost".into()); // D4: ninguna web ajena
+    par("--cors-origins", "localhost".into()); // D4: no foreign websites
     args.push("--no-webui".into());
     args
 }
 
-// ─── Errores ──────────────────────────────────────────────────────────────────
+// ─── Errors ───────────────────────────────────────────────────────────────────
 
-/// Lo que puede salir mal con el motor.
+/// What can go wrong with the engine.
 #[derive(Debug)]
 pub enum ErrorMotor {
-    /// No existe el ejecutable o el modelo.
+    /// The executable or the model does not exist.
     NoEncontrado(PathBuf),
-    /// Un ajuste de [`ConfigMotor`] no es válido.
+    /// A [`ConfigMotor`] setting is not valid.
     ConfigInvalida(String),
-    /// El número de hilos no es posible en este equipo.
+    /// The number of threads is not possible on this computer.
     Hilos(HilosInvalidos),
-    /// No se pudo generar la clave aleatoria.
+    /// The random key could not be generated.
     Clave(String),
-    /// Error del sistema (lanzar el proceso, crear el registro, el Job Object…).
+    /// System error (launching the process, creating the log, the Job Object…).
     Io { contexto: String, error: io::Error },
-    /// El motor terminó antes de estar listo. `causa` es lo reconocido en su registro.
+    /// The engine exited before being ready. `causa` is what was recognized in its log.
     TerminoAlCargar {
         codigo: Option<i32>,
         causa: Causa,
         registro: PathBuf,
     },
-    /// El motor no estuvo listo en el tiempo máximo.
+    /// The engine was not ready within the maximum time.
     TiempoAgotado { segundos: u64 },
-    /// Se canceló la espera (el motor se ha parado).
+    /// The wait was cancelled (the engine has been stopped).
     Cancelado,
-    /// No se pudo hablar con el motor (conexión rechazada o cortada).
+    /// Could not talk to the engine (connection refused or dropped).
     Conexion(String),
-    /// El motor respondió algo que no entendemos.
+    /// The engine answered something we do not understand.
     Protocolo(String),
-    /// El motor rechazó la petición. `tipo` y `mensaje` son los suyos: el mensaje puede contener datos privados
-    /// (rutas), así que solo se guarda para diagnóstico y **no** se muestra al usuario.
+    /// The engine rejected the request. `tipo` and `mensaje` are its own: the message may contain private data (paths),
+    /// so it is only kept for diagnostics and is **not** shown to the user.
     Respuesta {
         estado: u16,
         tipo: String,
@@ -157,7 +157,7 @@ impl fmt::Display for ErrorMotor {
                 mensaje,
             } => match errores::causa_de_respuesta(*estado, tipo, mensaje).mensaje() {
                 Some(texto) => write!(f, "{texto}"),
-                // Sin el mensaje del motor (D4): podría llevar la ruta del modelo.
+                // Without the engine's message (D4): it could carry the model path.
                 None => write!(f, "el motor rechazó la petición ({estado}, {tipo})"),
             },
         }
@@ -175,7 +175,7 @@ impl std::error::Error for ErrorMotor {
 }
 
 impl ErrorMotor {
-    /// La causa reconocida, para que la app o la API decidan qué ofrecer (reintentar, bajar el contexto…).
+    /// The recognized cause, so the app or the API can decide what to offer (retry, lower the context…).
     pub fn causa(&self) -> Causa {
         match self {
             ErrorMotor::TerminoAlCargar { causa, .. } => causa.clone(),
@@ -189,7 +189,7 @@ impl ErrorMotor {
     }
 }
 
-/// Añade contexto a los errores de E/S (como en `locall-store`).
+/// Adds context to I/O errors (as in `locall-store`).
 trait ConContexto<T> {
     fn contexto(self, contexto: impl FnOnce() -> String) -> Result<T, ErrorMotor>;
 }
@@ -203,24 +203,24 @@ impl<T> ConContexto<T> for io::Result<T> {
     }
 }
 
-// ─── El motor ─────────────────────────────────────────────────────────────────
+// ─── The engine ───────────────────────────────────────────────────────────────
 
-/// Un `llama-server` en marcha. Al soltarlo, se para.
+/// A running `llama-server`. Dropping it stops it.
 pub struct Motor {
     proceso: Child,
     puerto: u16,
     clave: String,
     registro: PathBuf,
     agente: ureq::Agent,
-    /// Debe vivir tanto como el proceso: al cerrarse, Windows mata el motor.
+    /// Must live as long as the process: when it closes, Windows kills the engine.
     _trabajo: Trabajo,
 }
 
 impl Motor {
-    /// Arranca el motor y espera a que cargue el modelo. Devuelve el motor y lo que tardó en cargar.
+    /// Starts the engine and waits for the model to load. Returns the engine and how long loading took.
     ///
-    /// Si otro programa ocupa el puerto justo antes que el motor (raro, pero posible), lo reintenta con otro
-    /// puerto, hasta [`INTENTOS_PUERTO`] veces.
+    /// If another program takes the port just before the engine (rare, but possible), it retries with another port, up
+    /// to [`INTENTOS_PUERTO`] times.
     pub fn arrancar_listo(
         config: &ConfigMotor,
         espera_maxima: Duration,
@@ -229,7 +229,7 @@ impl Motor {
         Motor::arrancar_listo_con(config, espera_maxima, cancelar, puerto_libre)
     }
 
-    /// Como [`Motor::arrancar_listo`], eligiendo el puerto con `elegir_puerto` (para poder probar el reintento).
+    /// Like [`Motor::arrancar_listo`], choosing the port with `elegir_puerto` (so the retry can be tested).
     pub(crate) fn arrancar_listo_con(
         config: &ConfigMotor,
         espera_maxima: Duration,
@@ -250,8 +250,8 @@ impl Motor {
         }
     }
 
-    /// Lanza el motor. Vuelve enseguida: para esperar a que cargue el modelo, usa [`Motor::esperar_listo`]
-    /// (o todo junto, con reintento si el puerto se ocupa: [`Motor::arrancar_listo`]).
+    /// Launches the engine. Returns right away: to wait for the model to load, use [`Motor::esperar_listo`] (or both
+    /// together, with a retry if the port gets taken: [`Motor::arrancar_listo`]).
     pub fn arrancar(config: &ConfigMotor) -> Result<Motor, ErrorMotor> {
         Motor::arrancar_en(config, puerto_libre()?)
     }
@@ -271,7 +271,7 @@ impl Motor {
 
         let clave = generar_clave()?;
 
-        // El trabajo se crea ANTES de lanzar el motor: si no se puede, no arrancamos.
+        // The job is created BEFORE launching the engine: if it cannot be, we do not start.
         let trabajo = Trabajo::nuevo().contexto(|| "crear el Job Object".into())?;
 
         let registro = File::create(&config.registro)
@@ -282,14 +282,14 @@ impl Motor {
 
         let mut proceso = Command::new(&config.ejecutable)
             .args(argumentos(config, puerto))
-            .env("LLAMA_API_KEY", &clave) // D3: la clave NUNCA como parámetro
+            .env("LLAMA_API_KEY", &clave) // D3: the key NEVER as an argument
             .stdin(Stdio::null())
             .stdout(Stdio::from(registro))
             .stderr(Stdio::from(registro_errores))
             .spawn()
             .contexto(|| format!("lanzar {}", config.ejecutable.display()))?;
 
-        // Si no se puede meter en el trabajo, se para en vez de dejarlo suelto.
+        // If it cannot be put in the job, it is stopped instead of being left loose.
         if let Err(error) = trabajo.asignar(&proceso) {
             let _ = proceso.kill();
             let _ = proceso.wait();
@@ -301,7 +301,7 @@ impl Motor {
 
         let agente = ureq::Agent::new_with_config(
             ureq::Agent::config_builder()
-                .http_status_as_error(false) // un 503 ("cargando") es una respuesta normal
+                .http_status_as_error(false) // a 503 ("loading") is a normal response
                 .build(),
         );
 
@@ -319,9 +319,9 @@ impl Motor {
         })
     }
 
-    /// Espera a que el modelo esté cargado. Devuelve cuánto ha tardado.
+    /// Waits for the model to be loaded. Returns how long it took.
     ///
-    /// Si el motor muere, se agota el tiempo o se cancela, el motor queda parado.
+    /// If the engine dies, the time runs out or it is cancelled, the engine is left stopped.
     pub fn esperar_listo(
         &mut self,
         espera_maxima: Duration,
@@ -357,7 +357,7 @@ impl Motor {
                 });
             }
 
-            // /health no necesita la clave. 200 = listo; 503 = cargando; error de conexión = aún no escucha.
+            // /health does not need the key. 200 = ready; 503 = loading; connection error = not listening yet.
             let peticion = self
                 .agente
                 .get(&url)
@@ -373,39 +373,38 @@ impl Motor {
         }
     }
 
-    /// ¿Sigue vivo el proceso del motor? (Se puede preguntar con el motor compartido: no necesita `&mut`.)
+    /// Is the engine process still alive? (It can be asked with a shared engine: it does not need `&mut`.)
     pub fn sigue_vivo(&self) -> bool {
         locall_system::proceso_vivo(&self.proceso)
     }
 
-    /// Por qué se cerró el motor, según lo que dejó escrito en su registro (falta de memoria, modelo dañado…).
+    /// Why the engine exited, according to what it left written in its log (out of memory, damaged model…).
     pub fn causa_del_cierre(&self) -> Causa {
         errores::causa_en_archivo(&self.registro)
     }
 
-    /// Puerto local donde escucha el motor.
+    /// Local port the engine listens on.
     pub fn puerto(&self) -> u16 {
         self.puerto
     }
 
-    /// Identificador del proceso (para medir su memoria con `locall-system`).
+    /// Process identifier (to measure its memory with `locall-system`).
     pub fn pid(&self) -> u32 {
         self.proceso.id()
     }
 
-    /// Archivo con los mensajes del motor.
+    /// File with the engine's messages.
     pub fn registro(&self) -> &Path {
         &self.registro
     }
 
-    /// Para el motor y espera a que termine. Equivale a soltarlo, pero se lee mejor.
+    /// Stops the engine and waits for it to finish. Same as dropping it, but reads better.
     pub fn parar(self) {
         drop(self);
     }
 
     fn parar_proceso(&mut self) {
-        // En Windows, `kill` es una parada inmediata (TerminateProcess). El motor no guarda nada, así que no se
-        // pierde información.
+        // On Windows, `kill` is an immediate stop (TerminateProcess). The engine saves nothing, so no information is lost.
         let _ = self.proceso.kill();
         let _ = self.proceso.wait();
     }
@@ -427,7 +426,7 @@ impl Drop for Motor {
 }
 
 impl fmt::Debug for Motor {
-    /// Sin la clave: nunca debe acabar en un registro ni en un mensaje de error.
+    /// Without the key: it must never end up in a log or an error message.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Motor")
             .field("pid", &self.proceso.id())
@@ -437,19 +436,19 @@ impl fmt::Debug for Motor {
     }
 }
 
-// ─── Preparación ──────────────────────────────────────────────────────────────
+// ─── Preparation ──────────────────────────────────────────────────────────────
 
-/// Clave aleatoria de 32 bytes en hexadecimal (64 caracteres).
+/// Random 32-byte key in hexadecimal (64 characters).
 fn generar_clave() -> Result<String, ErrorMotor> {
     let mut bytes = [0u8; 32];
     getrandom::fill(&mut bytes).map_err(|e| ErrorMotor::Clave(e.to_string()))?;
     Ok(bytes.iter().map(|b| format!("{b:02x}")).collect())
 }
 
-/// Pide a Windows un puerto libre (abrir en el puerto 0 hace que el sistema elija uno) y lo libera para el motor.
+/// Asks Windows for a free port (binding to port 0 makes the system choose one) and releases it for the engine.
 ///
-/// Hay un instante en que otro programa podría ocuparlo; entonces el motor no arranca y se ve como
-/// [`ErrorMotor::TerminoAlCargar`] con [`Causa::PuertoOcupado`], y [`Motor::arrancar_listo`] reintenta con otro.
+/// There is a moment when another program could take it; then the engine does not start and it shows up as
+/// [`ErrorMotor::TerminoAlCargar`] with [`Causa::PuertoOcupado`], and [`Motor::arrancar_listo`] retries with another.
 fn puerto_libre() -> Result<u16, ErrorMotor> {
     let oyente = TcpListener::bind("127.0.0.1:0").contexto(|| "buscar un puerto libre".into())?;
     Ok(oyente

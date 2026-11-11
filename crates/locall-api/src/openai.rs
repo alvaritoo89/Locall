@@ -1,15 +1,14 @@
-//! Compatibilidad con la API de **OpenAI** (lo que esperan herramientas como Continue, Open WebUI o los SDK
-//! oficiales): `GET /v1/models` y `POST /v1/chat/completions`.
+//! Compatibility with the **OpenAI** API (what tools like Continue, Open WebUI or the official SDKs expect):
+//! `GET /v1/models` and `POST /v1/chat/completions`.
 //!
-//! - La "API key" es el token de Locall (`Authorization: Bearer …`, como envían los SDK).
-//! - `model` es el identificador del modelo en Locall (el que da `GET /v1/models`).
-//! - Con `"stream": true` la respuesta va por **SSE** (`data: {...}` + línea en blanco), terminada en
-//!   `data: [DONE]`. Sin `stream` (por defecto en OpenAI) llega entera.
+//! - The "API key" is Locall's token (`Authorization: Bearer …`, as the SDKs send it).
+//! - `model` is the model identifier in Locall (the one `GET /v1/models` gives).
+//! - With `"stream": true` the response goes over **SSE** (`data: {...}` + a blank line), ending in
+//!   `data: [DONE]`. Without `stream` (OpenAI's default) it arrives whole.
 //!
-//! **Lo que NO se admite todavía** se rechaza con un error claro en vez de ignorarlo en silencio: herramientas
-//! (`tools`, `functions`), varias respuestas (`n` > 1), formato forzado (`response_format`) e imágenes en los
-//! mensajes. Los parámetros de muestreo que el motor no recibe de Locall (`top_p`, `presence_penalty`…) se
-//! ignoran (ADR 0016).
+//! **What is NOT supported yet** is rejected with a clear error instead of being silently ignored: tools (`tools`,
+//! `functions`), several answers (`n` > 1), forced format (`response_format`) and images in messages. Sampling
+//! parameters the engine does not receive from Locall (`top_p`, `presence_penalty`…) are ignored (ADR 0016).
 
 use std::sync::Arc;
 
@@ -75,7 +74,7 @@ pub(crate) async fn completar(
     tokio::task::spawn_blocking(move || {
         let cancelar = Arc::clone(&emisor.cancelar);
         let resultado = nucleo.chat(&modelo, &peticion, &cancelar, |evento| match evento {
-            // OpenAI no tiene eventos de "leyendo el prompt": no se envían.
+            // OpenAI has no "reading the prompt" events: they are not sent.
             Evento::Leyendo { .. } => {}
             Evento::Razonamiento(t) => emisor.evento(json!({"reasoning_content": t})),
             Evento::Texto(t) => emisor.evento(json!({"content": t})),
@@ -100,7 +99,7 @@ pub(crate) async fn completar(
         .into_response());
     }
 
-    // Por trozos (SSE). El primer trozo anuncia el rol, como hace OpenAI.
+    // In chunks (SSE). The first chunk announces the role, as OpenAI does.
     let modelo = p.modelo;
     let incluir_uso = p.incluir_uso;
     let mut primero = true;
@@ -145,7 +144,7 @@ pub(crate) async fn completar(
 fn razon(fin: Fin) -> &'static str {
     match fin {
         Fin::Limite => "length",
-        // OpenAI no tiene "cancelado" (si el cliente se va, ya no lo lee): "stop".
+        // OpenAI has no "cancelled" (if the client leaves, it no longer reads it): "stop".
         Fin::Completo | Fin::Cancelado => "stop",
     }
 }
@@ -169,7 +168,8 @@ pub(crate) fn leer_peticion(cuerpo: &[u8]) -> Result<Peticion, ErrorApi> {
     let json: Value = serde_json::from_slice(cuerpo)
         .map_err(|e| invalida(format!("el cuerpo no es JSON válido: {e}")))?;
 
-    // Lo que no se admite todavía: mejor un error claro que ignorarlo y que la herramienta no entienda qué pasa.
+    // What is not supported yet: better a clear error than ignoring it and leaving the tool not understanding what
+    // happens.
     for campo in [
         "tools",
         "functions",
@@ -199,7 +199,7 @@ pub(crate) fn leer_peticion(cuerpo: &[u8]) -> Result<Peticion, ErrorApi> {
     let mut mensajes = Vec::with_capacity(lista.len());
     for (i, m) in lista.iter().enumerate() {
         let rol = match m["role"].as_str() {
-            // "developer" es el nombre nuevo de "system" en la API de OpenAI.
+            // "developer" is the new name of "system" in the OpenAI API.
             Some("system" | "developer") => Rol::Sistema,
             Some("user") => Rol::Usuario,
             Some("assistant") => Rol::Asistente,
@@ -240,7 +240,7 @@ pub(crate) fn leer_peticion(cuerpo: &[u8]) -> Result<Peticion, ErrorApi> {
         ),
     };
     let en_trozos = match &json["stream"] {
-        Value::Null => false, // en OpenAI, por defecto, la respuesta va entera
+        Value::Null => false, // in OpenAI, by default, the response comes whole
         Value::Bool(b) => *b,
         _ => return Err(invalida("«stream» debe ser true o false")),
     };
@@ -258,8 +258,8 @@ pub(crate) fn leer_peticion(cuerpo: &[u8]) -> Result<Peticion, ErrorApi> {
     })
 }
 
-/// El contenido de un mensaje: un texto, o una lista de partes `{"type": "text", "text": "..."}` (formato nuevo
-/// de OpenAI). Las imágenes no se admiten todavía.
+/// The content of a message: a text, or a list of parts `{"type": "text", "text": "..."}` (OpenAI's newer format).
+/// Images are not supported yet.
 fn contenido(valor: &Value, i: usize) -> Result<String, ErrorApi> {
     match valor {
         Value::String(t) => Ok(t.clone()),

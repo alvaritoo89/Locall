@@ -1,6 +1,6 @@
-//! Entradas basura contra las peticiones a la API (ADR 0026): las puede enviar cualquier programa del equipo (con el
-//! token). Un cuerpo mal formado debe dar un error 400, nunca cerrar Locall de golpe ni hacerle reservar memoria sin
-//! límite. (axum ya limita el cuerpo a 2 MB.)
+//! Malformed inputs against API requests (ADR 0026): any program on the computer (with the token) can send them. A
+//! malformed body must give a 400 error, never crash Locall or make it allocate memory without limit. (axum already
+//! limits the body to 2 MB.)
 
 #[global_allocator]
 static MEDIDOR: locall_mutador::MedidorDeMemoria = locall_mutador::MedidorDeMemoria;

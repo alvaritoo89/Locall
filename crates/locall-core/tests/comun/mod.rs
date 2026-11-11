@@ -1,6 +1,6 @@
-//! Un **Hugging Face falso** (127.0.0.1) para probar la instalación sin internet, y ayudantes comunes.
+//! A **fake Hugging Face** (127.0.0.1) to test installation without internet, and common helpers.
 
-#![allow(dead_code)] // cada archivo de pruebas usa solo parte
+#![allow(dead_code)] // each test file uses only part of it
 
 use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader, Write};
@@ -14,16 +14,16 @@ use locall_core::{Nucleo, OpcionesNucleo};
 
 pub const COMMIT: &str = "0123456789abcdef0123456789abcdef01234567";
 
-/// Un archivo del repositorio falso.
+/// A file of the fake repository.
 #[derive(Clone)]
 pub struct Archivo {
     pub ruta: String,
     pub datos: Vec<u8>,
-    /// `false` = como un archivo pequeño de git, sin sha256 (LFS).
+    /// `false` = like a small git file, without sha256 (LFS).
     pub con_huella: bool,
 }
 
-/// Un repositorio falso.
+/// A fake repository.
 #[derive(Clone)]
 pub struct Repo {
     pub nombre: String,
@@ -32,12 +32,12 @@ pub struct Repo {
     pub protegido: bool,
 }
 
-/// El servidor falso, con la lista de rutas pedidas (para comprobar qué se descargó).
+/// The fake server, with the list of requested routes (to check what was downloaded).
 pub struct HfFalso {
     pub base: String,
     pub pedidas: Arc<Mutex<Vec<String>>>,
-    /// Archivos sueltos que sirve además (ruta exacta → contenido), por ejemplo un catálogo y su firma. Se pueden
-    /// cambiar durante la prueba.
+    /// Extra standalone files it serves (exact path → content), for example a catalog and its signature. They can be
+    /// changed during the test.
     pub extra: Arc<Mutex<BTreeMap<String, Vec<u8>>>>,
 }
 
@@ -111,9 +111,9 @@ fn atender(
     };
     let no_existe = |c: &mut TcpStream| responder(c, "401 Unauthorized", b"{}", "");
 
-    // /api/models/{dueno}/{nombre}/revision/{rev}
-    // /api/models/{dueno}/{nombre}/tree/{commit}?recursive=true
-    // /{dueno}/{nombre}/resolve/{commit}/{ruta}
+    // /api/models/{owner}/{name}/revision/{rev}
+    // /api/models/{owner}/{name}/tree/{commit}?recursive=true
+    // /{owner}/{name}/resolve/{commit}/{path}
     let partes: Vec<&str> = ruta.trim_start_matches('/').splitn(6, '/').collect();
     if partes.first() == Some(&"api") && partes.len() >= 5 {
         let Some(repo) = repos.get(&format!("{}/{}", partes[2], partes[3])) else {
@@ -166,7 +166,7 @@ fn atender(
         }
         return;
     }
-    // En la descarga, todo lo que va tras el commit es la ruta del archivo (puede llevar carpetas).
+    // In the download, everything after the commit is the file path (it may contain folders).
     let partes: Vec<&str> = ruta.trim_start_matches('/').splitn(5, '/').collect();
     if partes.len() == 5 && partes[2] == "resolve" {
         let Some(repo) = repos.get(&format!("{}/{}", partes[0], partes[1])) else {
@@ -192,7 +192,7 @@ fn atender(
     no_existe(&mut c);
 }
 
-/// Un GGUF v3 mínimo (sin tensores) con estos metadatos, más `relleno` bytes al final (los "pesos").
+/// A minimal GGUF v3 (no tensors) with these metadata, plus `relleno` bytes at the end (the "weights").
 pub fn gguf(textos: &[(&str, &str)], numeros_u16: &[(&str, u16)], relleno: usize) -> Vec<u8> {
     let mut v = b"GGUF".to_vec();
     v.extend(3u32.to_le_bytes());
@@ -216,7 +216,7 @@ pub fn gguf(textos: &[(&str, &str)], numeros_u16: &[(&str, u16)], relleno: usize
     v
 }
 
-/// Una carpeta de datos temporal que se borra al terminar.
+/// A temporary data folder deleted at the end.
 pub struct CarpetaDePrueba(pub PathBuf);
 
 impl CarpetaDePrueba {
@@ -234,7 +234,7 @@ impl Drop for CarpetaDePrueba {
     }
 }
 
-/// La clave pública de prueba con la que están firmados los catálogos de `tests/datos/`.
+/// The test public key the catalogs in `tests/datos/` are signed with.
 pub fn clave_de_prueba() -> String {
     include_str!("../datos/prueba.pub")
         .lines()
@@ -244,7 +244,7 @@ pub fn clave_de_prueba() -> String {
         .to_owned()
 }
 
-/// Abre un núcleo que busca el catálogo en `hf` (en `/catalogo/catalogo.json`) y lo comprueba con la clave de prueba.
+/// Opens a core that looks for the catalog in `hf` (at `/catalogo/catalogo.json`) and checks it with the test key.
 pub fn nucleo_con_catalogo(carpeta: &CarpetaDePrueba, hf: &HfFalso) -> Nucleo {
     let mut opciones = OpcionesNucleo::nuevas(
         Rutas::en(carpeta.0.clone()),
@@ -256,14 +256,14 @@ pub fn nucleo_con_catalogo(carpeta: &CarpetaDePrueba, hf: &HfFalso) -> Nucleo {
     Nucleo::abrir(opciones).unwrap()
 }
 
-/// Sirve en `hf` este catálogo y su firma (archivos de `tests/datos/`).
+/// Serves this catalog and its signature on `hf` (files from `tests/datos/`).
 pub fn servir_catalogo(hf: &HfFalso, catalogo: &[u8], firma: &[u8]) {
     let mut extra = hf.extra.lock().unwrap();
     extra.insert("/catalogo/catalogo.json".into(), catalogo.to_vec());
     extra.insert("/catalogo/catalogo.json.minisig".into(), firma.to_vec());
 }
 
-/// Abre un núcleo en `carpeta`, apuntando a `hf` (o al Hugging Face de verdad si es `None`).
+/// Opens a core in `carpeta`, pointing at `hf` (or at the real Hugging Face if it is `None`).
 pub fn nucleo(carpeta: &CarpetaDePrueba, hf: Option<&HfFalso>) -> Nucleo {
     let mut opciones = OpcionesNucleo::nuevas(
         Rutas::en(carpeta.0.clone()),

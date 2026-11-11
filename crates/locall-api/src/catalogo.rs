@@ -1,11 +1,11 @@
-//! El catálogo de modelos compatibles de Locall (Fase 6d, ADR 0023).
+//! Locall's catalog of compatible models (Phase 6d, ADR 0023).
 //!
-//! - `GET /api/catalog`: el catálogo en uso, con si cada modelo está instalado y si cabe en este equipo
-//!   (**aproximado**: el modelo no está descargado, así que se calcula con el tamaño del archivo).
-//! - `POST /api/catalog/update` con `{"force": false}` (opcional): mira en GitHub si hay uno nuevo, como mucho una vez
-//!   al día (salvo `force`). Responde `{"result": "not_due" | "no_changes" | "updated", "catalog": {...}}`.
+//! - `GET /api/catalog`: the catalog in use, with whether each model is installed and whether it fits on this
+//!   computer (**approximate**: the model is not downloaded, so it is computed from the file size).
+//! - `POST /api/catalog/update` with `{"force": false}` (optional): checks GitHub for a new one, at most once a day
+//!   (unless `force`). Answers `{"result": "not_due" | "no_changes" | "updated", "catalog": {...}}`.
 //!
-//! Instalar uno: `POST /api/models/pull` con `{"name": "qwen3-4b"}` (ver `modelos.rs`).
+//! Installing one: `POST /api/models/pull` with `{"name": "qwen3-4b"}` (see `modelos.rs`).
 
 use axum::Json;
 use axum::body::Bytes;
@@ -85,7 +85,7 @@ fn catalogo_json(nucleo: &Nucleo, estado: &EstadoCatalogo) -> Value {
                 "tags": m.etiquetas,
                 "license": m.licencia,
                 "context_length": m.contexto_max,
-                // Lo único que afirma el catálogo: el motor reconoce el formato del archivo (ADR 0022).
+                // The only thing the catalog claims: the engine recognizes the file format (ADR 0022).
                 "status": "compatible",
                 "checked_engine": v.motor_comprobado,
                 "repo": v.repo,

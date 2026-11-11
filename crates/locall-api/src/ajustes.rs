@@ -1,12 +1,12 @@
-//! Los ajustes (`config.toml`), para la pantalla de Ajustes de la app (Fase 5e).
+//! The settings (`config.toml`), for the app's Settings screen (Phase 5e).
 //!
-//! - `GET /api/settings`: los ajustes **en uso** (los que se leyeron al abrir Locall), los **guardados** (lo que
-//!   hay ahora en `config.toml`) y si hace falta reiniciar para aplicar la diferencia.
-//! - `PATCH /api/settings` con los que se cambian, por ejemplo `{"context": 8192, "threads": "auto"}`. Solo se
-//!   pueden cambiar `context`, `threads`, `unload_minutes`, `exit_minutes` y `log_days`; la carpeta de modelos, el
-//!   puerto y `parallel` se ven pero solo se cambian a mano en `config.toml` (ADR 0020). Responde como `GET`.
+//! - `GET /api/settings`: the settings **in use** (those read when Locall opened), the **saved** ones (what is in
+//!   `config.toml` now) and whether a restart is needed to apply the difference.
+//! - `PATCH /api/settings` with the ones being changed, for example `{"context": 8192, "threads": "auto"}`. Only
+//!   `context`, `threads`, `unload_minutes`, `exit_minutes` and `log_days` can be changed; the models folder, the port
+//!   and `parallel` are shown but can only be changed by hand in `config.toml` (ADR 0020). Answers like `GET`.
 //!
-//! Los cambios se aplican **al volver a abrir Locall** (`POST /api/shutdown`; la app y la CLI lo abren solas).
+//! Changes take effect **when Locall is reopened** (`POST /api/shutdown`; the app and the CLI open it by themselves).
 
 use axum::Json;
 use axum::body::Bytes;
@@ -18,7 +18,7 @@ use serde_json::{Value, json};
 
 use crate::{Compartido, ErrorApi, en_hilo};
 
-/// Nombre en la API → nombre en `config.toml`.
+/// Name in the API → name in `config.toml`.
 const CAMPOS: [(&str, &str); 5] = [
     ("context", "contexto"),
     ("threads", "hilos"),

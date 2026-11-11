@@ -1,4 +1,4 @@
-//! Pruebas de conversación con el `llama-server` real (ver `comun`).
+//! Conversation tests with the real `llama-server` (see `comun`).
 
 mod comun;
 
@@ -108,7 +108,7 @@ fn cancelar_detiene_la_generacion() {
         !resumen.texto.is_empty(),
         "conserva lo generado hasta cancelar"
     );
-    // El motor debe quedar libre enseguida (400 tokens habrían tardado más de 10 s).
+    // The engine must become free right away (400 tokens would have taken longer than 10 s).
     let inicio = Instant::now();
     while motor.ocupado().unwrap() {
         assert!(
@@ -126,7 +126,7 @@ fn informa_si_el_prompt_no_cabe() {
     let Some((motor, config)) = motor_listo("contexto") else {
         return;
     };
-    let enorme = "hola ".repeat(3000); // ≈ 3000 tokens en un contexto de 2048
+    let enorme = "hola ".repeat(3000); // ≈ 3000 tokens in a 2048 context
     let error = motor
         .chat(&pregunta(&enorme, 10), &AtomicBool::new(false), |_| {})
         .unwrap_err();

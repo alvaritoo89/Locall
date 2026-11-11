@@ -1,4 +1,4 @@
-//! Compatibilidad con OpenAI (`/v1/...`) y cierre por inactividad.
+//! OpenAI compatibility (`/v1/...`) and idle shutdown.
 
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
@@ -33,7 +33,7 @@ fn hay_motor() -> bool {
     hay
 }
 
-/// La API con el modelo de la Fase 0 importado como «qwen» (`real`) o con un GGUF mínimo como «mini».
+/// The API with the Phase 0 model imported as «qwen» (`real`) or with a minimal GGUF as «mini».
 fn arrancar(nombre: &str, real: bool) -> Prueba {
     let carpeta = std::env::temp_dir().join(format!("locall-oai-{nombre}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&carpeta);
@@ -181,7 +181,7 @@ fn responde_entero_como_openai() {
         "/v1/chat/completions",
         &json!({
             "model": "qwen",
-            // Contenido como lista de partes (formato nuevo de OpenAI) y rol "developer".
+            // Content as a list of parts (OpenAI's newer format) and the "developer" role.
             "messages": [
                 {"role": "developer", "content": "Responde en una palabra."},
                 {"role": "user", "content": [{"type": "text", "text": "¿Capital de Francia?"}]}
@@ -254,7 +254,7 @@ fn responde_por_sse_como_openai() {
         .collect();
     eprintln!("respuesta: {texto:?}");
     assert!(texto.contains("Par"), "{texto}");
-    // El penúltimo trae el motivo del final; el último, el uso (con la lista de elecciones vacía).
+    // The second to last carries the finish reason; the last one, the usage (with an empty choices list).
     let n = trozos.len();
     assert!(trozos[n - 2]["choices"][0]["finish_reason"].is_string());
     assert_eq!(trozos[n - 1]["choices"], json!([]));
@@ -275,7 +275,7 @@ fn se_cierra_solo_tras_un_rato_sin_uso() {
         .unwrap();
     let actividad = locall_api::Actividad::nueva();
 
-    // Con uso continuo (una "petición" cada 100 ms) no se cierra en 800 ms aunque el límite sea 300 ms.
+    // With continuous use (a "request" every 100 ms) it does not shut down in 800 ms even though the limit is 300 ms.
     let inicio = Instant::now();
     let nucleo = Arc::clone(&api.nucleo);
     let tocador = actividad.clone();
@@ -292,7 +292,7 @@ fn se_cierra_solo_tras_un_rato_sin_uso() {
                 tokio::time::sleep(Duration::from_millis(100)).await;
             }
         };
-        // Lo que acabe antes: el uso (800 ms) o la espera de inactividad.
+        // Whichever ends first: the use (800 ms) or the idle wait.
         let espera = std::pin::pin!(espera);
         let uso = std::pin::pin!(uso);
         matches!(
@@ -302,7 +302,7 @@ fn se_cierra_solo_tras_un_rato_sin_uso() {
     });
     assert!(!cerrado, "se cerró aunque se estaba usando");
 
-    // Sin uso, termina pasado el límite (contado desde el último uso).
+    // Without use, it finishes once the limit has passed (counted from the last use).
     actividad.tocar();
     let inicio = Instant::now();
     tiempo.block_on(locall_api::esperar_inactividad(

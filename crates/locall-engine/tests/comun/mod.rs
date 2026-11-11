@@ -1,11 +1,11 @@
-//! Ayudantes compartidos por las pruebas con el motor real.
+//! Helpers shared by the tests with the real engine.
 //!
-//! Si no están los archivos, las pruebas se saltan (con un aviso). Rutas por defecto, cambiables con variables
-//! de entorno:
+//! If the files are not there, the tests are skipped (with a notice). Default paths, changeable with environment
+//! variables:
 //! - `LOCALL_MOTOR`: `C:\Locall-poc\motor\cpu\llama-server.exe`
-//! - `LOCALL_MODELOS`: `C:\Locall-poc\modelos` (usa `qwen2.5-1.5b-instruct-q4_k_m.gguf`)
+//! - `LOCALL_MODELOS`: `C:\Locall-poc\modelos` (uses `qwen2.5-1.5b-instruct-q4_k_m.gguf`)
 
-#![allow(dead_code)] // cada archivo de pruebas usa solo parte de estos ayudantes
+#![allow(dead_code)] // each test file uses only some of these helpers
 
 use std::net::TcpStream;
 use std::path::PathBuf;
@@ -17,7 +17,7 @@ use locall_engine::{ConfigMotor, Motor};
 pub const MODELO: &str = "qwen2.5-1.5b-instruct-q4_k_m.gguf";
 pub const CARGA_MAXIMA: Duration = Duration::from_secs(120);
 
-/// Configuración para las pruebas, o `None` si faltan el motor o el modelo.
+/// Configuration for the tests, or `None` if the engine or the model is missing.
 pub fn config(nombre: &str) -> Option<ConfigMotor> {
     let motor = std::env::var_os("LOCALL_MOTOR").map_or_else(
         || PathBuf::from(r"C:\Locall-poc\motor\cpu\llama-server.exe"),
@@ -46,12 +46,12 @@ pub fn config(nombre: &str) -> Option<ConfigMotor> {
     })
 }
 
-/// ¿Hay algo escuchando en ese puerto?
+/// Is anything listening on that port?
 pub fn escucha(puerto: u16) -> bool {
     TcpStream::connect_timeout(&([127, 0, 0, 1], puerto).into(), Duration::from_millis(500)).is_ok()
 }
 
-/// Arranca el motor y espera a que cargue, o `None` si faltan los archivos.
+/// Starts the engine and waits for it to load, or `None` if the files are missing.
 pub fn motor_listo(nombre: &str) -> Option<(Motor, ConfigMotor)> {
     let config = config(nombre)?;
     let mut motor = Motor::arrancar(&config).unwrap();

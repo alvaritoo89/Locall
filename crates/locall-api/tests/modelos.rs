@@ -1,4 +1,4 @@
-//! Gestión de modelos por la API, contra un Hugging Face falso (sin internet).
+//! Model management through the API, against a fake Hugging Face (no internet).
 
 mod comun;
 
@@ -30,7 +30,7 @@ fn repo(nombre: &str, archivos: Vec<(&str, Vec<u8>)>, lento: bool) -> Repo {
     }
 }
 
-/// Lee una respuesta NDJSON entera.
+/// Reads a whole NDJSON response.
 fn eventos(respuesta: ureq::http::Response<ureq::Body>) -> Vec<Value> {
     BufReader::new(respuesta.into_body().into_reader())
         .lines()
@@ -100,7 +100,7 @@ fn instala_con_progreso_y_aparece_en_la_lista() {
     let (_, lista) = api.json("GET", "/api/models", None);
     assert_eq!(lista["models"][0]["id"], "modelo-q4_k_m");
 
-    // Instalarlo otra vez: conflicto, antes de empezar (error HTTP normal).
+    // Installing it again: conflict, before starting (normal HTTP error).
     let (estado, json) = api.json(
         "POST",
         "/api/models/pull",
@@ -176,7 +176,7 @@ fn explica_lo_que_no_se_puede_instalar() {
 
 #[test]
 fn si_el_cliente_se_va_la_descarga_se_pausa_y_luego_continua() {
-    // 3 MB a 64 KB cada 20 ms ≈ 1 s de descarga.
+    // 3 MB at 64 KB every 20 ms ≈ 1 s of download.
     let hf = hf_falso(vec![repo(
         "prueba/lento",
         vec![("l.gguf", modelo_llama(3_000_000))],
@@ -184,7 +184,7 @@ fn si_el_cliente_se_va_la_descarga_se_pausa_y_luego_continua() {
     )]);
     let api = arrancar("pull-pausa", &hf);
 
-    // 1) Empezar y colgar tras el primer aviso de progreso con datos.
+    // 1) Start and hang up after the first progress notice with data.
     let respuesta = api.pedir(
         "POST",
         "/api/models/pull",
@@ -202,8 +202,8 @@ fn si_el_cliente_se_va_la_descarga_se_pausa_y_luego_continua() {
     }
     drop(lector);
 
-    // 2) Volver a pedirlo. Mientras el núcleo se entera de que el primero se fue, puede decir "ya se está
-    //    instalando": se reintenta hasta 3 s.
+    // 2) Request it again. While the core finds out the first one left, it may say "already installing": retry for
+    //    up to 3 s.
     let inicio = Instant::now();
     let eventos = loop {
         let respuesta = api.pedir(
@@ -221,7 +221,7 @@ fn si_el_cliente_se_va_la_descarga_se_pausa_y_luego_continua() {
         );
         std::thread::sleep(Duration::from_millis(50));
     };
-    // Continuó desde lo ya descargado, no desde cero.
+    // It continued from what was already downloaded, not from zero.
     let primero = eventos.iter().find(|e| e["type"] == "progress").unwrap();
     assert!(
         primero["downloaded_bytes"].as_u64().unwrap() > 100_000,

@@ -1,7 +1,7 @@
-//! Un **Hugging Face falso** (127.0.0.1) para probar la instalación sin internet (copia del de `locall-core`,
-//! con un modo lento para poder colgar a mitad de una descarga).
+//! A **fake Hugging Face** (127.0.0.1) to test installation without internet (a copy of the `locall-core` one, with
+//! a slow mode to be able to hang up in the middle of a download).
 
-#![allow(dead_code)] // cada archivo de pruebas usa solo parte
+#![allow(dead_code)] // each test file uses only part of it
 
 use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader, Write};
@@ -15,27 +15,27 @@ use locall_core::{Nucleo, OpcionesNucleo};
 
 pub const COMMIT: &str = "0123456789abcdef0123456789abcdef01234567";
 
-/// Un archivo del repositorio falso.
+/// A file of the fake repository.
 #[derive(Clone)]
 pub struct Archivo {
     pub ruta: String,
     pub datos: Vec<u8>,
-    /// `false` = como un archivo pequeño de git, sin sha256 (LFS).
+    /// `false` = like a small git file, without sha256 (LFS).
     pub con_huella: bool,
 }
 
-/// Un repositorio falso.
+/// A fake repository.
 #[derive(Clone)]
 pub struct Repo {
     pub nombre: String,
     pub archivos: Vec<Archivo>,
     pub licencia: Option<String>,
     pub protegido: bool,
-    /// Enviar los archivos poco a poco (64 KB cada 20 ms).
+    /// Send the files little by little (64 KB every 20 ms).
     pub lento: bool,
 }
 
-/// El servidor falso, con la lista de rutas pedidas (para comprobar qué se descargó).
+/// The fake server, with the list of requested routes (to check what was downloaded).
 pub struct HfFalso {
     pub base: String,
     pub pedidas: Arc<Mutex<Vec<String>>>,
@@ -89,8 +89,8 @@ fn atender(mut c: TcpStream, repos: &BTreeMap<String, Repo>, pedidas: &Mutex<Vec
     };
     let no_existe = |c: &mut TcpStream| responder(c, "401 Unauthorized", b"{}", "");
 
-    // /api/models?search=…&filter=gguf&… : los repositorios cuyo nombre contiene el texto (sin distinguir mayúsculas).
-    // Las «descargas» son el número de archivos × 100, para poder comprobar el orden.
+    // /api/models?search=…&filter=gguf&… : the repositories whose name contains the text (case-insensitive).
+    // The «downloads» are the number of files × 100, so the order can be checked.
     if let Some(consulta) = ruta.strip_prefix("/api/models?") {
         let buscado = consulta
             .split('&')
@@ -127,9 +127,9 @@ fn atender(mut c: TcpStream, repos: &BTreeMap<String, Repo>, pedidas: &Mutex<Vec
         );
     }
 
-    // /api/models/{dueno}/{nombre}/revision/{rev}
-    // /api/models/{dueno}/{nombre}/tree/{commit}?recursive=true
-    // /{dueno}/{nombre}/resolve/{commit}/{ruta}
+    // /api/models/{owner}/{name}/revision/{rev}
+    // /api/models/{owner}/{name}/tree/{commit}?recursive=true
+    // /{owner}/{name}/resolve/{commit}/{path}
     let partes: Vec<&str> = ruta.trim_start_matches('/').splitn(6, '/').collect();
     if partes.first() == Some(&"api") && partes.len() >= 5 {
         let Some(repo) = repos.get(&format!("{}/{}", partes[2], partes[3])) else {
@@ -182,7 +182,7 @@ fn atender(mut c: TcpStream, repos: &BTreeMap<String, Repo>, pedidas: &Mutex<Vec
         }
         return;
     }
-    // En la descarga, todo lo que va tras el commit es la ruta del archivo (puede llevar carpetas).
+    // In the download, everything after the commit is the file path (it may contain folders).
     let partes: Vec<&str> = ruta.trim_start_matches('/').splitn(5, '/').collect();
     if partes.len() == 5 && partes[2] == "resolve" {
         let Some(repo) = repos.get(&format!("{}/{}", partes[0], partes[1])) else {
@@ -207,7 +207,7 @@ fn atender(mut c: TcpStream, repos: &BTreeMap<String, Repo>, pedidas: &Mutex<Vec
         if !repo.lento {
             return responder(&mut c, estado, &archivo.datos[d..], &rango);
         }
-        // Lento: la cabecera y después el contenido poco a poco (hasta que el cliente cuelgue).
+        // Slow: the header and then the content little by little (until the client hangs up).
         let cabecera = format!(
             "HTTP/1.1 {estado}\r\nContent-Length: {}\r\nConnection: close\r\n{rango}\r\n",
             archivo.datos.len() - d
@@ -224,7 +224,7 @@ fn atender(mut c: TcpStream, repos: &BTreeMap<String, Repo>, pedidas: &Mutex<Vec
     no_existe(&mut c);
 }
 
-/// Un GGUF v3 mínimo (sin tensores) con estos metadatos, más `relleno` bytes al final (los "pesos").
+/// A minimal GGUF v3 (no tensors) with these metadata, plus `relleno` bytes at the end (the "weights").
 pub fn gguf(textos: &[(&str, &str)], numeros_u16: &[(&str, u16)], relleno: usize) -> Vec<u8> {
     let mut v = b"GGUF".to_vec();
     v.extend(3u32.to_le_bytes());
@@ -248,7 +248,7 @@ pub fn gguf(textos: &[(&str, &str)], numeros_u16: &[(&str, u16)], relleno: usize
     v
 }
 
-/// Una carpeta de datos temporal que se borra al terminar.
+/// A temporary data folder deleted at the end.
 pub struct CarpetaDePrueba(pub PathBuf);
 
 impl CarpetaDePrueba {
@@ -266,7 +266,7 @@ impl Drop for CarpetaDePrueba {
     }
 }
 
-/// Abre un núcleo en `carpeta`, apuntando a `hf` (o al Hugging Face de verdad si es `None`).
+/// Opens a core in `carpeta`, pointing at `hf` (or at the real Hugging Face if it is `None`).
 pub fn nucleo(carpeta: &CarpetaDePrueba, hf: Option<&HfFalso>) -> Nucleo {
     let mut opciones = OpcionesNucleo::nuevas(
         Rutas::en(carpeta.0.clone()),

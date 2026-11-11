@@ -1,8 +1,8 @@
-//! Conversación con el motor: petición de chat con respuesta por trozos (SSE), cancelación y traducción.
+//! Talking to the engine: chat request with a chunked answer (SSE), cancellation and translation.
 //!
-//! **Traducción (D4):** las respuestas de `llama-server` incluyen datos que no deben salir de aquí (por ejemplo, la
-//! ruta completa del modelo en el campo `model`). Por eso nunca se reenvían tal cual: se leen solo los campos que
-//! necesitamos y se devuelven con tipos propios ([`Evento`], [`Resumen`]).
+//! **Translation (D4):** `llama-server`'s answers include data that must not leave this module (for example, the
+//! full model path in the `model` field). That is why they are never forwarded as is: only the fields we need are
+//! read and returned with our own types ([`Evento`], [`Resumen`]).
 
 use std::io::{BufRead, BufReader};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -11,9 +11,9 @@ use serde_json::{Value, json};
 
 use crate::{ErrorMotor, Motor};
 
-// ─── Tipos públicos ───────────────────────────────────────────────────────────
+// ─── Public types ─────────────────────────────────────────────────────────────
 
-/// Quién dice un mensaje.
+/// Who says a message.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Rol {
     Sistema,
@@ -31,7 +31,7 @@ impl Rol {
     }
 }
 
-/// Un mensaje de la conversación.
+/// A message of the conversation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Mensaje {
     pub rol: Rol,
@@ -47,65 +47,65 @@ impl Mensaje {
     }
 }
 
-/// Una petición de chat.
+/// A chat request.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct PeticionChat {
     pub mensajes: Vec<Mensaje>,
-    /// Máximo de tokens a generar (`None` = hasta que el modelo termine o se llene el contexto).
+    /// Maximum tokens to generate (`None` = until the model finishes or the context is full).
     pub max_tokens: Option<u32>,
-    /// Creatividad (0 = siempre lo más probable). `None` = la del modelo.
+    /// Creativity (0 = always the most likely). `None` = the model's.
     pub temperatura: Option<f32>,
-    /// Semilla aleatoria, para respuestas repetibles.
+    /// Random seed, for repeatable answers.
     pub semilla: Option<u32>,
 }
 
-/// Lo que va llegando mientras el motor trabaja.
+/// What keeps arriving while the engine works.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Evento<'a> {
-    /// Leyendo el prompt: `procesados` de `total` tokens.
+    /// Reading the prompt: `procesados` of `total` tokens.
     Leyendo { procesados: u64, total: u64 },
-    /// Un trozo del razonamiento (modelos que "piensan", como Qwen3).
+    /// A chunk of the reasoning (models that "think", like Qwen3).
     Razonamiento(&'a str),
-    /// Un trozo de la respuesta.
+    /// A chunk of the answer.
     Texto(&'a str),
 }
 
-/// Por qué terminó la respuesta.
+/// Why the answer ended.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Fin {
-    /// El modelo terminó por sí mismo.
+    /// The model finished by itself.
     Completo,
-    /// Se alcanzó el máximo de tokens.
+    /// The maximum number of tokens was reached.
     Limite,
-    /// Se canceló a petición.
+    /// It was cancelled on request.
     Cancelado,
 }
 
-/// Resultado de una respuesta completa (o cancelada: con lo que dio tiempo a generar).
+/// Result of a complete answer (or a cancelled one: with what had time to be generated).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Resumen {
     pub texto: String,
     pub razonamiento: String,
     pub fin: Fin,
-    /// Tokens del prompt que se han leído (sin contar los reutilizados de la caché).
+    /// Prompt tokens read (not counting those reused from the cache).
     pub tokens_leidos: u64,
-    /// Tokens del prompt reutilizados de una petición anterior.
+    /// Prompt tokens reused from an earlier request.
     pub tokens_cache: u64,
     pub tokens_generados: u64,
-    /// Velocidad de lectura del prompt (tokens/s).
+    /// Prompt reading speed (tokens/s).
     pub lectura_por_segundo: Option<f64>,
-    /// Velocidad de escritura (tokens/s).
+    /// Generation speed (tokens/s).
     pub escritura_por_segundo: Option<f64>,
 }
 
-// ─── Petición ─────────────────────────────────────────────────────────────────
+// ─── Request ──────────────────────────────────────────────────────────────────
 
 impl Motor {
-    /// Pide una respuesta y la entrega por trozos a `al_recibir` mientras se genera.
+    /// Requests an answer and delivers it in chunks to `al_recibir` while it is generated.
     ///
-    /// Si `cancelar` se pone a `true`, se corta la conexión: `llama-server` deja de generar (comprobado en la
-    /// Fase 0) y se devuelve lo generado hasta entonces con [`Fin::Cancelado`]. La cancelación se atiende cada vez
-    /// que llega algo del motor: un token, o un aviso de progreso mientras lee el prompt (uno por lote).
+    /// If `cancelar` is set to `true`, the connection is cut: `llama-server` stops generating (checked in Phase 0) and
+    /// what was generated so far is returned with [`Fin::Cancelado`]. Cancellation is honoured every time something
+    /// arrives from the engine: a token, or a progress notice while it reads the prompt (one per batch).
     pub fn chat(
         &self,
         peticion: &PeticionChat,
@@ -139,14 +139,14 @@ impl Motor {
         let lector = BufReader::new(respuesta.into_body().into_reader());
         for linea in lector.lines() {
             if cancelar.load(Ordering::Relaxed) {
-                // Al salir, se suelta el lector y se cierra la conexión: el motor deja de generar.
+                // On leaving, the reader is dropped and the connection closed: the engine stops generating.
                 resumen.fin = Fin::Cancelado;
                 log::info!("respuesta cancelada a petición");
                 return Ok(resumen);
             }
             let linea = linea.map_err(|e| ErrorMotor::Conexion(e.to_string()))?;
             let Some(datos) = linea.strip_prefix("data:").map(str::trim_start) else {
-                continue; // líneas vacías y comentarios de SSE
+                continue; // SSE empty lines and comments
             };
             if datos == "[DONE]" {
                 break;
@@ -174,7 +174,7 @@ impl Motor {
                 resumen.escritura_por_segundo = t.escritura;
             }
         }
-        // Solo cifras: el texto de la conversación NUNCA va al registro (ADR 0014).
+        // Only numbers: the conversation text NEVER goes to the log (ADR 0014).
         log::info!(
             "respuesta: {} tokens leídos ({} de caché), {} generados a {:.1} tokens/s, fin {:?}",
             resumen.tokens_leidos,
@@ -186,7 +186,7 @@ impl Motor {
         Ok(resumen)
     }
 
-    /// ¿Está el motor generando alguna respuesta ahora mismo?
+    /// Is the engine generating any answer right now?
     pub fn ocupado(&self) -> Result<bool, ErrorMotor> {
         let respuesta = self
             .agente
@@ -213,7 +213,7 @@ impl Motor {
     }
 }
 
-/// El JSON que se envía al motor.
+/// The JSON sent to the engine.
 pub(crate) fn cuerpo(peticion: &PeticionChat) -> Value {
     let mensajes: Vec<Value> = peticion
         .mensajes
@@ -223,7 +223,7 @@ pub(crate) fn cuerpo(peticion: &PeticionChat) -> Value {
     let mut cuerpo = json!({
         "messages": mensajes,
         "stream": true,
-        "return_progress": true, // avisos mientras lee el prompt (progreso y puntos de cancelación)
+        "return_progress": true, // notices while it reads the prompt (progress and cancellation points)
     });
     if let Some(n) = peticion.max_tokens {
         cuerpo["max_tokens"] = json!(n);
@@ -237,9 +237,9 @@ pub(crate) fn cuerpo(peticion: &PeticionChat) -> Value {
     cuerpo
 }
 
-// ─── Interpretación de la respuesta ──────────────────────────────────────────
+// ─── Interpreting the answer ──────────────────────────────────────────────────
 
-/// Lo que nos interesa de un trozo SSE (todo lo demás se ignora).
+/// What we care about in an SSE chunk (everything else is ignored).
 #[derive(Debug, Default, PartialEq)]
 pub(crate) struct Trozo {
     pub progreso: Option<(u64, u64)>,
@@ -258,12 +258,12 @@ pub(crate) struct Tiempos {
     pub escritura: Option<f64>,
 }
 
-/// Interpreta el JSON de una línea `data:` del motor.
+/// Interprets the JSON of a `data:` line from the engine.
 pub(crate) fn interpretar(datos: &str) -> Result<Trozo, ErrorMotor> {
     let valor: Value =
         serde_json::from_str(datos).map_err(|e| ErrorMotor::Protocolo(e.to_string()))?;
     if valor.get("error").is_some() {
-        // Un error a mitad de la respuesta.
+        // An error in the middle of the answer.
         return Err(error_de_respuesta(500, datos));
     }
     let texto_no_vacio = |v: &Value| v.as_str().filter(|s| !s.is_empty()).map(str::to_owned);
@@ -273,7 +273,7 @@ pub(crate) fn interpretar(datos: &str) -> Result<Trozo, ErrorMotor> {
         let total = p["total"].as_u64().unwrap_or(0);
         let cache = p["cache"].as_u64().unwrap_or(0);
         let procesados = p["processed"].as_u64().unwrap_or(0);
-        // El motor cuenta la caché dentro de "total"; mostramos solo lo que hay que leer de verdad.
+        // The engine counts the cache inside "total"; we only show what really has to be read.
         (
             procesados.saturating_sub(cache),
             total.saturating_sub(cache),
@@ -300,8 +300,8 @@ pub(crate) fn interpretar(datos: &str) -> Result<Trozo, ErrorMotor> {
     })
 }
 
-/// Convierte una respuesta de error del motor en [`ErrorMotor::Respuesta`], quedándose solo con el tipo y el
-/// mensaje (la parte 8c los traducirá a mensajes comprensibles).
+/// Converts an engine error response into [`ErrorMotor::Respuesta`], keeping only the type and the message (part
+/// 8c will translate them into understandable messages).
 pub(crate) fn error_de_respuesta(estado: u16, texto: &str) -> ErrorMotor {
     let valor: Value = serde_json::from_str(texto).unwrap_or(Value::Null);
     let error = &valor["error"];

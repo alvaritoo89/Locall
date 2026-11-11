@@ -1,13 +1,13 @@
-//! `POST /api/chat`: conversación con un modelo instalado.
+//! `POST /api/chat`: conversation with an installed model.
 //!
-//! Petición:
+//! Request:
 //!
 //! ```json
 //! { "model": "qwen3-4b", "messages": [{"role": "user", "content": "Hola"}],
 //!   "stream": true, "options": {"max_tokens": 200, "temperature": 0.7, "seed": 1} }
 //! ```
 //!
-//! Con `"stream": true` (por defecto) la respuesta es **NDJSON**: una línea JSON por evento.
+//! With `"stream": true` (the default) the response is **NDJSON**: one JSON line per event.
 //!
 //! ```text
 //! {"type":"prompt_progress","processed":32,"total":32}
@@ -15,10 +15,11 @@
 //! {"type":"done","finish":"stop","usage":{...},"speed":{...}}
 //! ```
 //!
-//! Si el cliente **se desconecta**, se cancela: el motor deja de generar y, si aún esperaba turno, se va de la cola.
+//! If the client **disconnects**, it is cancelled: the engine stops generating and, if it was still waiting for its
+//! turn, it leaves the queue.
 //!
-//! Si algo falla antes del primer evento (modelo inexistente, no cabe en la memoria…), se responde con un error HTTP
-//! normal. Si falla a mitad, llega un evento `{"type":"error","error":{...}}` y se cierra.
+//! If something fails before the first event (model does not exist, does not fit in memory…), a normal HTTP error is
+//! returned. If it fails halfway, an event `{"type":"error","error":{...}}` arrives and the stream closes.
 
 use std::sync::Arc;
 
@@ -36,7 +37,7 @@ use crate::{Compartido, ErrorApi, flujo};
 pub(crate) async fn chat(State(c): State<Compartido>, cuerpo: Bytes) -> Result<Response, ErrorApi> {
     let (modelo, peticion, en_trozos) = leer_peticion(&cuerpo)?;
 
-    // Comprobar que el modelo existe ANTES de empezar (así el error es un 404 normal).
+    // Check that the model exists BEFORE starting (so the error is a normal 404).
     let nucleo = Arc::clone(&c.nucleo);
     let buscado = modelo.clone();
     if crate::en_hilo(move || nucleo.modelo(&buscado))
@@ -46,7 +47,7 @@ pub(crate) async fn chat(State(c): State<Compartido>, cuerpo: Bytes) -> Result<R
         return Err(ErrorNucleo::NoInstalado(modelo).into());
     }
 
-    // El núcleo trabaja en un hilo aparte y nos manda los eventos por un canal (ver `flujo`).
+    // The core works on a separate thread and sends us the events through a channel (see `flujo`).
     let (emisor, rx) = flujo::canal::<Resumen>();
     let nucleo = Arc::clone(&c.nucleo);
     tokio::task::spawn_blocking(move || {
@@ -69,7 +70,7 @@ fn invalida(mensaje: impl Into<String>) -> ErrorApi {
     ErrorApi::new(StatusCode::BAD_REQUEST, "invalid_request", mensaje)
 }
 
-/// Lee y valida la petición.
+/// Reads and validates the request.
 pub(crate) fn leer_peticion(cuerpo: &[u8]) -> Result<(String, PeticionChat, bool), ErrorApi> {
     let json: Value = serde_json::from_slice(cuerpo)
         .map_err(|e| invalida(format!("el cuerpo no es JSON válido: {e}")))?;
@@ -143,7 +144,7 @@ pub(crate) fn leer_peticion(cuerpo: &[u8]) -> Result<(String, PeticionChat, bool
     ))
 }
 
-/// Un evento del motor en JSON (ya traducido por `locall-engine`: sin datos privados).
+/// An engine event as JSON (already translated by `locall-engine`: no private data).
 pub(crate) fn evento_json(evento: &Evento<'_>) -> Value {
     match evento {
         Evento::Leyendo { procesados, total } => {

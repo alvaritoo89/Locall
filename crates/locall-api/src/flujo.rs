@@ -1,12 +1,12 @@
-//! Respuestas **por trozos** (NDJSON) para trabajos largos del núcleo: conversar, instalar un modelo…
+//! **Chunked** responses (NDJSON) for long core jobs: chatting, installing a model…
 //!
-//! El trabajo se ejecuta en un hilo aparte (el núcleo es de hilos normales) y manda sus eventos por un canal. El
-//! servidor los va enviando al cliente, una línea JSON por evento.
+//! The job runs on a separate thread (the core uses normal threads) and sends its events through a channel. The
+//! server forwards them to the client, one JSON line per event.
 //!
-//! - Si el cliente **se desconecta**, se suelta el receptor del canal; un vigilante lo detecta y levanta la bandera
-//!   `cancelar`, que el núcleo consulta (también mientras espera turno o entre trozos de una descarga).
-//! - Si el trabajo falla **antes del primer evento**, se responde con un error HTTP normal; si falla a mitad, con un
-//!   evento `{"type": "error", "error": {...}}`.
+//! - If the client **disconnects**, the channel receiver is dropped; a watcher detects it and raises the `cancelar`
+//!   flag, which the core checks (also while waiting for its turn or between chunks of a download).
+//! - If the job fails **before the first event**, a normal HTTP error is returned; if it fails halfway, an event
+//!   `{"type": "error", "error": {...}}`.
 
 use std::convert::Infallible;
 use std::sync::Arc;
@@ -21,46 +21,46 @@ use tokio::sync::mpsc;
 
 use crate::ErrorApi;
 
-/// Lo que el hilo del trabajo envía al servidor.
+/// What the job thread sends to the server.
 pub(crate) enum Paso<T> {
     Evento(Value),
     Fin(Result<T, ErrorNucleo>),
 }
 
-/// Un canal para el trabajo y su bandera de cancelar, con el vigilante de desconexión ya en marcha.
+/// A channel for the job and its cancel flag, with the disconnection watcher already running.
 pub(crate) fn canal<T: Send + 'static>() -> (Emisor<T>, mpsc::Receiver<Paso<T>>) {
     let (tx, rx) = mpsc::channel::<Paso<T>>(64);
     let cancelar = Arc::new(AtomicBool::new(false));
     let vigilado = tx.clone();
     let bandera = Arc::clone(&cancelar);
     tokio::spawn(async move {
-        vigilado.closed().await; // el cliente se ha ido (o la respuesta ya terminó)
+        vigilado.closed().await; // the client has gone (or the response already finished)
         bandera.store(true, Ordering::Relaxed);
     });
     (Emisor { tx, cancelar }, rx)
 }
 
-/// El extremo del trabajo: envía eventos y sabe si hay que cancelar.
+/// The job's end: sends events and knows whether it must cancel.
 pub(crate) struct Emisor<T> {
     tx: mpsc::Sender<Paso<T>>,
     pub cancelar: Arc<AtomicBool>,
 }
 
 impl<T> Emisor<T> {
-    /// Envía un evento (desde el hilo del trabajo). Si el cliente se ha ido, levanta la bandera de cancelar.
+    /// Sends an event (from the job thread). If the client has gone, raises the cancel flag.
     pub(crate) fn evento(&self, json: Value) {
         if self.tx.blocking_send(Paso::Evento(json)).is_err() {
             self.cancelar.store(true, Ordering::Relaxed);
         }
     }
 
-    /// Envía el resultado final.
+    /// Sends the final result.
     pub(crate) fn fin(self, resultado: Result<T, ErrorNucleo>) {
         let _ = self.tx.blocking_send(Paso::Fin(resultado));
     }
 }
 
-/// Espera al final ignorando los eventos (para `"stream": false`).
+/// Waits for the end ignoring the events (for `"stream": false`).
 pub(crate) async fn esperar_fin<T>(mut rx: mpsc::Receiver<Paso<T>>) -> Result<T, ErrorApi> {
     loop {
         match rx.recv().await {
@@ -71,7 +71,7 @@ pub(crate) async fn esperar_fin<T>(mut rx: mpsc::Receiver<Paso<T>>) -> Result<T,
     }
 }
 
-/// Responde por trozos en NDJSON (API propia). `fin_json` convierte el resultado final en el último evento.
+/// Responds in chunks as NDJSON (our own API). `fin_json` turns the final result into the last event.
 pub(crate) async fn en_trozos<T: Send + 'static>(
     rx: mpsc::Receiver<Paso<T>>,
     fin_json: fn(&T) -> Value,
@@ -90,8 +90,8 @@ pub(crate) async fn en_trozos<T: Send + 'static>(
     .await
 }
 
-/// Responde por trozos con el formato que diga `convertir` (NDJSON, SSE…). `convertir` recibe cada paso y
-/// devuelve el texto que se envía al cliente, o `None` para no enviar nada por ese paso.
+/// Responds in chunks with the format `convertir` gives (NDJSON, SSE…). `convertir` receives each step and returns
+/// the text sent to the client, or `None` to send nothing for that step.
 pub(crate) async fn transmitir<T, F>(
     mut rx: mpsc::Receiver<Paso<T>>,
     tipo: &'static str,
@@ -101,7 +101,7 @@ where
     T: Send + 'static,
     F: FnMut(Paso<T>) -> Option<String> + Send + 'static,
 {
-    // El primer mensaje decide: si es un error, respuesta HTTP de error; si no, empezamos a enviar.
+    // The first message decides: if it is an error, an HTTP error response; otherwise, we start sending.
     let primero = match rx.recv().await {
         Some(Paso::Fin(Err(e))) => return Err(e.into()),
         Some(paso) => paso,

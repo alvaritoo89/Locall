@@ -1,6 +1,6 @@
-//! Entradas basura contra lo que llega del motor (ADR 0026): cada trozo de la respuesta, los errores HTTP y su
-//! registro. El motor lo hemos lanzado nosotros, pero si un modelo malicioso lo hiciera escribir cosas raras, Locall
-//! no debe cerrarse de golpe.
+//! Malformed inputs against what comes from the engine (ADR 0026): each chunk of the answer, HTTP errors and their
+//! log. We launched the engine ourselves, but if a malicious model made it write strange things, Locall must not
+//! crash.
 
 use crate::chat::{error_de_respuesta, interpretar};
 use crate::errores::causa_en_registro;

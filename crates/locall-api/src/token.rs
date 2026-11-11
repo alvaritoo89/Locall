@@ -1,13 +1,13 @@
-//! El token de la API: 32 bytes aleatorios en hexadecimal, guardados en `%LOCALAPPDATA%\Locall\token`.
+//! The API token: 32 random bytes in hexadecimal, stored in `%LOCALAPPDATA%\Locall\token`.
 //!
-//! Esa carpeta solo la puede leer el usuario de Windows (y los administradores). La CLI y la app leen el token de
-//! ahí; para otras herramientas, el usuario lo copia como "API key".
+//! Only the Windows user (and administrators) can read that folder. The CLI and the app read the token from there;
+//! for other tools, the user copies it as the "API key".
 
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
 use std::path::Path;
 
-/// Lee el token; si no existe (o no es válido), crea uno nuevo.
+/// Reads the token; if it does not exist (or is not valid), creates a new one.
 pub fn leer_o_crear(ruta: &Path) -> io::Result<String> {
     if let Some(token) = leer(ruta)? {
         return Ok(token);
@@ -16,20 +16,20 @@ pub fn leer_o_crear(ruta: &Path) -> io::Result<String> {
         fs::create_dir_all(carpeta)?;
     }
     let token = nuevo()?;
-    // Si el archivo existe pero no es válido, se reemplaza.
+    // If the file exists but is not valid, it is replaced.
     let _ = fs::remove_file(ruta);
     match OpenOptions::new().write(true).create_new(true).open(ruta) {
         Ok(mut archivo) => {
             archivo.write_all(token.as_bytes())?;
             Ok(token)
         }
-        // Otro proceso lo acaba de crear a la vez: usar el suyo.
+        // Another process just created it at the same time: use theirs.
         Err(e) if e.kind() == io::ErrorKind::AlreadyExists => leer(ruta)?.ok_or(e),
         Err(e) => Err(e),
     }
 }
 
-/// El token guardado, si es válido.
+/// The saved token, if it is valid.
 pub fn leer(ruta: &Path) -> io::Result<Option<String>> {
     match fs::read_to_string(ruta) {
         Ok(texto) => {
@@ -51,8 +51,8 @@ fn nuevo() -> io::Result<String> {
     Ok(bytes.iter().map(|b| format!("{b:02x}")).collect())
 }
 
-/// Compara sin revelar por el tiempo cuántos caracteres coinciden (las comparaciones normales paran en el primer
-/// carácter distinto, y un atacante podría medirlo para adivinar el token poco a poco).
+/// Compares without revealing through timing how many characters match (normal comparisons stop at the first
+/// differing character, and an attacker could measure that to guess the token bit by bit).
 pub(crate) fn iguales(a: &str, b: &str) -> bool {
     let (a, b) = (a.as_bytes(), b.as_bytes());
     a.len() == b.len() && a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
@@ -72,7 +72,7 @@ mod pruebas {
         assert!(es_valido(&primero));
         assert_eq!(leer_o_crear(&ruta).unwrap(), primero, "se reutiliza");
 
-        // Uno estropeado se reemplaza.
+        // A broken one is replaced.
         fs::write(&ruta, "esto no es un token").unwrap();
         let nuevo = leer_o_crear(&ruta).unwrap();
         assert!(es_valido(&nuevo));

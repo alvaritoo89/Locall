@@ -1,4 +1,4 @@
-//! Pruebas que no necesitan el motor real.
+//! Tests that do not need the real engine.
 
 use std::path::PathBuf;
 
@@ -33,7 +33,7 @@ fn argumentos_seguros() {
     assert_eq!(valor("--ctx-size"), "4096");
     assert_eq!(valor("--parallel"), "1");
     assert!(args.iter().any(|a| a == "--no-webui"));
-    // La clave jamás va en los argumentos.
+    // The key never goes in the arguments.
     assert!(
         !args
             .iter()
@@ -69,7 +69,7 @@ fn rechaza_cero_conversaciones_a_la_vez() {
 
 #[test]
 fn rechaza_hilos_imposibles() {
-    // Un "ejecutable" y un "modelo" que existen (este mismo programa de pruebas) para llegar a la validación.
+    // An "executable" and a "model" that exist (this very test program) to reach the validation.
     let este = std::env::current_exe().unwrap();
     let mut config = config();
     config.ejecutable = este.clone();
@@ -81,7 +81,7 @@ fn rechaza_hilos_imposibles() {
 
 #[test]
 fn el_debug_no_muestra_la_clave() {
-    // Un proceso cualquiera que termina enseguida, solo para construir un `Motor`.
+    // Any process that finishes right away, just to build a `Motor`.
     let proceso = std::process::Command::new("cmd")
         .args(["/C", "exit"])
         .spawn()
@@ -97,12 +97,12 @@ fn el_debug_no_muestra_la_clave() {
     assert!(!format!("{motor:?}").contains("SECRETO-DE-PRUEBA"));
 }
 
-// ─── Conversación (sin motor) ────────────────────────────────────────────────
+// ─── Conversation (no engine) ─────────────────────────────────────────────────
 
 use crate::chat::{Tiempos, Trozo, cuerpo, error_de_respuesta, interpretar};
 use crate::{Fin, Mensaje, PeticionChat, Rol};
 
-// Líneas reales de llama-server b12189 (acortadas). Fíjate en "model": lleva la ruta completa del modelo.
+// Real llama-server b12189 lines (shortened). Note "model": it carries the full model path.
 const PROGRESO: &str = r#"{"choices":[{"finish_reason":null,"index":0,"delta":{"role":"assistant","content":null}}],"model":"C:/Locall-poc/modelos/qwen.gguf","object":"chat.completion.chunk","prompt_progress":{"total":32,"cache":0,"processed":32,"time_ms":178}}"#;
 const TEXTO: &str = r#"{"choices":[{"finish_reason":null,"index":0,"delta":{"content":"Hola"}}],"model":"C:/Locall-poc/modelos/qwen.gguf","object":"chat.completion.chunk"}"#;
 const FINAL: &str = r#"{"choices":[{"finish_reason":"length","index":0,"delta":{}}],"model":"C:/Locall-poc/modelos/qwen.gguf","object":"chat.completion.chunk","timings":{"cache_n":0,"prompt_n":32,"prompt_ms":180.8,"prompt_per_second":176.9,"predicted_n":8,"predicted_ms":201.0,"predicted_per_second":34.8}}"#;
@@ -142,7 +142,7 @@ fn interpreta_el_final_y_los_tiempos() {
             ..Trozo::default()
         }
     );
-    // Nada de lo que devolvemos lleva la ruta del modelo (D4).
+    // Nothing we return carries the model path (D4).
     assert!(!format!("{trozo:?}").contains("Locall-poc"));
 }
 
@@ -179,7 +179,7 @@ fn traduce_los_errores_del_motor() {
     };
     assert_eq!((estado, tipo.as_str()), (400, "exceed_context_size_error"));
     assert!(mensaje.contains("exceeds"));
-    // Una respuesta que no es JSON también se convierte en error (con el estado HTTP).
+    // A response that is not JSON is also turned into an error (with the HTTP status).
     assert!(matches!(
         error_de_respuesta(502, "<html>"),
         ErrorMotor::Respuesta { estado: 502, .. }
@@ -210,12 +210,12 @@ fn construye_el_cuerpo_de_la_peticion() {
     );
 }
 
-// ─── Errores comprensibles ───────────────────────────────────────────────────
+// ─── Understandable errors ────────────────────────────────────────────────────
 
 use crate::Causa;
 use crate::errores::{causa_de_respuesta, causa_en_registro};
 
-// Líneas reales del registro de llama-server b12189, provocando cada fallo.
+// Real llama-server b12189 log lines, triggering each failure.
 const REG_PUERTO: &str = "0.00.020.056 E srv         start: couldn't bind HTTP server socket, hostname: 127.0.0.1, port: 18993\n0.00.020.177 E srv  server_run_i: exiting due to HTTP server error";
 const REG_ARQUITECTURA: &str = "0.00.037.414 E llama_model_load: error loading model: unknown model architecture: 'inventada'\n0.00.037.418 E llama_model_load_from_file_impl: failed to load model";
 const REG_CORTADO: &str = "0.00.058.140 E llama_model_load: error loading model: tensor 'token_embd.weight' data is not within the file bounds, model is corrupted or incomplete\n0.00.058.159 E llama_model_load_from_file_impl: failed to load model";
@@ -264,7 +264,7 @@ fn reconoce_los_errores_de_respuesta() {
 
 #[test]
 fn los_mensajes_son_propios_y_sin_rutas() {
-    // Un error desconocido del motor NO muestra su mensaje (podría llevar la ruta, con el usuario de Windows).
+    // An unknown engine error does NOT show its message (it could carry the path, with the Windows user).
     let error = ErrorMotor::Respuesta {
         estado: 500,
         tipo: "server_error".into(),
@@ -274,7 +274,7 @@ fn los_mensajes_son_propios_y_sin_rutas() {
     assert!(!texto.contains("ana"), "{texto}");
     assert!(texto.contains("server_error"));
 
-    // Uno reconocido se explica en español.
+    // A recognized one is explained in Spanish.
     let error = ErrorMotor::TerminoAlCargar {
         codigo: Some(1),
         causa: Causa::ModeloDanado,
@@ -284,7 +284,7 @@ fn los_mensajes_son_propios_y_sin_rutas() {
     assert_eq!(error.causa(), Causa::ModeloDanado);
 }
 
-/// Motor y modelo reales para las pruebas de este módulo (o `None` si faltan).
+/// Real engine and model for this module's tests (or `None` if they are missing).
 fn config_real(nombre: &str) -> Option<ConfigMotor> {
     let ejecutable = PathBuf::from(r"C:\Locall-poc\motor\cpu\llama-server.exe");
     let modelo = PathBuf::from(r"C:\Locall-poc\modelos\qwen2.5-1.5b-instruct-q4_k_m.gguf");
@@ -309,7 +309,7 @@ fn reintenta_si_otro_programa_ocupa_el_puerto() {
     let Some(config) = config_real("puerto") else {
         return;
     };
-    // "Otro programa" ocupa un puerto, y hacemos que sea el primero que se elige.
+    // "Another program" takes a port, and we make it the first one chosen.
     let ocupante = TcpListener::bind("127.0.0.1:0").unwrap();
     let ocupado = ocupante.local_addr().unwrap().port();
     let mut elegidos = Vec::new();

@@ -1,18 +1,18 @@
 //! # locall-api
 //!
-//! La API local de Locall: un servidor HTTP (axum) que solo escucha en `127.0.0.1` y traduce entre JSON y el
-//! [`Nucleo`] (ADR 0015). No contiene lógica propia: todo lo hace el núcleo (regla 9).
+//! Locall's local API: an HTTP server (axum) that only listens on `127.0.0.1` and translates between JSON and the
+//! [`Nucleo`] (ADR 0015). It contains no logic of its own: the core does everything (rule 9).
 //!
-//! **Seguridad**, en este orden, antes de cualquier ruta (incluidas las que no existen):
+//! **Security**, in this order, before any route (including those that do not exist):
 //!
-//! 1. **`Host`** debe ser `127.0.0.1`, `localhost` o `[::1]` (con nuestro puerto). Bloquea el "DNS rebinding": una
-//!    web maliciosa que hace que su dominio apunte a 127.0.0.1 para hablar con programas de tu equipo.
-//! 2. **`Origin`**: las peticiones que hace un navegador desde una web llevan esta cabecera; se rechazan todas (la
-//!    app de escritorio tendrá su origen permitido cuando exista). Así ninguna web que visites puede usar Locall.
-//! 3. **Token** (`Authorization: Bearer …`), comparado en tiempo constante.
+//! 1. **`Host`** must be `127.0.0.1`, `localhost` or `[::1]` (with our port). This blocks "DNS rebinding": a
+//!    malicious website that points its domain to 127.0.0.1 to talk to programs on your computer.
+//! 2. **`Origin`**: requests a browser makes from a website carry this header; all of them are rejected (the desktop
+//!    app will have its origin allowed when it exists). This way no website you visit can use Locall.
+//! 3. **Token** (`Authorization: Bearer …`), compared in constant time.
 //!
-//! Los errores tienen siempre la forma `{"error": {"code": "...", "message": "..."}}`: `code` en inglés y fijo, para
-//! los programas; `message` en español, para las personas.
+//! Errors always have the shape `{"error": {"code": "...", "message": "..."}}`: `code` in English and fixed, for
+//! programs; `message` in Spanish, for people.
 
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
@@ -42,23 +42,23 @@ mod modelos;
 mod openai;
 pub mod token;
 
-/// Versión del motor con la que se ha probado esta versión de Locall.
+/// Engine version this version of Locall was tested with.
 pub const VERSION_MOTOR: &str = "llama.cpp b12189";
 
-// ─── Construcción ─────────────────────────────────────────────────────────────
+// ─── Construction ─────────────────────────────────────────────────────────────
 
-/// Lo que comparten todas las peticiones.
+/// What all the requests share.
 #[derive(Clone)]
 struct Compartido {
     nucleo: Arc<Nucleo>,
     token: Arc<str>,
     puerto: u16,
     actividad: Actividad,
-    /// Avisa al programa de que hay que cerrarse (`POST /api/shutdown`, la orden `locall stop`).
+    /// Tells the program it must shut down (`POST /api/shutdown`, the `locall stop` command).
     parar: Arc<tokio::sync::Notify>,
 }
 
-/// Cuándo se usó Locall por última vez (para el cierre por inactividad).
+/// When Locall was last used (for the idle shutdown).
 #[derive(Clone, Debug)]
 pub struct Actividad(Arc<Mutex<Instant>>);
 
@@ -67,12 +67,12 @@ impl Actividad {
         Actividad(Arc::new(Mutex::new(Instant::now())))
     }
 
-    /// Anota que ahora se está usando.
+    /// Records that it is being used now.
     pub fn tocar(&self) {
         *self.0.lock().unwrap_or_else(PoisonError::into_inner) = Instant::now();
     }
 
-    /// Tiempo desde el último uso.
+    /// Time since the last use.
     pub fn inactivo(&self) -> Duration {
         self.0
             .lock()
@@ -81,8 +81,8 @@ impl Actividad {
     }
 }
 
-/// Termina cuando Locall lleva `limite` sin usarse: sin peticiones y sin trabajo en marcha (una descarga o una
-/// respuesta largas cuentan como uso aunque no lleguen peticiones nuevas). Se comprueba cada `intervalo`.
+/// Finishes when Locall has gone `limite` without use: no requests and no work in progress (a long download or
+/// answer counts as use even if no new requests arrive). Checked every `intervalo`.
 pub async fn esperar_inactividad(
     nucleo: Arc<Nucleo>,
     actividad: Actividad,
@@ -100,13 +100,13 @@ pub async fn esperar_inactividad(
     }
 }
 
-/// Construye las rutas de la API con su seguridad. `puerto` es en el que se escucha (para validar `Host`).
+/// Builds the API routes with their security. `puerto` is the one being listened on (to validate `Host`).
 pub fn rutas(nucleo: Arc<Nucleo>, token: String, puerto: u16) -> Router {
     rutas_vigiladas(nucleo, token, puerto, Arc::new(tokio::sync::Notify::new())).0
 }
 
-/// Como [`rutas`], devolviendo además la [`Actividad`] para el cierre por inactividad. `parar` recibe el aviso de
-/// `POST /api/shutdown`.
+/// Like [`rutas`], also returning the [`Actividad`] for the idle shutdown. `parar` receives the
+/// `POST /api/shutdown` notice.
 pub fn rutas_vigiladas(
     nucleo: Arc<Nucleo>,
     token: String,
@@ -156,11 +156,11 @@ pub fn rutas_vigiladas(
             "/api/conversations/{id}/messages",
             post(conversaciones::escribir),
         )
-        // Compatibles con OpenAI (ADR 0016).
+        // OpenAI-compatible (ADR 0016).
         .route("/v1/models", get(openai::modelos))
         .route("/v1/chat/completions", post(openai::completar))
         .fallback(no_existe)
-        // La seguridad envuelve TODO, también las rutas que no existen: sin token, ni siquiera se sabe cuáles hay.
+        // Security wraps EVERYTHING, including routes that do not exist: without a token, you cannot even know which exist.
         .layer(middleware::from_fn_with_state(
             compartido.clone(),
             seguridad,
@@ -169,7 +169,7 @@ pub fn rutas_vigiladas(
     (rutas, actividad)
 }
 
-// ─── Seguridad ────────────────────────────────────────────────────────────────
+// ─── Security ─────────────────────────────────────────────────────────────────
 
 async fn seguridad(
     State(c): State<Compartido>,
@@ -215,14 +215,14 @@ async fn seguridad(
     }
 }
 
-/// ¿Va dirigida a nosotros? `127.0.0.1`, `localhost` o `[::1]`, sin puerto o con el nuestro.
+/// Is it addressed to us? `127.0.0.1`, `localhost` or `[::1]`, with no port or with ours.
 fn host_permitido(cabeceras: &HeaderMap, puerto: u16) -> bool {
     let Some(host) = cabeceras.get(header::HOST).and_then(|v| v.to_str().ok()) else {
         return false;
     };
     let host = host.trim().to_ascii_lowercase();
     let (nombre, su_puerto) = match host.rsplit_once(':') {
-        // "[::1]:11470" o "localhost:11470" (pero no "[::1]" sin puerto, que también lleva ':').
+        // "[::1]:11470" or "localhost:11470" (but not "[::1]" without a port, which also contains ':').
         Some((n, p)) if !p.contains(']') => (n.to_owned(), Some(p.to_owned())),
         _ => (host.clone(), None),
     };
@@ -231,9 +231,9 @@ fn host_permitido(cabeceras: &HeaderMap, puerto: u16) -> bool {
     nombre_ok && puerto_ok
 }
 
-// ─── Rutas ────────────────────────────────────────────────────────────────────
+// ─── Routes ───────────────────────────────────────────────────────────────────
 
-/// Datos del equipo (para la regla de memoria de la app). Nada sale del equipo: solo lo pide quien tiene el token.
+/// Computer data (for the app's memory rule). Nothing leaves the computer: only whoever has the token asks for it.
 async fn sistema() -> Result<Json<Value>, ErrorApi> {
     let datos =
         tokio::task::spawn_blocking(|| (locall_system::procesador(), locall_system::memoria()))
@@ -263,7 +263,7 @@ async fn version() -> Json<Value> {
     }))
 }
 
-/// Pide al programa que se cierre (de forma ordenada: termina las respuestas en curso y para el motor).
+/// Asks the program to shut down (in an orderly way: it finishes the answers in progress and stops the engine).
 async fn apagar(State(c): State<Compartido>) -> (StatusCode, Json<Value>) {
     log::info!("cierre pedido por la API");
     c.parar.notify_one();
@@ -276,7 +276,7 @@ async fn estado(State(c): State<Compartido>) -> Json<Value> {
         Estado::Cargando { modelo } => ("loading", Some(modelo), 0),
         Estado::Listo { modelo, en_uso } => ("ready", Some(modelo), en_uso),
     };
-    // Memoria del modelo y cuenta atrás: rápidas (una consulta al sistema y un candado), sin hilo aparte.
+    // Model memory and countdown: fast (a system query and a lock), no separate thread.
     let memoria = c.nucleo.memoria_del_modelo();
     let se_descarga_en = c.nucleo.se_descarga_en().map(|d| d.as_secs());
     Json(json!({
@@ -301,7 +301,7 @@ async fn modelos(State(c): State<Compartido>) -> Result<Json<Value>, ErrorApi> {
     Ok(Json(json!({ "models": modelos })))
 }
 
-/// `comfortable`, `fits`, `tight` o `too_big`.
+/// `comfortable`, `fits`, `tight` or `too_big`.
 pub(crate) fn encaje_texto(encaje: locall_compat::Encaje) -> &'static str {
     match encaje {
         locall_compat::Encaje::Holgado => "comfortable",
@@ -311,8 +311,8 @@ pub(crate) fn encaje_texto(encaje: locall_compat::Encaje) -> &'static str {
     }
 }
 
-/// Añade a un modelo si cabe en el equipo (`fit`), la memoria estimada y si el motor puede usarlo. Si no se puede
-/// evaluar (por ejemplo, el archivo se ha movido), esos campos van a `null` y la lista sigue.
+/// Adds to a model whether it fits on the computer (`fit`), the estimated memory and whether the engine can use it.
+/// If it cannot be evaluated (for example, the file was moved), those fields are `null` and the list continues.
 fn con_evaluacion(mut json: Value, nucleo: &Nucleo, id: &str) -> Value {
     match nucleo.evaluar(id) {
         Ok(e) => {
@@ -354,7 +354,7 @@ async fn no_existe() -> ErrorApi {
     )
 }
 
-/// Un modelo en JSON. Nunca incluye rutas del disco.
+/// A model as JSON. It never includes disk paths.
 pub(crate) fn modelo_json(m: &Modelo) -> Value {
     json!({
         "id": m.id.to_string(),
@@ -377,8 +377,8 @@ pub(crate) fn modelo_json(m: &Modelo) -> Value {
     })
 }
 
-/// Ejecuta una función del núcleo (que puede bloquear: base de datos, disco) en un hilo aparte, para no
-/// detener el servidor mientras tanto.
+/// Runs a core function (which may block: database, disk) on a separate thread, so the server is not held up
+/// meanwhile.
 pub(crate) async fn en_hilo<T: Send + 'static>(
     f: impl FnOnce() -> Result<T, ErrorNucleo> + Send + 'static,
 ) -> Result<T, ErrorApi> {
@@ -392,7 +392,7 @@ pub(crate) async fn en_hilo<T: Send + 'static>(
     }
 }
 
-/// El código de un error del motor según su causa reconocida (ADR 0011).
+/// The code of an engine error according to its recognized cause (ADR 0011).
 fn codigo_del_motor(e: &ErrorMotor) -> (StatusCode, &'static str) {
     use StatusCode as S;
     match e.causa() {
@@ -406,9 +406,9 @@ fn codigo_del_motor(e: &ErrorMotor) -> (StatusCode, &'static str) {
     }
 }
 
-// ─── Errores ──────────────────────────────────────────────────────────────────
+// ─── Errors ───────────────────────────────────────────────────────────────────
 
-/// Un error de la API: estado HTTP, código fijo (inglés) y mensaje (español).
+/// An API error: HTTP status, fixed code (English) and message (Spanish).
 #[derive(Debug)]
 pub struct ErrorApi {
     estado: StatusCode,

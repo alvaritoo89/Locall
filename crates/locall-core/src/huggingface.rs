@@ -1,14 +1,14 @@
-//! Consultas a la API pública de Hugging Face (sin cuenta ni token en la v1).
+//! Queries to Hugging Face's public API (no account or token in v1).
 //!
-//! - `GET /api/models/{repo}/revision/{revision}` → el **commit exacto** (`sha`), la licencia (etiqueta
-//!   `license:…`) y si el repositorio está protegido (`gated`).
-//! - `GET /api/models/{repo}/tree/{commit}?recursive=true` → los archivos, con su tamaño y, en los grandes (LFS), su
-//!   **sha256** (`lfs.oid`): la misma huella que verifica el descargador.
-//! - `GET /{repo}/resolve/{commit}/{ruta}` → el archivo (Hugging Face redirige a su red de distribución).
-//! - `GET /api/models?search=…&filter=gguf&sort=downloads&direction=-1&limit=…` → **buscar** repositorios con GGUF
-//!   por nombre, los más descargados primero. Solo se envía el texto buscado.
+//! - `GET /api/models/{repo}/revision/{revision}` → the **exact commit** (`sha`), the license (`license:…` tag) and
+//!   whether the repository is gated (`gated`).
+//! - `GET /api/models/{repo}/tree/{commit}?recursive=true` → the files, with their size and, for the large ones
+//!   (LFS), their **sha256** (`lfs.oid`): the same hash the downloader verifies.
+//! - `GET /{repo}/resolve/{commit}/{path}` → the file (Hugging Face redirects to its distribution network).
+//! - `GET /api/models?search=…&filter=gguf&sort=downloads&direction=-1&limit=…` → **search** repositories with GGUF
+//!   by name, most downloaded first. Only the searched text is sent.
 //!
-//! La dirección base se puede cambiar para las pruebas (un servidor falso local).
+//! The base address can be changed for tests (a local fake server).
 
 use std::time::Duration;
 
@@ -19,51 +19,51 @@ use ureq::tls::{RootCerts, TlsConfig, TlsProvider};
 
 use crate::ErrorNucleo;
 
-/// La dirección de Hugging Face.
+/// Hugging Face's address.
 pub const HUGGING_FACE: &str = "https://huggingface.co";
 
-/// Datos de una revisión.
+/// Data of a revision.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InfoRevision {
-    /// Commit exacto (40 caracteres hexadecimales).
+    /// Exact commit (40 hexadecimal characters).
     pub commit: String,
-    /// Licencia declarada en el repositorio (`mit`, `apache-2.0`…), si la hay.
+    /// License declared in the repository (`mit`, `apache-2.0`…), if any.
     pub licencia: Option<String>,
-    /// Hay que aceptar condiciones con una cuenta para descargarlo.
+    /// Conditions must be accepted with an account to download it.
     pub protegido: bool,
 }
 
-/// Un archivo del repositorio.
+/// A file of the repository.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ArchivoHf {
-    /// Ruta dentro del repositorio (puede tener carpetas: `Q4_K_M/modelo-00001-of-00002.gguf`).
+    /// Path inside the repository (may have folders: `Q4_K_M/model-00001-of-00002.gguf`).
     pub ruta: String,
     pub bytes: u64,
-    /// sha256, solo en los archivos grandes (LFS). Sin ella no se puede verificar la descarga.
+    /// sha256, only for large files (LFS). Without it the download cannot be verified.
     pub huella: Option<Huella>,
 }
 
 impl ArchivoHf {
-    /// El nombre del archivo, sin carpetas.
+    /// The file name, without folders.
     pub fn nombre(&self) -> &str {
         self.ruta.rsplit('/').next().unwrap_or(&self.ruta)
     }
 }
 
-/// Un repositorio encontrado al buscar.
+/// A repository found by searching.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RepoEncontrado {
-    /// `propietario/nombre`.
+    /// `owner/name`.
     pub repo: String,
     pub descargas: u64,
     pub me_gusta: u64,
-    /// Licencia declarada (`apache-2.0`…), si la hay.
+    /// Declared license (`apache-2.0`…), if any.
     pub licencia: Option<String>,
-    /// Para qué sirve según Hugging Face (`text-generation`, `image-text-to-text`…), si lo indica.
+    /// What it is for according to Hugging Face (`text-generation`, `image-text-to-text`…), if it says.
     pub tarea: Option<String>,
 }
 
-/// La licencia de una lista de etiquetas de Hugging Face (`license:mit` → `mit`).
+/// The license from a list of Hugging Face tags (`license:mit` → `mit`).
 fn licencia_de(etiquetas: &Value) -> Option<String> {
     etiquetas.as_array().and_then(|etiquetas| {
         etiquetas
@@ -74,8 +74,8 @@ fn licencia_de(etiquetas: &Value) -> Option<String> {
     })
 }
 
-/// Codifica un texto para ponerlo en una dirección (`qwen 3` → `qwen%203`): todo lo que no sea letra o número ASCII,
-/// `-`, `_`, `.` o `~` se escribe como `%XX` (cada byte de su UTF-8).
+/// Encodes a text to put it in an address (`qwen 3` → `qwen%203`): everything that is not an ASCII letter or digit,
+/// `-`, `_`, `.` or `~` is written as `%XX` (each byte of its UTF-8).
 pub(crate) fn codificar(texto: &str) -> String {
     let mut resultado = String::with_capacity(texto.len());
     for byte in texto.bytes() {
@@ -88,7 +88,7 @@ pub(crate) fn codificar(texto: &str) -> String {
     resultado
 }
 
-/// Un cliente HTTPS con el TLS de Windows (ADR 0010), sin convertir los errores HTTP en errores (se miran a mano).
+/// An HTTPS client with Windows' TLS (ADR 0010), without turning HTTP errors into errors (they are checked by hand).
 pub(crate) fn agente_https() -> ureq::Agent {
     let tls = TlsConfig::builder()
         .provider(TlsProvider::NativeTls)
@@ -104,7 +104,7 @@ pub(crate) fn agente_https() -> ureq::Agent {
     ureq::Agent::new_with_config(config)
 }
 
-/// Cliente de la API de Hugging Face.
+/// Hugging Face API client.
 pub(crate) struct HuggingFace {
     agente: ureq::Agent,
     base: String,
@@ -118,7 +118,7 @@ impl HuggingFace {
         }
     }
 
-    /// Resuelve una revisión (rama, etiqueta o commit) a su commit exacto.
+    /// Resolves a revision (branch, tag or commit) to its exact commit.
     pub(crate) fn revision(&self, repo: &str, revision: &str) -> Result<InfoRevision, ErrorNucleo> {
         let url = format!(
             "{}/api/models/{repo}/revision/{}",
@@ -132,7 +132,7 @@ impl HuggingFace {
             .ok_or_else(|| ErrorNucleo::RespuestaHf("la revisión no trae un commit válido".into()))?
             .to_ascii_lowercase();
         let licencia = licencia_de(&valor["tags"]);
-        // `gated` es `false` o el tipo de protección ("auto", "manual").
+        // `gated` is `false` or the kind of gating ("auto", "manual").
         let protegido = !matches!(valor["gated"], Value::Bool(false) | Value::Null);
         Ok(InfoRevision {
             commit,
@@ -141,7 +141,7 @@ impl HuggingFace {
         })
     }
 
-    /// Todos los archivos del repositorio en ese commit.
+    /// All the files of the repository at that commit.
     pub(crate) fn archivos(&self, repo: &str, commit: &str) -> Result<Vec<ArchivoHf>, ErrorNucleo> {
         let url = format!(
             "{}/api/models/{repo}/tree/{commit}?recursive=true",
@@ -172,7 +172,7 @@ impl HuggingFace {
         Ok(archivos)
     }
 
-    /// Busca repositorios con GGUF por nombre, los más descargados primero.
+    /// Searches repositories with GGUF by name, most downloaded first.
     pub(crate) fn buscar(
         &self,
         texto: &str,
@@ -202,7 +202,7 @@ impl HuggingFace {
             .collect())
     }
 
-    /// Dirección de descarga de un archivo, fijada al commit.
+    /// Download address of a file, pinned to the commit.
     pub(crate) fn url_archivo(&self, repo: &str, commit: &str, ruta: &str) -> String {
         format!(
             "{}/{repo}/resolve/{commit}/{}",
@@ -211,9 +211,9 @@ impl HuggingFace {
         )
     }
 
-    /// Lee **solo la cabecera** de un GGUF remoto: se piden los datos por la red y se deja de leer en cuanto termina
-    /// la cabecera (unos MB, aunque el modelo ocupe varios GB). Así se comprueba la compatibilidad ANTES de
-    /// descargarlo entero.
+    /// Reads **only the header** of a remote GGUF: the data is requested over the network and reading stops as soon as
+    /// the header ends (a few MB, even if the model takes several GB). This way compatibility is checked BEFORE
+    /// downloading it whole.
     pub(crate) fn leer_cabecera(&self, url: &str) -> Result<Cabecera, ErrorNucleo> {
         let respuesta = self
             .agente
@@ -225,7 +225,7 @@ impl HuggingFace {
             return Err(ErrorNucleo::HuggingFace { estado });
         }
         let lector = respuesta.into_body().into_reader();
-        // Al salir de aquí se suelta el lector y se cierra la conexión: el resto del archivo no se descarga.
+        // On leaving here the reader is dropped and the connection closed: the rest of the file is not downloaded.
         locall_gguf::leer(lector).map_err(ErrorNucleo::Cabecera)
     }
 
@@ -237,14 +237,14 @@ impl HuggingFace {
             .map_err(|e| ErrorNucleo::Red(e.to_string()))?;
         match respuesta.status().as_u16() {
             200 => {}
-            // Hugging Face responde 401 (no 404) a los repositorios que no existen o son privados.
+            // Hugging Face answers 401 (not 404) for repositories that do not exist or are private.
             401 | 404 => return Err(ErrorNucleo::RepoNoEncontrado(repo.to_owned())),
             estado => return Err(ErrorNucleo::HuggingFace { estado }),
         }
         let texto = respuesta
             .into_body()
             .with_config()
-            .limit(32 * 1024 * 1024) // una lista de archivos enorme no debe agotar la memoria
+            .limit(32 * 1024 * 1024) // a huge file list must not exhaust memory
             .read_to_string()
             .map_err(|e| ErrorNucleo::Red(e.to_string()))?;
         serde_json::from_str(&texto).map_err(|e| ErrorNucleo::RespuestaHf(e.to_string()))

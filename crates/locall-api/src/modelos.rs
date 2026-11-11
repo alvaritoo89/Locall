@@ -1,10 +1,10 @@
-//! Gestión de modelos por la API.
+//! Model management through the API.
 //!
-//! - `GET /api/hub/{owner}/{name}?revision=main`: qué GGUF tiene un repositorio de Hugging Face (fijado al commit).
-//! - `POST /api/models/pull`: instala uno, con el progreso por trozos (NDJSON). Si el cliente se desconecta, la
-//!   descarga se pausa y la próxima vez **continúa** donde se quedó.
-//! - `POST /api/models/import`: incorpora un GGUF que ya está en el disco.
-//! - `DELETE /api/models/{id}`: elimina un modelo y libera lo que nadie más usa.
+//! - `GET /api/hub/{owner}/{name}?revision=main`: which GGUFs a Hugging Face repository has (pinned to the commit).
+//! - `POST /api/models/pull`: installs one, with chunked progress (NDJSON). If the client disconnects, the download
+//!   is paused and next time it **continues** where it left off.
+//! - `POST /api/models/import`: brings in a GGUF that is already on disk.
+//! - `DELETE /api/models/{id}`: removes a model and frees what nobody else uses.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -21,7 +21,7 @@ use serde_json::{Value, json};
 
 use crate::{Compartido, ErrorApi, en_hilo, flujo, modelo_json};
 
-/// Cada cuánto se envía, como mucho, un evento de progreso (una descarga de 5 GB daría 20 000 si no).
+/// At most how often a progress event is sent (a 5 GB download would give 20,000 otherwise).
 const INTERVALO_PROGRESO: Duration = Duration::from_millis(250);
 
 fn invalida(mensaje: impl Into<String>) -> ErrorApi {
@@ -45,7 +45,7 @@ fn texto_obligatorio(json: &Value, campo: &str) -> Result<String, ErrorApi> {
     texto_opcional(json, campo)?.ok_or_else(|| invalida(format!("falta «{campo}»")))
 }
 
-// ─── Consultar un repositorio ────────────────────────────────────────────────
+// ─── Querying a repository ────────────────────────────────────────────────────
 
 pub(crate) async fn hub(
     State(c): State<Compartido>,
@@ -76,11 +76,11 @@ pub(crate) async fn hub(
     })))
 }
 
-// ─── Buscar en Hugging Face ──────────────────────────────────────────────────
+// ─── Searching Hugging Face ───────────────────────────────────────────────────
 
-/// `POST /api/hub/search` con `{"query": "qwen", "limit": 20}` (`limit` opcional, de 1 a 50; 20 si no se indica).
+/// `POST /api/hub/search` with `{"query": "qwen", "limit": 20}` (`limit` optional, 1 to 50; 20 if not given).
 ///
-/// Es `POST` con el texto en el cuerpo (y no `GET ?q=…`) para que lo buscado nunca forme parte de una dirección.
+/// It is `POST` with the text in the body (and not `GET ?q=…`) so what is searched never becomes part of an address.
 pub(crate) async fn buscar(
     State(c): State<Compartido>,
     cuerpo: Bytes,
@@ -116,12 +116,12 @@ pub(crate) async fn buscar(
     })))
 }
 
-// ─── Instalar ─────────────────────────────────────────────────────────────────
+// ─── Installing ───────────────────────────────────────────────────────────────
 
-/// Qué se pide instalar.
+/// What is requested to install.
 enum QueInstalar {
     Repo(PeticionInstalar),
-    /// Un nombre del catálogo (`qwen3-4b` o `qwen3-4b:q8_0`).
+    /// A catalog name (`qwen3-4b` or `qwen3-4b:q8_0`).
     Catalogo(String),
 }
 
@@ -130,7 +130,7 @@ pub(crate) async fn instalar(
     cuerpo: Bytes,
 ) -> Result<Response, ErrorApi> {
     let json = leer_json(&cuerpo)?;
-    // Del catálogo (`{"name": "qwen3-4b"}`) o de Hugging Face (`{"repo": …, "file": …}`).
+    // From the catalog (`{"name": "qwen3-4b"}`) or from Hugging Face (`{"repo": …, "file": …}`).
     let que = match texto_opcional(&json, "name")? {
         Some(nombre) => {
             if json.get("repo").is_some() || json.get("file").is_some() {
@@ -159,7 +159,7 @@ pub(crate) async fn instalar(
         let cancelar = Arc::clone(&emisor.cancelar);
         let mut ultimo: Option<Instant> = None;
         let progreso = |p: ProgresoInstalacion| {
-            // Como mucho cada 250 ms, pero siempre el primero y el último de cada parte.
+            // At most every 250 ms, but always the first and the last of each part.
             let toca = ultimo.is_none_or(|t| t.elapsed() >= INTERVALO_PROGRESO)
                 || p.descargados == p.total;
             if toca {
@@ -190,7 +190,7 @@ pub(crate) async fn instalar(
     }
 }
 
-// ─── Importar ─────────────────────────────────────────────────────────────────
+// ─── Importing ────────────────────────────────────────────────────────────────
 
 pub(crate) async fn importar(
     State(c): State<Compartido>,
@@ -215,7 +215,7 @@ pub(crate) async fn importar(
     Ok(Json(modelo_json(&modelo)))
 }
 
-// ─── Eliminar ─────────────────────────────────────────────────────────────────
+// ─── Removing ─────────────────────────────────────────────────────────────────
 
 pub(crate) async fn eliminar(
     State(c): State<Compartido>,

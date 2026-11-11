@@ -1,4 +1,4 @@
-//! `POST /api/chat`: validación (sin motor) y conversación con el motor real (se salta si faltan los archivos).
+//! `POST /api/chat`: validation (no engine) and conversation with the real engine (skipped if the files are missing).
 
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
@@ -24,7 +24,7 @@ impl Drop for Prueba {
     }
 }
 
-/// Arranca la API. Con `real`, importa el modelo de la Fase 0 como «qwen» (o devuelve `None` si falta).
+/// Starts the API. With `real`, imports the Phase 0 model as «qwen» (or returns `None` if it is missing).
 fn arrancar(nombre: &str, real: bool) -> Option<Prueba> {
     if real && !(PathBuf::from(MOTOR).is_file() && PathBuf::from(MODELO).is_file()) {
         eprintln!("(prueba saltada: faltan el motor o el modelo)");
@@ -33,7 +33,7 @@ fn arrancar(nombre: &str, real: bool) -> Option<Prueba> {
     let carpeta = std::env::temp_dir().join(format!("locall-chat-{nombre}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&carpeta);
     std::fs::create_dir_all(&carpeta).unwrap();
-    // Contexto pequeño, para poder probar el "no cabe".
+    // Small context, so the "does not fit" case can be tested.
     std::fs::write(carpeta.join("config.toml"), "contexto = 2048\n").unwrap();
     let rutas = Rutas::en(carpeta.clone());
     let nucleo = Nucleo::abrir(OpcionesNucleo::nuevas(rutas.clone(), MOTOR)).unwrap();
@@ -74,7 +74,7 @@ fn agente() -> ureq::Agent {
 }
 
 impl Prueba {
-    /// POST /api/chat con este cuerpo; devuelve la respuesta sin leer.
+    /// POST /api/chat with this body; returns the response unread.
     fn chat(&self, cuerpo: &str) -> ureq::http::Response<ureq::Body> {
         agente()
             .post(&format!("{}/api/chat", self.base))
@@ -91,7 +91,7 @@ impl Prueba {
         (estado, serde_json::from_str(&texto).unwrap_or(Value::Null))
     }
 
-    /// Una petición con cuerpo JSON a cualquier ruta; devuelve la respuesta sin leer.
+    /// A request with a JSON body to any route; returns the response unread.
     fn enviar(&self, ruta: &str, cuerpo: &Value) -> ureq::http::Response<ureq::Body> {
         agente()
             .post(&format!("{}{ruta}", self.base))
@@ -135,7 +135,7 @@ fn pregunta(texto: &str, max_tokens: u32, stream: bool) -> Value {
     })
 }
 
-// ─── Sin motor ────────────────────────────────────────────────────────────────
+// ─── No engine ────────────────────────────────────────────────────────────────
 
 #[test]
 fn rechaza_peticiones_mal_formadas() {
@@ -193,7 +193,7 @@ fn un_modelo_que_no_existe_es_un_404() {
     );
 }
 
-// ─── Con el motor real ────────────────────────────────────────────────────────
+// ─── With the real engine ─────────────────────────────────────────────────────
 
 #[test]
 fn responde_por_trozos_en_ndjson() {
@@ -224,7 +224,7 @@ fn responde_por_trozos_en_ndjson() {
     let ultimo = eventos.last().unwrap();
     assert_eq!(ultimo["type"], "done");
     assert!(ultimo["usage"]["completion_tokens"].as_u64().unwrap() > 0);
-    // Ningún evento lleva la ruta del modelo (D4).
+    // No event carries the model path (D4).
     assert!(!eventos.iter().any(|e| e.to_string().contains("Locall-poc")));
 }
 
@@ -250,7 +250,7 @@ fn una_conversacion_demasiado_larga_se_explica() {
     let Some(api) = arrancar("contexto", true) else {
         return;
     };
-    let enorme = "hola ".repeat(3000); // ≈3000 tokens en un contexto de 2048
+    let enorme = "hola ".repeat(3000); // ≈3000 tokens in a 2048 context
     let (estado, json) = api.chat_json(&pregunta(&enorme, 5, true));
     assert_eq!(
         (estado, json["error"]["code"].as_str()),
@@ -272,7 +272,7 @@ fn si_el_cliente_se_va_se_deja_de_generar() {
     let respuesta =
         api.chat(&pregunta("Escribe una redacción muy larga sobre el mar.", 400, true).to_string());
     let mut lector = BufReader::new(respuesta.into_body().into_reader());
-    // Leer unos trozos de texto…
+    // Read a few text chunks…
     let mut trozos = 0;
     let mut linea = String::new();
     while trozos < 5 {
@@ -283,7 +283,7 @@ fn si_el_cliente_se_va_se_deja_de_generar() {
         }
     }
     assert_eq!(api.estado()["in_use"], 1, "se está usando");
-    // …y colgar (400 tokens habrían tardado más de 10 s).
+    // …and hang up (400 tokens would have taken longer than 10 s).
     drop(lector);
 
     let inicio = Instant::now();
@@ -314,7 +314,7 @@ fn una_conversacion_guardada_recuerda_lo_anterior() {
     let creada: Value = serde_json::from_str(&texto).unwrap();
     let ruta = format!("/api/conversations/{}", creada["id"]);
 
-    // Primer mensaje, por trozos: el último evento trae lo guardado.
+    // First message, in chunks: the last event carries what was saved.
     let respuesta = api.enviar(
         &format!("{ruta}/messages"),
         &json!({"content": "Me llamo Ana. Responde solo «vale».", "model": "qwen", "temperature": 0,
@@ -335,7 +335,7 @@ fn una_conversacion_guardada_recuerda_lo_anterior() {
     assert_eq!(fin["message"]["role"], "assistant");
     assert_eq!(fin["message"]["index"], 1);
 
-    // Segundo, de una vez: el modelo recibe la conversación entera.
+    // Second, in one go: the model receives the whole conversation.
     let respuesta = api.enviar(
         &format!("{ruta}/messages"),
         &json!({"content": "¿Cómo me llamo? Responde solo el nombre.", "model": "qwen", "temperature": 0,

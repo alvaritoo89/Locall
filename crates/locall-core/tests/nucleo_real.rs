@@ -1,5 +1,5 @@
-//! El núcleo con archivos reales: importar el modelo de la Fase 0, conversar con el motor de verdad y eliminarlo
-//! sin tocar el archivo original. Se salta si faltan el motor o el modelo.
+//! The core with real files: import the Phase 0 model, chat with the real engine and remove it without touching the
+//! original file. Skipped if the engine or the model is missing.
 
 mod comun;
 
@@ -30,14 +30,15 @@ fn importa_conversa_y_elimina_sin_tocar_el_original() {
     let carpeta = CarpetaDePrueba::nueva("real");
     let nucleo = nucleo(&carpeta, None);
 
-    // 1) Importar: mismo disco → enlace duro, sin copiar 1 GB.
+    // 1) Import: same disk → hard link, without copying 1 GB.
     let modelo = nucleo.importar(&original, Some("qwen-1.5b")).unwrap();
     assert_eq!(modelo.origen, "local");
     assert_eq!(modelo.arquitectura.as_deref(), Some("qwen2"));
     assert_eq!(modelo.cuantizacion.as_deref(), Some("Q4_K_M"));
     assert_eq!(modelo.bytes_totales(), tamano_original);
 
-    // La evaluación «¿cabe?» del 1,5B (≈1,2 GB) en un equipo de 16 GB: holgado o cabe, nunca «no cabe».
+    // The «does it fit?» evaluation of the 1.5B (≈1.2 GB) on a typical computer: comfortable or fits, never «does not
+    // fit».
     let evaluacion = nucleo.evaluar("qwen-1.5b").unwrap();
     assert!(evaluacion.comprobacion.es_compatible());
     assert!(
@@ -53,7 +54,7 @@ fn importa_conversa_y_elimina_sin_tocar_el_original() {
         "todavía no hay modelo cargado"
     );
 
-    // 2) Conversar a través del núcleo (carga el motor con los ajustes del usuario).
+    // 2) Chat through the core (loads the engine with the user's settings).
     let mut texto = String::new();
     let resumen = nucleo
         .chat(
@@ -78,7 +79,7 @@ fn importa_conversa_y_elimina_sin_tocar_el_original() {
     eprintln!("respuesta: {texto:?}");
     assert!(texto.contains("Par"), "{texto}");
     assert!(resumen.tokens_generados > 0);
-    // Ya cargado: se mide su memoria real (con -lm none, ≈ el tamaño del archivo).
+    // Already loaded: its real memory is measured (with -lm none, ≈ the file size).
     let memoria = nucleo.memoria_del_modelo().unwrap();
     assert!(memoria > tamano_original / 2, "{memoria}");
     assert!(
@@ -90,7 +91,7 @@ fn importa_conversa_y_elimina_sin_tocar_el_original() {
             .is_some()
     );
 
-    // 3) Eliminar: se descarga de la memoria y desaparece de Locall…
+    // 3) Remove: it is unloaded from memory and disappears from Locall…
     nucleo.eliminar("qwen-1.5b").unwrap();
     assert!(nucleo.modelos().unwrap().is_empty());
     assert!(matches!(
@@ -102,7 +103,7 @@ fn importa_conversa_y_elimina_sin_tocar_el_original() {
         ),
         Err(ErrorNucleo::NoInstalado(_))
     ));
-    // …pero el archivo original del usuario sigue ahí, entero.
+    // …but the user's original file is still there, whole.
     assert_eq!(std::fs::metadata(&original).unwrap().len(), tamano_original);
 }
 
@@ -160,7 +161,7 @@ fn las_conversaciones_se_guardan_y_se_envian_enteras() {
         )
         .unwrap();
     assert!(primera.respuesta.is_some());
-    // La segunda pregunta solo se puede contestar si el modelo recibe la conversación guardada.
+    // The second question can only be answered if the model receives the saved conversation.
     let segunda = nucleo
         .conversar(
             c.id,
@@ -182,7 +183,7 @@ fn las_conversaciones_se_guardan_y_se_envian_enteras() {
     assert_eq!(conversacion.sistema, "Responde en español.");
     assert!(mensajes[3].tokens.unwrap() > 0 && mensajes[3].velocidad.unwrap() > 0.0);
 
-    // Un error del modelo (aquí, un modelo que no existe) no deja la pregunta guardada.
+    // A model error (here, a model that does not exist) does not leave the question saved.
     assert!(
         nucleo
             .conversar(c.id, "¿Sigues ahí?", "no-existe", "", None, &nada, |_| {})
@@ -217,7 +218,7 @@ fn parar_y_enviar_enseguida_no_desordena_los_mensajes() {
     let nada = AtomicBool::new(false);
 
     std::thread::scope(|hilos| {
-        // Una respuesta larga, que se para al llegar el primer texto…
+        // A long answer, which is stopped when the first text arrives…
         let larga = hilos.spawn(|| {
             nucleo.conversar(
                 c.id,
@@ -233,7 +234,7 @@ fn parar_y_enviar_enseguida_no_desordena_los_mensajes() {
                 },
             )
         });
-        // …y, mientras tanto, otra pregunta en la misma conversación: debe esperar su turno.
+        // …and, meanwhile, another question in the same conversation: it must wait its turn.
         while !parar.load(Ordering::Relaxed) {
             std::thread::sleep(std::time::Duration::from_millis(5));
         }
@@ -277,7 +278,7 @@ fn busca_en_hugging_face_de_verdad() {
 fn el_catalogo_oficial_de_github_tiene_firma_buena() {
     let carpeta = CarpetaDePrueba::nueva("cat-github");
     let nucleo = nucleo(&carpeta, None);
-    // El de GitHub es el mismo que lleva Locall (o uno más nuevo): firma buena, sin errores.
+    // The one on GitHub is the same one Locall ships (or a newer one): good signature, no errors.
     let resultado = nucleo.actualizar_catalogo(true).unwrap();
     eprintln!(
         "{resultado:?}, {} modelos",

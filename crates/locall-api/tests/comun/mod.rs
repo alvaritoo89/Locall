@@ -1,6 +1,6 @@
-//! Ayudantes de las pruebas de la API: un Locall con su API en un puerto libre, apuntando a un Hugging Face falso.
+//! API test helpers: a Locall with its API on a free port, pointing at a fake Hugging Face.
 
-#![allow(dead_code)] // cada archivo de pruebas usa solo parte
+#![allow(dead_code)] // each test file uses only part of it
 
 pub mod hf;
 
@@ -23,14 +23,14 @@ impl Drop for Api {
     }
 }
 
-/// Arranca la API con un núcleo nuevo en una carpeta temporal, usando `hf` como Hugging Face.
+/// Starts the API with a new core in a temporary folder, using `hf` as Hugging Face.
 pub fn arrancar(nombre: &str, hf: &hf::HfFalso) -> Api {
     let carpeta = std::env::temp_dir().join(format!("locall-apim-{nombre}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&carpeta);
     let rutas = Rutas::en(carpeta.clone());
     let mut opciones = OpcionesNucleo::nuevas(rutas.clone(), "no-hay-motor.exe");
     opciones.hugging_face = hf.base.clone();
-    // El catálogo también al servidor falso: las pruebas no salen nunca a internet.
+    // The catalog also goes to the fake server: the tests never reach the internet.
     opciones.catalogo = format!("{}/catalogo/catalogo.json", hf.base);
     let nucleo = Nucleo::abrir(opciones).unwrap();
     let token = locall_api::token::leer_o_crear(&rutas.token()).unwrap();
@@ -65,7 +65,7 @@ fn agente() -> ureq::Agent {
 }
 
 impl Api {
-    /// Una petición con el token; devuelve la respuesta sin leer.
+    /// A request with the token; returns the response unread.
     pub fn pedir(
         &self,
         metodo: &str,
@@ -102,7 +102,7 @@ impl Api {
         .unwrap()
     }
 
-    /// Como [`Api::pedir`], leyendo la respuesta como JSON.
+    /// Like [`Api::pedir`], reading the response as JSON.
     pub fn json(&self, metodo: &str, ruta: &str, cuerpo: Option<&Value>) -> (u16, Value) {
         let respuesta = self.pedir(metodo, ruta, cuerpo);
         let estado = respuesta.status().as_u16();

@@ -1,5 +1,5 @@
-//! Conversaciones guardadas por la API, sin motor: crear, listar, abrir, renombrar, eliminar y validación. (Escribir
-//! en una conversación con el motor real se prueba en `chat.rs`.)
+//! Saved conversations through the API, without an engine: create, list, open, rename, delete and validation.
+//! (Writing to a conversation with the real engine is tested in `chat.rs`.)
 
 mod comun;
 
@@ -16,7 +16,7 @@ fn crear_listar_abrir_renombrar_y_eliminar() {
     assert_eq!(estado, 200);
     assert_eq!(lista["conversations"], json!([]));
 
-    // Sin cuerpo: título por defecto.
+    // No body: default title.
     let (estado, primera) = api.json("POST", "/api/conversations", None);
     assert_eq!(estado, 201);
     assert_eq!(primera["title"], "Nueva conversación");
@@ -70,7 +70,7 @@ fn errores_claros() {
     let ruta = format!("/api/conversations/{}", c["id"]);
     let mensajes = format!("{ruta}/messages");
 
-    // Lo que no existe: 404 con el código adecuado.
+    // What does not exist: 404 with the right code.
     for (metodo, ruta, cuerpo) in [
         ("GET", "/api/conversations/999", None),
         ("DELETE", "/api/conversations/999", None),
@@ -106,7 +106,7 @@ fn errores_claros() {
     );
     assert_eq!(abierta["model"], json!(null));
 
-    // Peticiones mal formadas: 400.
+    // Malformed requests: 400.
     let casos = [
         (
             "GET",

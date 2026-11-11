@@ -1,4 +1,4 @@
-//! `POST /api/hub/search`: buscar repositorios por nombre, contra un Hugging Face falso (sin internet).
+//! `POST /api/hub/search`: searching repositories by name, against a fake Hugging Face (no internet).
 
 mod comun;
 
@@ -48,7 +48,7 @@ fn busca_por_nombre_y_ordena_por_descargas() {
     assert_eq!(resultados[1]["license"], "apache-2.0");
     assert_eq!(resultados[1]["task"], "text-generation");
 
-    // A Hugging Face solo le llega el texto (sin espacios de más, codificado) y que se piden GGUF.
+    // Hugging Face only receives the text (without extra spaces, encoded) and that GGUFs are requested.
     let pedida = hf
         .pedidas
         .lock()

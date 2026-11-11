@@ -1,4 +1,4 @@
-//! Pruebas del ciclo de vida con el `llama-server` real (build b12189) y un modelo pequeño (ver `comun`).
+//! Lifecycle tests with the real `llama-server` (build b12189) and a small model (see `comun`).
 
 mod comun;
 
@@ -21,7 +21,7 @@ fn arranca_carga_y_se_para() {
     assert!(motor.sigue_vivo());
     let puerto = motor.puerto();
     assert!(escucha(puerto));
-    // Con -lm none el modelo entero está en la RAM del motor (≈1 GB para el 1,5B).
+    // With -lm none the whole model is in the engine's RAM (≈1 GB for the 1.5B).
     let ram = locall_system::memoria_de_proceso(motor.pid()).unwrap();
     assert!(ram > 500_000_000, "solo {ram} bytes");
 
@@ -85,7 +85,7 @@ fn la_clave_no_aparece_en_el_registro() {
         !registro.is_empty(),
         "el motor debería haber escrito su registro"
     );
-    // Nuestra clave son 64 caracteres hexadecimales: no debe haber ninguna secuencia así en el registro.
+    // Our key is 64 hexadecimal characters: there must be no such sequence in the log.
     let hex_seguidos = registro
         .split(|c: char| !c.is_ascii_hexdigit())
         .map(str::len)
@@ -95,7 +95,7 @@ fn la_clave_no_aparece_en_el_registro() {
     let _ = std::fs::remove_file(&config.registro);
 }
 
-/// Arranca con `config` y devuelve el error de carga.
+/// Starts with `config` and returns the load error.
 fn error_al_cargar(config: &ConfigMotor) -> ErrorMotor {
     match Motor::arrancar_listo(config, CARGA_MAXIMA, &AtomicBool::new(false)) {
         Ok(_) => panic!("debería haber fallado"),
@@ -108,17 +108,17 @@ fn reconoce_una_arquitectura_no_soportada() {
     let Some(mut config) = config("arquitectura") else {
         return;
     };
-    // Un GGUF v3 mínimo: sin tensores y con una arquitectura inventada.
+    // A minimal GGUF v3: no tensors and a made-up architecture.
     let mut gguf = b"GGUF".to_vec();
-    gguf.extend(3u32.to_le_bytes()); // versión
-    gguf.extend(0u64.to_le_bytes()); // tensores
-    gguf.extend(1u64.to_le_bytes()); // metadatos
+    gguf.extend(3u32.to_le_bytes()); // version
+    gguf.extend(0u64.to_le_bytes()); // tensors
+    gguf.extend(1u64.to_le_bytes()); // metadata
     let cadena = |v: &mut Vec<u8>, s: &str| {
         v.extend((s.len() as u64).to_le_bytes());
         v.extend(s.as_bytes());
     };
     cadena(&mut gguf, "general.architecture");
-    gguf.extend(8u32.to_le_bytes()); // tipo: cadena
+    gguf.extend(8u32.to_le_bytes()); // type: string
     cadena(&mut gguf, "inventada");
     let ruta = std::env::temp_dir().join(format!("locall-arq-{}.gguf", std::process::id()));
     std::fs::write(&ruta, gguf).unwrap();
@@ -139,7 +139,7 @@ fn reconoce_la_falta_de_memoria() {
     let Some(mut config) = config("memoria") else {
         return;
     };
-    config.contexto = 4_000_000; // la caché KV pediría más de 100 GB
+    config.contexto = 4_000_000; // the KV cache would need more than 100 GB
     let error = error_al_cargar(&config);
     eprintln!("mensaje: {error}");
     assert_eq!(error.causa(), Causa::MemoriaInsuficiente);
