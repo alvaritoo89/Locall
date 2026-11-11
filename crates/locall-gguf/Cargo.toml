@@ -10,3 +10,6 @@ publish.workspace = true
 
 # Sin dependencias: solo la biblioteca estándar de Rust.
 [dependencies]
+
+[dev-dependencies]
+locall-mutador = { path = "../locall-mutador" }

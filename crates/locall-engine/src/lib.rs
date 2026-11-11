@@ -24,6 +24,8 @@ use std::time::{Duration, Instant};
 
 use locall_system::{HilosInvalidos, Trabajo};
 
+#[cfg(test)]
+mod basura;
 mod chat;
 mod errores;
 #[cfg(test)]

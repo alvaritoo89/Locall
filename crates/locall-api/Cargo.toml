@@ -35,3 +35,4 @@ locall-store = { path = "../locall-store" }
 tokio = { version = "1.54.1", default-features = false, features = ["rt-multi-thread", "net"] }
 # Cliente para las pruebas de conversación (entiende respuestas por trozos).
 ureq = { version = "3.5.1", default-features = false }
+locall-mutador = { path = "../locall-mutador" }

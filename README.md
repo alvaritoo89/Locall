@@ -116,6 +116,7 @@ las cifras serán distintas:
 | [`crates/locall-store`](crates/locall-store) | Almacén de modelos: huellas sha256, snapshots con enlaces duros, espacio y limpieza |
 | [`crates/locall-system`](crates/locall-system) | Información del equipo (memoria, procesador, hilos) y Job Object de Windows |
 | [`crates/locall-compat`](crates/locall-compat) | ¿Cabe este modelo y lo entiende el motor? Estimación de memoria y compatibilidad |
+| [`crates/locall-mutador`](crates/locall-mutador) | Solo para pruebas: entradas basura (fuzzing) y medidor de memoria |
 | [`crates/locall-registry`](crates/locall-registry) | Registro de modelos instalados y conversaciones guardadas (SQLite con migraciones y borrado real) |
 | [`crates/locall-download`](crates/locall-download) | Descargas verificadas por sha256, reanudables y con detección de atascos |
 | [`crates/locall-engine`](crates/locall-engine) | Arranca, vigila y para `llama-server` de forma segura y conversa con él por trozos (con cancelación) |

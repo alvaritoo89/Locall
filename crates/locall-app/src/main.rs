@@ -591,7 +591,7 @@ fn cancelar_instalacion(
 }
 
 fn main() {
-    tauri::Builder::default()
+    let resultado = tauri::Builder::default()
         // La ventana arranca oculta (tauri.conf.json) y se muestra ya colocada donde estaba la última vez.
         .setup(|app| {
             if let Some(principal) = tauri::Manager::get_webview_window(app, "main") {
@@ -631,6 +631,18 @@ fn main() {
             parar,
             copiar
         ])
-        .run(tauri::generate_context!())
-        .expect("no se pudo abrir la ventana de Locall");
+        .run(tauri::generate_context!());
+    // En la versión final no hay consola: si la ventana no puede abrirse (por ejemplo, porque falta WebView2), se dice
+    // con una ventana de Windows en vez de cerrarse sin explicación.
+    if let Err(error) = resultado {
+        rfd::MessageDialog::new()
+            .set_level(rfd::MessageLevel::Error)
+            .set_title("Locall")
+            .set_description(format!(
+                "No se pudo abrir la ventana de Locall.\n\n{error}\n\nSi el problema sigue, comprueba que Windows tiene \
+                 instalado Microsoft Edge WebView2."
+            ))
+            .show();
+        std::process::exit(1);
+    }
 }

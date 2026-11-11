@@ -17,6 +17,7 @@ default-members = [
     "crates/locall-download",
     "crates/locall-engine",
     "crates/locall-gguf",
+    "crates/locall-mutador",
     "crates/locall-registry",
     "crates/locall-scheduler",
     "crates/locall-store",

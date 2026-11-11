@@ -1,0 +1,11 @@
+[package]
+name = "locall-mutador"
+description = "Solo para pruebas: estropea entradas válidas a propósito y comprueba que Locall nunca se cierra de golpe ni pide memoria sin límite."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]

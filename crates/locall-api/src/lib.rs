@@ -32,6 +32,8 @@ use locall_scheduler::Estado;
 use serde_json::{Value, json};
 
 mod ajustes;
+#[cfg(test)]
+mod basura;
 mod catalogo;
 mod chat;
 mod conversaciones;

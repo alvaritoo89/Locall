@@ -49,7 +49,7 @@ pub(crate) async fn modelos(State(c): State<Compartido>) -> Result<Json<Value>, 
 
 // ─── POST /v1/chat/completions ────────────────────────────────────────────────
 
-struct Peticion {
+pub(crate) struct Peticion {
     modelo: String,
     chat: PeticionChat,
     en_trozos: bool,
@@ -165,7 +165,7 @@ fn aleatorio() -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
-fn leer_peticion(cuerpo: &[u8]) -> Result<Peticion, ErrorApi> {
+pub(crate) fn leer_peticion(cuerpo: &[u8]) -> Result<Peticion, ErrorApi> {
     let json: Value = serde_json::from_slice(cuerpo)
         .map_err(|e| invalida(format!("el cuerpo no es JSON válido: {e}")))?;
 

@@ -46,6 +46,8 @@ const MAX_DIMENSIONES: u64 = 8;
 const MAX_ELEMENTOS_LISTA: u64 = 100_000_000;
 /// Profundidad máxima de listas dentro de listas.
 const MAX_PROFUNDIDAD: u32 = 4;
+/// Lo que se reserva de entrada para un texto (después crece según llegan los datos).
+const RESERVA_INICIAL_TEXTO: u64 = 64 * 1024;
 
 // ─── Tipos públicos ───────────────────────────────────────────────────────────
 
@@ -387,12 +389,17 @@ impl<R: Read> Lector<R> {
         Ok(())
     }
 
-    /// Lee un texto: longitud (`u64`) + bytes UTF-8. La longitud se limita ANTES de reservar memoria.
+    /// Lee un texto: longitud (`u64`) + bytes UTF-8. La longitud se limita, y la memoria se reserva **a medida que
+    /// llegan los datos**, no según la longitud que dice el archivo: un archivo de 100 bytes que diga «aquí viene un
+    /// texto de 64 MB» no hace reservar 64 MB (lo encontraron las pruebas de entradas basura, ADR 0026).
     fn texto(&mut self) -> Result<String, ErrorGguf> {
         let longitud = self.u64()?;
         limite("longitud de un texto", longitud, MAX_TEXTO)?;
-        let mut bytes = vec![0u8; longitud as usize];
-        self.interno.read_exact(&mut bytes)?;
+        let mut bytes = Vec::with_capacity(longitud.min(RESERVA_INICIAL_TEXTO) as usize);
+        let llegados = (&mut self.interno).take(longitud).read_to_end(&mut bytes)?;
+        if (llegados as u64) < longitud {
+            return Err(io::Error::from(io::ErrorKind::UnexpectedEof).into());
+        }
         self.leidos += longitud;
         String::from_utf8(bytes).map_err(|_| ErrorGguf::TextoNoUtf8)
     }

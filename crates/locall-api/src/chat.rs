@@ -70,7 +70,7 @@ fn invalida(mensaje: impl Into<String>) -> ErrorApi {
 }
 
 /// Lee y valida la petición.
-fn leer_peticion(cuerpo: &[u8]) -> Result<(String, PeticionChat, bool), ErrorApi> {
+pub(crate) fn leer_peticion(cuerpo: &[u8]) -> Result<(String, PeticionChat, bool), ErrorApi> {
     let json: Value = serde_json::from_slice(cuerpo)
         .map_err(|e| invalida(format!("el cuerpo no es JSON válido: {e}")))?;
     let modelo = json["model"]

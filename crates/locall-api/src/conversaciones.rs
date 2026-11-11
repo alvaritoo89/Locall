@@ -119,7 +119,7 @@ pub(crate) async fn eliminar(
 }
 
 /// Lo que pide `POST /api/conversations/{id}/messages`.
-struct Peticion {
+pub(crate) struct Peticion {
     contenido: String,
     modelo: String,
     sistema: String,
@@ -127,7 +127,7 @@ struct Peticion {
     en_trozos: bool,
 }
 
-fn leer_peticion(cuerpo: &[u8]) -> Result<Peticion, ErrorApi> {
+pub(crate) fn leer_peticion(cuerpo: &[u8]) -> Result<Peticion, ErrorApi> {
     let json = json_de(cuerpo)?;
     let contenido = json["content"]
         .as_str()

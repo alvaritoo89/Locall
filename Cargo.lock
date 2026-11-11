@@ -1881,6 +1881,7 @@ dependencies = [
  "locall-config",
  "locall-core",
  "locall-engine",
+ "locall-mutador",
  "locall-registry",
  "locall-scheduler",
  "locall-store",
@@ -1908,6 +1909,7 @@ dependencies = [
 name = "locall-catalogo"
 version = "0.0.1"
 dependencies = [
+ "locall-mutador",
  "minisign-verify",
  "serde_json",
 ]
@@ -1935,6 +1937,7 @@ dependencies = [
 name = "locall-config"
 version = "0.0.1"
 dependencies = [
+ "locall-mutador",
  "locall-system",
  "log",
 ]
@@ -1973,6 +1976,7 @@ name = "locall-engine"
 version = "0.0.1"
 dependencies = [
  "getrandom 0.4.3",
+ "locall-mutador",
  "locall-system",
  "log",
  "serde_json",
@@ -1981,6 +1985,13 @@ dependencies = [
 
 [[package]]
 name = "locall-gguf"
+version = "0.0.1"
+dependencies = [
+ "locall-mutador",
+]
+
+[[package]]
+name = "locall-mutador"
 version = "0.0.1"
 
 [[package]]

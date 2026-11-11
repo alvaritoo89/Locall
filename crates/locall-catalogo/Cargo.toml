@@ -12,3 +12,6 @@ publish.workspace = true
 # Verificar la firma minisign del catálogo. MIT, sin dependencias, sin `unsafe` (ADR 0022).
 minisign-verify = "=0.3.0"
 serde_json = "1.0.154"
+
+[dev-dependencies]
+locall-mutador = { path = "../locall-mutador" }
