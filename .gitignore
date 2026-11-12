@@ -23,3 +23,6 @@ desktop.ini
 
 # The generated website (locally it is generated in target/web; in GitHub Actions, in _site)
 /_site/
+
+# Python bytecode caches (from running the scripts)
+__pycache__/
