@@ -106,7 +106,7 @@ on other computers:
 - [x] Phase 4: command line (`locall pull`, `run`, `list`, `show`, `rm`, `import`, `status`, `stop`) · **MVP**
 - [x] Phase 5: desktop app (home, library, chat with saved conversations and real deletion, Hugging Face explorer, settings, import, keyboard shortcuts, accessibility, dark mode)
 - [x] Phase 6: signed catalog of compatible models, and the website ([alvaritoo89.github.io/Locall](https://alvaritoo89.github.io/Locall/))
-- [ ] Phase 7: hardening (security and reliability) · in progress: recovery when the engine dies ✓, fuzzing ✓, engine process limits ✓, database integrity ✓, encrypted conversations ✓
+- [x] Phase 7: hardening (recovery when the engine dies, malformed-input testing, engine process limits, database integrity checks, encrypted conversations, Windows CI and a security policy)
 - [ ] Phase 8: installer, code signing and distribution
 
 ## Repository layout
