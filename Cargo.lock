@@ -1999,6 +1999,7 @@ name = "locall-registry"
 version = "0.0.1"
 dependencies = [
  "locall-store",
+ "locall-system",
  "rusqlite",
 ]
 

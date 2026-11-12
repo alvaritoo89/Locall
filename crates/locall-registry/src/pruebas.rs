@@ -265,7 +265,7 @@ fn una_base_de_datos_v1_se_actualiza_a_v2_sin_perder_nada() {
         // A database like the Phase 2 one: only migration 1, with one model inside.
         let mut c = Connection::open(&db.0).unwrap();
         let tx = c.transaction().unwrap();
-        tx.execute_batch(MIGRACIONES[0]).unwrap();
+        MIGRACIONES[0].aplicar(&tx).unwrap();
         tx.execute_batch(
             "INSERT INTO modelos (id, nombre, origen, revision, verificado, instalado)
                  VALUES ('qwen', 'Qwen', 'local', 'local', 0, 1);
@@ -276,9 +276,9 @@ fn una_base_de_datos_v1_se_actualiza_a_v2_sin_perder_nada() {
         tx.pragma_update(None, "user_version", 1).unwrap();
         tx.commit().unwrap();
     }
-    // When it is opened with this version of Locall, migration 2 is applied.
+    // When it is opened with this version of Locall, the missing migrations are applied.
     let mut r = Registro::abrir(&db.0).unwrap();
-    assert_eq!(r.version_esquema().unwrap(), 2);
+    assert_eq!(r.version_esquema().unwrap(), VERSION_ESQUEMA);
     assert_eq!(r.listar().unwrap().len(), 1, "el modelo sigue ahí");
     assert!(r.conversaciones().unwrap().is_empty());
     r.crear_conversacion("Primera", 5).unwrap();
@@ -352,36 +352,33 @@ fn una_base_de_datos_sana_no_se_aparta() {
     assert_eq!(db.buscar(".danada-"), None);
 }
 
-/// A database at version 2 with one model, and a list of migrations whose third one fails.
-fn v2_con_una_migracion_que_falla(
-    db: &BaseDeDatosDePrueba,
-) -> (Connection, PathBuf, ErrorRegistro) {
+/// A database at the current version with one model, and a list of migrations with one more that fails.
+fn con_una_migracion_que_falla(db: &BaseDeDatosDePrueba) -> (Connection, PathBuf, ErrorRegistro) {
     {
         let mut r = Registro::abrir(&db.0).unwrap();
         r.registrar(&modelo_4b(), 1).unwrap();
     }
     let mut c = Connection::open(&db.0).unwrap();
-    let copia = db.0.with_extension("db.copia-antes-de-v3");
-    let migraciones = [MIGRACIONES[0], MIGRACIONES[1], "ESTO NO ES SQL;"];
-    let error = migrar(&mut c, &migraciones, Some(&copia)).unwrap_err();
+    let copia = db.0.with_extension("db.copia-de-prueba");
+    let error = migrar(&mut c, &migraciones_que_fallan(), Some(&copia)).unwrap_err();
     (c, copia, error)
 }
 
 #[test]
 fn si_una_migracion_falla_se_conserva_la_copia_de_antes() {
     let db = BaseDeDatosDePrueba::nueva("migracion-falla");
-    let (c, copia, error) = v2_con_una_migracion_que_falla(&db);
+    let (c, copia, error) = con_una_migracion_que_falla(&db);
     match &error {
         ErrorRegistro::MigracionFallida { copia: dicha, .. } => assert_eq!(dicha, &copia),
         otro => panic!("error inesperado: {otro}"),
     }
     assert!(error.to_string().contains("copia"), "{error}");
 
-    // The database is still at version 2 (the failed migration was rolled back)…
+    // The database is still at the version it had (the failed migration was rolled back)…
     let version: u32 = c
         .pragma_query_value(None, "user_version", |f| f.get(0))
         .unwrap();
-    assert_eq!(version, 2);
+    assert_eq!(version, VERSION_ESQUEMA);
     // …and the copy is a complete, valid database with the data from before.
     let guardada = Connection::open(&copia).unwrap();
     let modelos: i64 = guardada
@@ -393,12 +390,11 @@ fn si_una_migracion_falla_se_conserva_la_copia_de_antes() {
 #[test]
 fn una_copia_de_un_intento_anterior_no_se_sobrescribe() {
     let db = BaseDeDatosDePrueba::nueva("copia-anterior");
-    let (mut c, copia, _) = v2_con_una_migracion_que_falla(&db);
+    let (mut c, copia, _) = con_una_migracion_que_falla(&db);
     let antes = std::fs::read(&copia).unwrap();
     // Meanwhile the database changes, and the migration fails again.
     c.execute("DELETE FROM modelos", []).unwrap();
-    let migraciones = [MIGRACIONES[0], MIGRACIONES[1], "ESTO NO ES SQL;"];
-    assert!(migrar(&mut c, &migraciones, Some(&copia)).is_err());
+    assert!(migrar(&mut c, &migraciones_que_fallan(), Some(&copia)).is_err());
     assert_eq!(
         std::fs::read(&copia).unwrap(),
         antes,
@@ -416,7 +412,7 @@ fn una_base_nueva_no_hace_copia() {
 #[test]
 fn guarda_y_lee_conversaciones() {
     let mut r = Registro::en_memoria().unwrap();
-    assert_eq!(r.version_esquema().unwrap(), 2);
+    assert_eq!(r.version_esquema().unwrap(), VERSION_ESQUEMA);
     let c = r
         .crear_conversacion("  Plan de\nestudio   de Rust ", 100)
         .unwrap();
@@ -508,11 +504,15 @@ fn los_titulos_largos_se_recortan() {
 
 /// Does `texto` appear in any of the database files (the main one and the change log)?
 fn esta_en_los_archivos(db: &BaseDeDatosDePrueba, texto: &str) -> bool {
+    bytes_en_los_archivos(db, texto.as_bytes())
+}
+
+/// Do these bytes appear in any of the database files (the main one and the change log)?
+fn bytes_en_los_archivos(db: &BaseDeDatosDePrueba, buscados: &[u8]) -> bool {
     ["", "-wal"].iter().any(|sufijo| {
         let mut ruta = db.0.clone().into_os_string();
         ruta.push(sufijo);
-        std::fs::read(ruta)
-            .is_ok_and(|bytes| bytes.windows(texto.len()).any(|v| v == texto.as_bytes()))
+        std::fs::read(ruta).is_ok_and(|bytes| bytes.windows(buscados.len()).any(|v| v == buscados))
     })
 }
 
@@ -538,14 +538,27 @@ fn eliminar_una_conversacion_la_borra_de_verdad_del_disco() {
     r.anadir_mensaje(c.id, &respuesta(&format!("Entendido: {SECRETO}")), 5)
         .unwrap();
     assert!(
-        esta_en_los_archivos(&db, SECRETO),
-        "la prueba debe ver el texto antes de borrarlo"
+        !esta_en_los_archivos(&db, SECRETO),
+        "el texto se guarda cifrado (ADR 0030)"
+    );
+    // What is on disk is the encrypted text: that is what must disappear.
+    let cifrado: Vec<u8> = r
+        .conexion
+        .query_row(
+            "SELECT contenido FROM mensajes WHERE conversacion_id = ?1 AND orden = 0",
+            [c.id],
+            |f| f.get(0),
+        )
+        .unwrap();
+    assert!(
+        bytes_en_los_archivos(&db, &cifrado),
+        "la prueba debe ver el texto cifrado antes de borrarlo"
     );
 
     r.eliminar_conversacion(c.id).unwrap();
 
     assert!(
-        !esta_en_los_archivos(&db, SECRETO),
+        !bytes_en_los_archivos(&db, &cifrado),
         "el texto borrado sigue en el disco"
     );
     assert!(r.conversacion(c.id).unwrap().is_none());
@@ -559,4 +572,140 @@ fn eliminar_una_conversacion_la_borra_de_verdad_del_disco() {
         1,
         "las demás no se tocan"
     );
+}
+
+/// The current migrations plus one that fails.
+fn migraciones_que_fallan() -> Vec<Migracion> {
+    let mut lista = MIGRACIONES.to_vec();
+    lista.push(Migracion::Sql("ESTO NO ES SQL;"));
+    lista
+}
+
+// ─── Encrypted conversations (schema v3, ADR 0030) ────────────────────────────
+
+#[test]
+fn las_conversaciones_se_guardan_cifradas() {
+    const SECRETO: &str = "PEPINO-CONFIDENCIAL-42";
+    let db = BaseDeDatosDePrueba::nueva("cifradas");
+    let mut r = Registro::abrir(&db.0).unwrap();
+    let c = r
+        .crear_conversacion(&format!("Título {SECRETO}"), 1)
+        .unwrap();
+    r.ajustar_conversacion(c.id, "qwen3-4b", &format!("Sistema {SECRETO}"), Some(0.5))
+        .unwrap();
+    r.anadir_mensaje(
+        c.id,
+        &MensajeNuevo::del_usuario(format!("Pregunta {SECRETO}")),
+        2,
+    )
+    .unwrap();
+    let mut contestacion = respuesta(&format!("Respuesta {SECRETO}"));
+    contestacion.razonamiento = format!("Razonamiento {SECRETO}");
+    r.anadir_mensaje(c.id, &contestacion, 3).unwrap();
+
+    // Read back through Locall, everything is as it was written…
+    let leida = r.conversacion(c.id).unwrap().unwrap();
+    assert_eq!(leida.titulo, format!("Título {SECRETO}"));
+    assert_eq!(leida.sistema, format!("Sistema {SECRETO}"));
+    let mensajes = r.mensajes(c.id).unwrap();
+    assert_eq!(mensajes[0].contenido, format!("Pregunta {SECRETO}"));
+    assert_eq!(mensajes[1].contenido, format!("Respuesta {SECRETO}"));
+    assert_eq!(mensajes[1].razonamiento, format!("Razonamiento {SECRETO}"));
+    assert_eq!(mensajes[1].modelo.as_deref(), Some("qwen3-4b"));
+
+    // …but none of it is readable in the files on disk.
+    assert!(!esta_en_los_archivos(&db, SECRETO));
+    drop(r);
+    assert!(!esta_en_los_archivos(&db, SECRETO), "tampoco al cerrar");
+}
+
+#[test]
+fn un_texto_que_no_se_puede_descifrar_no_rompe_la_conversacion() {
+    let mut r = Registro::en_memoria().unwrap();
+    let c = r.crear_conversacion("Bien", 1).unwrap();
+    r.anadir_mensaje(c.id, &MensajeNuevo::del_usuario("se lee"), 2)
+        .unwrap();
+    r.anadir_mensaje(c.id, &MensajeNuevo::del_usuario("se estropea"), 3)
+        .unwrap();
+    // As if it had been encrypted by another Windows user: bytes DPAPI rejects.
+    r.conexion
+        .execute(
+            "UPDATE mensajes SET contenido = X'0102030405' WHERE orden = 1",
+            [],
+        )
+        .unwrap();
+    let mensajes = r.mensajes(c.id).unwrap();
+    assert_eq!(mensajes[0].contenido, "se lee");
+    assert_eq!(mensajes[1].contenido, NO_DESCIFRABLE);
+    assert_eq!(r.conversaciones().unwrap()[0].titulo, "Bien");
+}
+
+#[test]
+fn una_base_v2_se_cifra_al_actualizarla_sin_perder_nada() {
+    const SECRETO: &str = "BERENJENA-PRIVADA-9";
+    let db = BaseDeDatosDePrueba::nueva("v2-a-v3");
+    {
+        // A database like the Phase 5 one: migrations 1 and 2, with a conversation in plain text.
+        let mut c = Connection::open(&db.0).unwrap();
+        c.pragma_update(None, "journal_mode", "WAL").unwrap();
+        for (indice, migracion) in MIGRACIONES[..2].iter().enumerate() {
+            let tx = c.transaction().unwrap();
+            migracion.aplicar(&tx).unwrap();
+            tx.pragma_update(None, "user_version", (indice + 1) as u32)
+                .unwrap();
+            tx.commit().unwrap();
+        }
+        c.execute_batch(&format!(
+            "INSERT INTO modelos (id, nombre, origen, revision, verificado, instalado)
+                 VALUES ('qwen', 'Qwen', 'local', 'local', 0, 1);
+             INSERT INTO archivos (modelo_id, nombre, huella, bytes, orden)
+                 VALUES ('qwen', 'qwen.gguf', printf('%064d', 0), 10, 0);
+             INSERT INTO conversaciones (id, titulo, modelo, sistema, temperatura, creada, actualizada)
+                 VALUES (7, 'Sobre {SECRETO}', 'qwen', 'Sé breve', 0.7, 10, 20);
+             INSERT INTO conversaciones (id, titulo, creada, actualizada) VALUES (8, 'Vacía', 30, 30);
+             INSERT INTO mensajes (conversacion_id, orden, rol, contenido, razonamiento, modelo, tokens,
+                                   velocidad, cortada, creado)
+                 VALUES (7, 0, 'user', 'Hola {SECRETO}', '', NULL, NULL, NULL, 0, 11),
+                        (7, 1, 'assistant', 'Adiós {SECRETO}', 'pensando {SECRETO}', 'qwen', 5, 9.5, 1, 12);"
+        ))
+        .unwrap();
+        assert!(esta_en_los_archivos(&db, SECRETO), "antes, en texto plano");
+    }
+
+    let r = Registro::abrir(&db.0).unwrap();
+    assert_eq!(r.version_esquema().unwrap(), VERSION_ESQUEMA);
+    assert_eq!(r.listar().unwrap().len(), 1, "el modelo sigue ahí");
+
+    let lista = r.conversaciones().unwrap();
+    assert_eq!(lista.len(), 2);
+    let c = r.conversacion(7).unwrap().unwrap();
+    assert_eq!(c.titulo, format!("Sobre {SECRETO}"));
+    assert_eq!(c.sistema, "Sé breve");
+    assert_eq!(
+        (
+            c.modelo.as_deref(),
+            c.temperatura,
+            c.creada,
+            c.actualizada,
+            c.mensajes
+        ),
+        (Some("qwen"), Some(0.7), 10, 20, 2)
+    );
+    let m = r.mensajes(7).unwrap();
+    assert_eq!(m[0].contenido, format!("Hola {SECRETO}"));
+    assert_eq!(m[0].autor, Autor::Usuario);
+    assert_eq!(m[1].contenido, format!("Adiós {SECRETO}"));
+    assert_eq!(m[1].razonamiento, format!("pensando {SECRETO}"));
+    assert_eq!(
+        (m[1].tokens, m[1].velocidad, m[1].cortada, m[1].creado),
+        (Some(5), Some(9.5), true, 12)
+    );
+    assert_eq!(r.conversacion(8).unwrap().unwrap().sistema, "");
+
+    // After migrating (and compacting), the plain text is no longer anywhere in the files, and the copy is gone.
+    assert!(
+        !esta_en_los_archivos(&db, SECRETO),
+        "el texto plano sigue en el disco"
+    );
+    assert_eq!(db.buscar(".copia-antes-de-"), None);
 }

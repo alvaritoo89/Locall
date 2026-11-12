@@ -22,11 +22,28 @@ use rusqlite::{Connection, OptionalExtension, Row, Transaction, params};
 
 // ─── Schema and migrations ────────────────────────────────────────────────────
 
+/// A schema migration: SQL, or Rust code when the data has to be transformed (for example, encrypted).
+#[derive(Clone, Copy)]
+enum Migracion {
+    Sql(&'static str),
+    Rust(fn(&Transaction<'_>) -> Resultado<()>),
+}
+
+impl Migracion {
+    fn aplicar(self, tx: &Transaction<'_>) -> Resultado<()> {
+        match self {
+            Migracion::Sql(sql) => Ok(tx.execute_batch(sql)?),
+            Migracion::Rust(funcion) => funcion(tx),
+        }
+    }
+}
+
 /// Each element is a migration: position 0 takes the database from version 0 to 1, position 1 from 1 to 2, etc.
 /// **A published migration is never modified**: changes go into a new migration at the end.
-const MIGRACIONES: &[&str] = &[
+const MIGRACIONES: &[Migracion] = &[
     // Version 1: models and their files.
-    "
+    Migracion::Sql(
+        "
     CREATE TABLE modelos (
         id            TEXT    PRIMARY KEY,
         nombre        TEXT    NOT NULL,
@@ -52,8 +69,10 @@ const MIGRACIONES: &[&str] = &[
 
     CREATE INDEX archivos_por_huella ON archivos(huella);
     ",
+    ),
     // Version 2: saved conversations and their messages (Phase 5, part 5d).
-    "
+    Migracion::Sql(
+        "
     CREATE TABLE conversaciones (
         id           INTEGER PRIMARY KEY,
         titulo       TEXT    NOT NULL,
@@ -80,6 +99,9 @@ const MIGRACIONES: &[&str] = &[
 
     CREATE INDEX conversaciones_por_fecha ON conversaciones(actualizada);
     ",
+    ),
+    // Version 3: conversation texts encrypted with the user's Windows key (Phase 7e, ADR 0030).
+    Migracion::Rust(conversaciones::cifrar_conversaciones),
 ];
 
 /// Schema version this version of Locall understands.
@@ -176,6 +198,8 @@ pub enum ErrorRegistro {
         ruta: PathBuf,
         error: std::io::Error,
     },
+    /// A text could not be encrypted with the user's Windows key (ADR 0030).
+    Cifrado(std::io::Error),
     /// Upgrading the database failed; the copy made before trying is kept at `copia`.
     MigracionFallida {
         error: Box<ErrorRegistro>,
@@ -202,6 +226,10 @@ impl fmt::Display for ErrorRegistro {
                  hasta el {soportada}); actualiza Locall"
             ),
             ErrorRegistro::Danada(detalle) => write!(f, "la base de datos está dañada ({detalle})"),
+            ErrorRegistro::Cifrado(error) => write!(
+                f,
+                "no se ha podido cifrar la conversación con tu clave de Windows ({error})"
+            ),
             ErrorRegistro::Apartar { ruta, error } => write!(
                 f,
                 "la base de datos está dañada y no se ha podido apartar {} ({error}); cierra los demás programas de \
@@ -222,6 +250,7 @@ impl std::error::Error for ErrorRegistro {
         match self {
             ErrorRegistro::Sqlite(e) => Some(e),
             ErrorRegistro::Apartar { error, .. } => Some(error),
+            ErrorRegistro::Cifrado(error) => Some(error),
             ErrorRegistro::MigracionFallida { error, .. } => Some(error.as_ref()),
             _ => None,
         }
@@ -594,7 +623,11 @@ fn copia_antes_de_migrar(ruta: &Path) -> PathBuf {
 /// (`VACUUM INTO`, which also includes what is still in the `-wal`). After migrating, the whole database is checked
 /// (`integrity_check` and `foreign_key_check`). If all is well the copy is deleted; if anything fails it is kept and
 /// the error says where it is. A copy left by an earlier failed attempt is never overwritten: it is the older one.
-fn migrar(conexion: &mut Connection, migraciones: &[&str], copia: Option<&Path>) -> Resultado<()> {
+fn migrar(
+    conexion: &mut Connection,
+    migraciones: &[Migracion],
+    copia: Option<&Path>,
+) -> Resultado<()> {
     let objetivo = migraciones.len() as u32;
     let actual: u32 = conexion.pragma_query_value(None, "user_version", |f| f.get(0))?;
     if actual > objetivo {
@@ -620,6 +653,7 @@ fn migrar(conexion: &mut Connection, migraciones: &[&str], copia: Option<&Path>)
         _ => None,
     };
     let resultado = aplicar_migraciones(conexion, migraciones, actual)
+        .and_then(|()| compactar(conexion, actual))
         .and_then(|()| comprobar_entera(conexion));
     match (resultado, copia) {
         (Ok(()), Some(copia)) => {
@@ -638,15 +672,29 @@ fn migrar(conexion: &mut Connection, migraciones: &[&str], copia: Option<&Path>)
 
 fn aplicar_migraciones(
     conexion: &mut Connection,
-    migraciones: &[&str],
+    migraciones: &[Migracion],
     actual: u32,
 ) -> Resultado<()> {
-    for (indice, sql) in migraciones.iter().enumerate().skip(actual as usize) {
+    for (indice, migracion) in migraciones.iter().enumerate().skip(actual as usize) {
         let tx = conexion.transaction()?;
-        tx.execute_batch(sql)?;
+        migracion.aplicar(&tx)?;
         tx.pragma_update(None, "user_version", (indice + 1) as u32)?;
         tx.commit()?;
     }
+    Ok(())
+}
+
+/// After migrating a database that already had data: rebuild the file (`VACUUM`) and empty the change log. A migration
+/// may rewrite data (version 3 encrypts the conversations); this way the old versions of the pages do not stay in the
+/// file or in the `-wal` (ADR 0030). It does nothing for a new database.
+fn compactar(conexion: &Connection, actual: u32) -> Resultado<()> {
+    if actual == 0 {
+        return Ok(());
+    }
+    conexion.execute_batch("VACUUM")?;
+    conexion
+        .query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |_| Ok(()))
+        .optional()?;
     Ok(())
 }
 
@@ -671,5 +719,5 @@ mod conversaciones;
 mod pruebas;
 
 pub use conversaciones::{
-    Autor, Conversacion, MensajeGuardado, MensajeNuevo, TITULO_MAX, titulo_valido,
+    Autor, Conversacion, MensajeGuardado, MensajeNuevo, NO_DESCIFRABLE, TITULO_MAX, titulo_valido,
 };

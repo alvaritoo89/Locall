@@ -5,8 +5,11 @@ use std::os::windows::io::AsRawHandle;
 use std::process::Child;
 
 use windows_sys::Win32::Foundation::{
-    CloseHandle, GlobalFree, HANDLE, HANDLE_FLAG_INHERIT, INVALID_HANDLE_VALUE, SYSTEMTIME,
-    SetHandleInformation,
+    CloseHandle, GlobalFree, HANDLE, HANDLE_FLAG_INHERIT, INVALID_HANDLE_VALUE, LocalFree,
+    SYSTEMTIME, SetHandleInformation,
+};
+use windows_sys::Win32::Security::Cryptography::{
+    CRYPT_INTEGER_BLOB, CRYPTPROTECT_UI_FORBIDDEN, CryptProtectData, CryptUnprotectData,
 };
 use windows_sys::Win32::System::Console::{
     CTRL_BREAK_EVENT, CTRL_C_EVENT, GetStdHandle, STD_ERROR_HANDLE, STD_INPUT_HANDLE,
@@ -174,6 +177,87 @@ pub fn memoria_de_proceso(pid: u32) -> io::Result<u64> {
         return Err(error);
     }
     Ok(contadores.WorkingSetSize as u64)
+}
+
+/// A DPAPI blob pointing at some bytes (DPAPI only reads it).
+fn blob(datos: &[u8]) -> io::Result<CRYPT_INTEGER_BLOB> {
+    let longitud = u32::try_from(datos.len())
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "demasiados datos para cifrar"))?;
+    Ok(CRYPT_INTEGER_BLOB {
+        cbData: longitud,
+        pbData: datos.as_ptr().cast_mut(),
+    })
+}
+
+/// Copies the result DPAPI allocated into a `Vec` and frees DPAPI's memory.
+///
+/// # Safety
+/// `salida` must be a blob filled by a successful CryptProtectData/CryptUnprotectData call.
+unsafe fn tomar_salida(salida: CRYPT_INTEGER_BLOB) -> Vec<u8> {
+    let datos = if salida.pbData.is_null() || salida.cbData == 0 {
+        Vec::new()
+    } else {
+        // SAFETY: DPAPI guarantees `pbData` points to `cbData` bytes that are ours until LocalFree.
+        unsafe { std::slice::from_raw_parts(salida.pbData, salida.cbData as usize) }.to_vec()
+    };
+    if !salida.pbData.is_null() {
+        // SAFETY: DPAPI allocated it with LocalAlloc and hands ownership to us; it is freed exactly once.
+        unsafe { LocalFree(salida.pbData.cast()) };
+    }
+    datos
+}
+
+pub fn proteger(datos: &[u8], proposito: &[u8]) -> io::Result<Vec<u8>> {
+    let entrada = blob(datos)?;
+    let entropia = blob(proposito)?;
+    let mut salida = CRYPT_INTEGER_BLOB {
+        cbData: 0,
+        pbData: std::ptr::null_mut(),
+    };
+    // SAFETY: the input blobs point to slices that live during the call and DPAPI only reads them; null description,
+    // reserved and prompt are allowed; UI_FORBIDDEN means it never shows a window; `salida` is ours to fill.
+    let ok = unsafe {
+        CryptProtectData(
+            &entrada,
+            std::ptr::null(),
+            &entropia,
+            std::ptr::null(),
+            std::ptr::null(),
+            CRYPTPROTECT_UI_FORBIDDEN,
+            &mut salida,
+        )
+    };
+    if ok == 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: the call succeeded, so `salida` was filled by DPAPI.
+    Ok(unsafe { tomar_salida(salida) })
+}
+
+pub fn desproteger(cifrado: &[u8], proposito: &[u8]) -> io::Result<Vec<u8>> {
+    let entrada = blob(cifrado)?;
+    let entropia = blob(proposito)?;
+    let mut salida = CRYPT_INTEGER_BLOB {
+        cbData: 0,
+        pbData: std::ptr::null_mut(),
+    };
+    // SAFETY: as in `proteger`; a null description pointer means we do not want it back.
+    let ok = unsafe {
+        CryptUnprotectData(
+            &entrada,
+            std::ptr::null_mut(),
+            &entropia,
+            std::ptr::null(),
+            std::ptr::null(),
+            CRYPTPROTECT_UI_FORBIDDEN,
+            &mut salida,
+        )
+    };
+    if ok == 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: the call succeeded, so `salida` was filled by DPAPI.
+    Ok(unsafe { tomar_salida(salida) })
 }
 
 /// The Job Object (Windows handle). Dropping it closes the handle and Windows terminates its processes.

@@ -1,13 +1,138 @@
-//! Saved conversations (schema v2). They live in the core so the app and the CLI share them (decision confirmed
-//! during research).
+//! Saved conversations (schema v2; encrypted since v3). They live in the core so the app and the CLI share them
+//! (decision confirmed during research).
+//!
+//! **Encrypted (schema v3, ADR 0030):** titles, system instructions, message texts and reasoning are stored
+//! encrypted with the user's Windows key (DPAPI, [`locall_system::proteger`]). Dates, figures, the model name and the
+//! temperature are not: they reveal nothing about what is said, and they are needed to sort and list without
+//! decrypting. An empty text is stored as an empty value (there is nothing to hide in it).
 //!
 //! **Real deletion (privacy):** when deleting, SQLite does not overwrite the data: the text would stay in the file
 //! until that space is reused, and in the change log (`-wal`). That is why the connection uses `secure_delete` (fills
 //! deleted data with zeros) and, when a conversation is deleted, the `-wal` is emptied (`wal_checkpoint(TRUNCATE)`).
 
-use rusqlite::{OptionalExtension, Row, params};
+use rusqlite::{OptionalExtension, Row, Transaction, params};
 
 use crate::{ErrorRegistro, Registro, Resultado, a_i64, a_u64, invalido};
+
+/// DPAPI "purpose" of the conversation texts: decrypting them requires the same one (ADR 0030).
+const PROPOSITO: &[u8] = b"Locall: conversaciones v1";
+
+/// What is shown instead of a text that cannot be decrypted (saved by another Windows user, on another computer, or
+/// after the user's key was lost in a forced password reset).
+pub const NO_DESCIFRABLE: &str = "⚠ No se puede descifrar este texto: se guardó con otro usuario de Windows, en otro \
+                                  equipo o antes de un cambio forzado de la contraseña de Windows.";
+
+/// Encrypts a text to store it. An empty text stays empty.
+pub(crate) fn cifrar(texto: &str) -> Resultado<Vec<u8>> {
+    if texto.is_empty() {
+        return Ok(Vec::new());
+    }
+    locall_system::proteger(texto.as_bytes(), PROPOSITO).map_err(ErrorRegistro::Cifrado)
+}
+
+/// Decrypts a stored text. It never fails: what cannot be decrypted becomes [`NO_DESCIFRABLE`], so one unreadable
+/// message does not make the whole conversation (or the list) unusable.
+pub(crate) fn descifrar(cifrado: &[u8]) -> String {
+    if cifrado.is_empty() {
+        return String::new();
+    }
+    locall_system::desproteger(cifrado, PROPOSITO)
+        .ok()
+        .and_then(|bytes| String::from_utf8(bytes).ok())
+        .unwrap_or_else(|| NO_DESCIFRABLE.to_owned())
+}
+
+/// Migration to schema version 3 (ADR 0030): the tables are rebuilt with the texts as encrypted `BLOB`s (the old
+/// `STRICT` tables only accept text there) and every existing conversation is encrypted, all inside the migration's
+/// transaction. Ids, order and everything else are kept as they were.
+pub(crate) fn cifrar_conversaciones(tx: &Transaction<'_>) -> Resultado<()> {
+    tx.execute_batch(
+        "
+        ALTER TABLE mensajes RENAME TO mensajes_v2;
+        ALTER TABLE conversaciones RENAME TO conversaciones_v2;
+        DROP INDEX conversaciones_por_fecha;
+
+        CREATE TABLE conversaciones (
+            id           INTEGER PRIMARY KEY,
+            titulo       BLOB    NOT NULL,
+            modelo       TEXT,
+            sistema      BLOB    NOT NULL DEFAULT X'',
+            temperatura  REAL,
+            creada       INTEGER NOT NULL,
+            actualizada  INTEGER NOT NULL
+        ) STRICT;
+
+        CREATE TABLE mensajes (
+            conversacion_id  INTEGER NOT NULL REFERENCES conversaciones(id) ON DELETE CASCADE,
+            orden            INTEGER NOT NULL,
+            rol              TEXT    NOT NULL CHECK (rol IN ('user', 'assistant')),
+            contenido        BLOB    NOT NULL,
+            razonamiento     BLOB    NOT NULL DEFAULT X'',
+            modelo           TEXT,
+            tokens           INTEGER,
+            velocidad        REAL,
+            cortada          INTEGER NOT NULL DEFAULT 0 CHECK (cortada IN (0, 1)),
+            creado           INTEGER NOT NULL,
+            PRIMARY KEY (conversacion_id, orden)
+        ) STRICT;
+        ",
+    )?;
+    {
+        let mut leer = tx.prepare(
+            "SELECT id, titulo, modelo, sistema, temperatura, creada, actualizada FROM conversaciones_v2",
+        )?;
+        let mut filas = leer.query([])?;
+        while let Some(f) = filas.next()? {
+            tx.execute(
+                "INSERT INTO conversaciones (id, titulo, modelo, sistema, temperatura, creada, actualizada)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                params![
+                    f.get::<_, i64>(0)?,
+                    cifrar(&f.get::<_, String>(1)?)?,
+                    f.get::<_, Option<String>>(2)?,
+                    cifrar(&f.get::<_, String>(3)?)?,
+                    f.get::<_, Option<f64>>(4)?,
+                    f.get::<_, i64>(5)?,
+                    f.get::<_, i64>(6)?,
+                ],
+            )?;
+        }
+    }
+    {
+        let mut leer = tx.prepare(
+            "SELECT conversacion_id, orden, rol, contenido, razonamiento, modelo, tokens, velocidad, cortada, creado
+             FROM mensajes_v2",
+        )?;
+        let mut filas = leer.query([])?;
+        while let Some(f) = filas.next()? {
+            tx.execute(
+                "INSERT INTO mensajes (conversacion_id, orden, rol, contenido, razonamiento, modelo, tokens, velocidad,
+                                       cortada, creado)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                params![
+                    f.get::<_, i64>(0)?,
+                    f.get::<_, i64>(1)?,
+                    f.get::<_, String>(2)?,
+                    cifrar(&f.get::<_, String>(3)?)?,
+                    cifrar(&f.get::<_, String>(4)?)?,
+                    f.get::<_, Option<String>>(5)?,
+                    f.get::<_, Option<i64>>(6)?,
+                    f.get::<_, Option<f64>>(7)?,
+                    f.get::<_, i64>(8)?,
+                    f.get::<_, i64>(9)?,
+                ],
+            )?;
+        }
+    }
+    tx.execute_batch(
+        "
+        DROP TABLE mensajes_v2;
+        DROP TABLE conversaciones_v2;
+        CREATE INDEX conversaciones_por_fecha ON conversaciones(actualizada);
+        ",
+    )?;
+    Ok(())
+}
 
 /// Maximum length of a title (in characters).
 pub const TITULO_MAX: usize = 120;
@@ -111,9 +236,9 @@ const COLUMNAS_CONVERSACION: &str =
 /// A conversation row as it comes out of SQLite (id, title, model, system, temperature, dates, messages).
 type Fila = (
     i64,
-    String,
+    Vec<u8>,
     Option<String>,
-    String,
+    Vec<u8>,
     Option<f64>,
     i64,
     i64,
@@ -138,9 +263,9 @@ fn convertir(
 ) -> Resultado<Conversacion> {
     Ok(Conversacion {
         id,
-        titulo,
+        titulo: descifrar(&titulo),
         modelo,
-        sistema,
+        sistema: descifrar(&sistema),
         temperatura,
         creada: a_u64(creada, "conversaciones.creada")?,
         actualizada: a_u64(actualizada, "conversaciones.actualizada")?,
@@ -158,7 +283,7 @@ impl Registro {
         let momento = a_i64(ahora, "conversaciones.creada")?;
         self.conexion.execute(
             "INSERT INTO conversaciones (titulo, creada, actualizada) VALUES (?1, ?2, ?2)",
-            params![titulo_valido(titulo), momento],
+            params![cifrar(&titulo_valido(titulo))?, momento],
         )?;
         let id = self.conexion.last_insert_rowid();
         self.conversacion(id)?.ok_or_else(|| no_encontrada(id))
@@ -196,8 +321,8 @@ impl Registro {
             Ok((
                 f.get::<_, i64>(0)?,
                 f.get::<_, String>(1)?,
-                f.get::<_, String>(2)?,
-                f.get::<_, String>(3)?,
+                f.get::<_, Vec<u8>>(2)?,
+                f.get::<_, Vec<u8>>(3)?,
                 f.get::<_, Option<String>>(4)?,
                 f.get::<_, Option<i64>>(5)?,
                 f.get::<_, Option<f64>>(6)?,
@@ -221,8 +346,8 @@ impl Registro {
                 Ok(MensajeGuardado {
                     orden: a_u64(orden, "mensajes.orden")?,
                     autor: Autor::desde_texto(&rol)?,
-                    contenido,
-                    razonamiento,
+                    contenido: descifrar(&contenido),
+                    razonamiento: descifrar(&razonamiento),
                     modelo,
                     tokens: tokens.map(|t| a_u64(t, "mensajes.tokens")).transpose()?,
                     velocidad,
@@ -237,7 +362,7 @@ impl Registro {
     pub fn renombrar_conversacion(&mut self, id: i64, titulo: &str) -> Resultado<()> {
         let cambiadas = self.conexion.execute(
             "UPDATE conversaciones SET titulo = ?2 WHERE id = ?1",
-            params![id, titulo_valido(titulo)],
+            params![id, cifrar(&titulo_valido(titulo))?],
         )?;
         if cambiadas == 0 {
             return Err(no_encontrada(id));
@@ -255,7 +380,7 @@ impl Registro {
     ) -> Resultado<()> {
         let cambiadas = self.conexion.execute(
             "UPDATE conversaciones SET modelo = ?2, sistema = ?3, temperatura = ?4 WHERE id = ?1",
-            params![id, modelo, sistema, temperatura],
+            params![id, modelo, cifrar(sistema)?, temperatura],
         )?;
         if cambiadas == 0 {
             return Err(no_encontrada(id));
@@ -286,6 +411,7 @@ impl Registro {
             |f| f.get(0),
         )?;
         let tokens = m.tokens.map(|t| a_i64(t, "mensajes.tokens")).transpose()?;
+        let (contenido, razonamiento) = (cifrar(&m.contenido)?, cifrar(&m.razonamiento)?);
         tx.execute(
             "INSERT INTO mensajes (conversacion_id, orden, rol, contenido, razonamiento, modelo, tokens, velocidad,
                                    cortada, creado)
@@ -294,8 +420,8 @@ impl Registro {
                 id,
                 orden,
                 m.autor.como_texto(),
-                m.contenido,
-                m.razonamiento,
+                contenido,
+                razonamiento,
                 m.modelo,
                 tokens,
                 m.velocidad,

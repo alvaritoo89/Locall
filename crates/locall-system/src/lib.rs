@@ -165,6 +165,39 @@ pub fn copiar_al_portapapeles(texto: &str) -> io::Result<()> {
     }
 }
 
+// ─── Encryption with the user's key (DPAPI) ───────────────────────────────────
+
+/// Encrypts `datos` with Windows DPAPI (ADR 0030): the key is derived from the current Windows user's credentials,
+/// so only that user, on this computer, can decrypt it. Locall never sees or stores any key.
+///
+/// `proposito` is extra "entropy": a decryption must give the same one, so another program of the same user cannot
+/// decrypt the data by accident without knowing it (it does not stop a program that does know it).
+pub fn proteger(datos: &[u8], proposito: &[u8]) -> io::Result<Vec<u8>> {
+    #[cfg(windows)]
+    {
+        windows::proteger(datos, proposito)
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (datos, proposito);
+        Err(no_soportado())
+    }
+}
+
+/// Decrypts what [`proteger`] encrypted (with the same `proposito`). Fails if the data was encrypted by another
+/// Windows user or on another computer, if the user's key was lost (a forced password reset) or if it was modified.
+pub fn desproteger(cifrado: &[u8], proposito: &[u8]) -> io::Result<Vec<u8>> {
+    #[cfg(windows)]
+    {
+        windows::desproteger(cifrado, proposito)
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (cifrado, proposito);
+        Err(no_soportado())
+    }
+}
+
 // ─── Ctrl+C ───────────────────────────────────────────────────────────────────
 
 /// Set to `true` when Ctrl+C is pressed, if [`capturar_ctrl_c`] has been called.
@@ -368,6 +401,38 @@ mod pruebas {
             );
             std::thread::sleep(Duration::from_millis(50));
         }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn cifra_y_descifra_con_la_clave_del_usuario() {
+        let texto = "¿Qué es el ownership? Cada valor tiene un dueño. 🦀".as_bytes();
+        let cifrado = proteger(texto, b"prueba").unwrap();
+        assert_ne!(cifrado, texto);
+        assert!(
+            !cifrado.windows(texto.len()).any(|v| v == texto),
+            "el texto no aparece dentro del cifrado"
+        );
+        assert_eq!(desproteger(&cifrado, b"prueba").unwrap(), texto);
+
+        // Encrypting the same text twice gives different results (nothing can be learned by comparing).
+        assert_ne!(proteger(texto, b"prueba").unwrap(), cifrado);
+        // Empty texts work too.
+        let vacio = proteger(b"", b"prueba").unwrap();
+        assert_eq!(desproteger(&vacio, b"prueba").unwrap(), b"");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn no_descifra_con_otro_proposito_ni_si_se_modifica() {
+        let cifrado = proteger(b"secreto", b"conversaciones").unwrap();
+        assert!(desproteger(&cifrado, b"otra cosa").is_err());
+        let mut tocado = cifrado.clone();
+        let medio = tocado.len() / 2;
+        tocado[medio] ^= 0xFF;
+        assert!(desproteger(&tocado, b"conversaciones").is_err());
+        assert!(desproteger(b"esto no es un cifrado", b"conversaciones").is_err());
+        assert!(desproteger(b"", b"conversaciones").is_err());
     }
 
     /// `cmd.exe` that first waits for a line on its input (`set /p`, internal: it launches nothing) and then tries to
