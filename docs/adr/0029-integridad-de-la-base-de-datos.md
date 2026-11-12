@@ -7,7 +7,7 @@
 
 `locall.db` (installed models and saved conversations) was opened without checking it. A file damaged by a disk failure,
 a power cut at a bad moment or a manual edit made Locall fail with SQLite errors at random points, or not start at all.
-And migrations (ADR 0008) changed the user's only copy: a migration with a bug could leave the data wrong with no way
+And migrations (ADR 0009) changed the user's only copy: a migration with a bug could leave the data wrong with no way
 back. The next one (Phase 7e, encrypting the conversations) rewrites every message, so this matters now.
 
 ## Decision

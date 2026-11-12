@@ -1,0 +1,56 @@
+# Continuous integration on Windows (Phase 7f): on every push to main and every pull request, check that the whole
+# workspace is formatted, passes clippy without warnings, and passes its tests; and that the app's UI type-checks and
+# builds.
+#
+# Tests that need the real engine or the Phase 0 models (in C:\Locall-poc) skip themselves here, because those files
+# are not in the repository; tests that use the internet are marked #[ignore] and do not run. Everything else runs.
+#
+# Security: no third-party actions apart from the official checkout, pinned to an exact commit (not to a tag, which its
+# author could move); the job can only read the repository; no secrets are used.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer push to the same branch cancels the run that is still going.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Rust 1.99.1 (same version as in development)
+        run: |
+          rustup toolchain install 1.99.1 --profile minimal --component clippy,rustfmt
+          rustup default 1.99.1
+
+      - name: Format
+        run: cargo fmt --all -- --check
+
+      # The app embeds the built UI (crates/locall-app/dist), so it must exist before compiling the Rust side.
+      - name: App UI (type check and build)
+        working-directory: crates/locall-app
+        run: |
+          node --version
+          npm ci --no-audit --no-fund
+          npm run build
+
+      - name: Clippy
+        run: cargo clippy --locked --workspace --all-targets -- -D warnings
+
+      - name: Tests
+        run: cargo test --locked --workspace --no-fail-fast

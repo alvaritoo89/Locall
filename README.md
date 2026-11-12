@@ -115,10 +115,10 @@ on other computers:
 |---|---|
 | [`crates/locall-gguf`](crates/locall-gguf) | GGUF header reader with safety limits |
 | [`crates/locall-store`](crates/locall-store) | Model store: sha256 fingerprints, hard-link snapshots, disk space and cleanup |
-| [`crates/locall-system`](crates/locall-system) | Machine information (memory, CPU, threads), Windows Job Objects, processes and clipboard |
+| [`crates/locall-system`](crates/locall-system) | Machine information (memory, CPU, threads), Windows Job Objects with process limits, processes, clipboard and DPAPI encryption |
 | [`crates/locall-compat`](crates/locall-compat) | Does this model fit, and can the engine run it? Memory and compatibility estimates |
 | [`crates/locall-mutador`](crates/locall-mutador) | Tests only: malformed-input testing (fuzzing) and a memory meter |
-| [`crates/locall-registry`](crates/locall-registry) | Registry of installed models and saved conversations (SQLite with migrations and real deletion) |
+| [`crates/locall-registry`](crates/locall-registry) | Registry of installed models and saved conversations (SQLite with integrity checks, migrations, encrypted conversations and real deletion) |
 | [`crates/locall-download`](crates/locall-download) | sha256-verified, resumable downloads with stall detection |
 | [`crates/locall-engine`](crates/locall-engine) | Starts, watches and stops `llama-server` safely, and streams chats with it (with cancellation) |
 | [`crates/locall-scheduler`](crates/locall-scheduler) | Scheduler: one model at a time, memory check before loading, first-come-first-served queue, idle unload and dead-engine recovery |
@@ -133,6 +133,7 @@ on other computers:
 | [`catalogo`](catalogo) | The signed catalog of compatible models |
 | [`web`](web) | Website styles, fonts, logos and script |
 | [`docs/adr`](docs/adr) | Architecture decision records and their rationale |
+| [`.github/workflows`](.github/workflows) | Continuous integration on Windows and website publishing |
 
 ## Development
 
@@ -148,6 +149,10 @@ The desktop app (`crates/locall-app`) also needs [Node.js](https://nodejs.org/);
 
 A note on naming: identifiers in the code (functions, types, variables) are in Spanish, the project's original
 language; comments and documentation are in English.
+
+## Security
+
+Found a security problem? Please report it privately, as explained in [SECURITY.md](SECURITY.md).
 
 ## License
 

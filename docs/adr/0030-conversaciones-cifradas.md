@@ -5,7 +5,7 @@
 
 ## Problem
 
-Saved conversations (ADR 0018) were stored in plain text in `locall.db`. Anyone who got hold of that file could read
+Saved conversations (ADR 0019) were stored in plain text in `locall.db`. Anyone who got hold of that file could read
 them: a backup, a sync service such as OneDrive, another Windows user of the same computer, or someone with the disk in
 their hands. Conversations are the most private thing Locall keeps.
 
@@ -56,4 +56,4 @@ failing: one unreadable message does not make the conversation or the list unusa
   after closing. A message that cannot be decrypted shows the notice while the rest of the conversation works.
 - Migration: a v2 database with plain-text conversations is upgraded to v3 keeping ids, dates, figures, models and
   texts, and afterwards the plain text is no longer anywhere in the files and the copy is gone.
-- Real deletion (ADR 0018) is still checked: the encrypted bytes of a deleted message disappear from the files.
+- Real deletion (ADR 0019) is still checked: the encrypted bytes of a deleted message disappear from the files.
