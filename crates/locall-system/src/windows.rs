@@ -16,9 +16,13 @@ use windows_sys::Win32::System::DataExchange::{
     CloseClipboard, EmptyClipboard, OpenClipboard, SetClipboardData,
 };
 use windows_sys::Win32::System::JobObjects::{
-    AssignProcessToJobObject, CreateJobObjectW, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
-    JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JobObjectExtendedLimitInformation,
-    SetInformationJobObject,
+    AssignProcessToJobObject, CreateJobObjectW, JOB_OBJECT_LIMIT_ACTIVE_PROCESS,
+    JOB_OBJECT_LIMIT_DIE_ON_UNHANDLED_EXCEPTION, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+    JOB_OBJECT_UILIMIT_DESKTOP, JOB_OBJECT_UILIMIT_DISPLAYSETTINGS, JOB_OBJECT_UILIMIT_EXITWINDOWS,
+    JOB_OBJECT_UILIMIT_GLOBALATOMS, JOB_OBJECT_UILIMIT_HANDLES, JOB_OBJECT_UILIMIT_READCLIPBOARD,
+    JOB_OBJECT_UILIMIT_SYSTEMPARAMETERS, JOB_OBJECT_UILIMIT_WRITECLIPBOARD,
+    JOBOBJECT_BASIC_UI_RESTRICTIONS, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+    JobObjectBasicUIRestrictions, JobObjectExtendedLimitInformation, SetInformationJobObject,
 };
 use windows_sys::Win32::System::Memory::{GMEM_MOVEABLE, GlobalAlloc, GlobalLock, GlobalUnlock};
 use windows_sys::Win32::System::ProcessStatus::{K32GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS};
@@ -187,9 +191,18 @@ impl Trabajo {
             return Err(io::Error::last_os_error());
         }
         let trabajo = Trabajo(asa); // from here on, Drop closes it no matter what
+
+        // Process limits (ADR 0003 and 0028):
+        // - KILL_ON_JOB_CLOSE: if Locall dies, even abruptly, Windows kills everything inside.
+        // - ACTIVE_PROCESS = 1: only one process may live in the job, so the engine cannot launch other programs
+        //   (cmd.exe, PowerShell…): Windows refuses to create them.
+        // - DIE_ON_UNHANDLED_EXCEPTION: a crash ends the process at once, without the Windows error dialog.
         // SAFETY: numbers-only struct, zeros are valid.
         let mut info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = unsafe { std::mem::zeroed() };
-        info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+        info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+            | JOB_OBJECT_LIMIT_ACTIVE_PROCESS
+            | JOB_OBJECT_LIMIT_DIE_ON_UNHANDLED_EXCEPTION;
+        info.BasicLimitInformation.ActiveProcessLimit = 1;
         // SAFETY: `asa` is valid; `info` is valid and its exact size is given.
         let ok = unsafe {
             SetInformationJobObject(
@@ -197,6 +210,31 @@ impl Trabajo {
                 JobObjectExtendedLimitInformation,
                 (&info as *const JOBOBJECT_EXTENDED_LIMIT_INFORMATION).cast(),
                 std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+            )
+        };
+        if ok == 0 {
+            return Err(io::Error::last_os_error());
+        }
+
+        // Desktop limits (ADR 0028): the engine only computes, it has no window. It cannot use the clipboard, other
+        // programs' windows or global atoms, nor change display or system settings, nor shut down or log off.
+        let ui = JOBOBJECT_BASIC_UI_RESTRICTIONS {
+            UIRestrictionsClass: JOB_OBJECT_UILIMIT_DESKTOP
+                | JOB_OBJECT_UILIMIT_DISPLAYSETTINGS
+                | JOB_OBJECT_UILIMIT_EXITWINDOWS
+                | JOB_OBJECT_UILIMIT_GLOBALATOMS
+                | JOB_OBJECT_UILIMIT_HANDLES
+                | JOB_OBJECT_UILIMIT_READCLIPBOARD
+                | JOB_OBJECT_UILIMIT_WRITECLIPBOARD
+                | JOB_OBJECT_UILIMIT_SYSTEMPARAMETERS,
+        };
+        // SAFETY: `asa` is valid; `ui` is valid and its exact size is given.
+        let ok = unsafe {
+            SetInformationJobObject(
+                trabajo.0,
+                JobObjectBasicUIRestrictions,
+                (&ui as *const JOBOBJECT_BASIC_UI_RESTRICTIONS).cast(),
+                std::mem::size_of::<JOBOBJECT_BASIC_UI_RESTRICTIONS>() as u32,
             )
         };
         if ok == 0 {

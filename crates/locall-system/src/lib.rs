@@ -248,7 +248,11 @@ pub struct Trabajo {
 }
 
 impl Trabajo {
-    /// Creates an empty job with the "kill everything on close" rule.
+    /// Creates an empty job with Locall's rules (ADR 0003 and 0028): everything inside dies when the job is closed
+    /// (or when Locall dies), only **one process** may live in it (it cannot launch other programs), a crash ends it
+    /// without the Windows error dialog, and it cannot touch the desktop (clipboard, other windows, system settings).
+    ///
+    /// It is meant for **one** process: a second one assigned to it would be refused.
     pub fn nuevo() -> io::Result<Trabajo> {
         #[cfg(windows)]
         {
@@ -364,6 +368,77 @@ mod pruebas {
             );
             std::thread::sleep(Duration::from_millis(50));
         }
+    }
+
+    /// `cmd.exe` that first waits for a line on its input (`set /p`, internal: it launches nothing) and then tries to
+    /// launch another `cmd.exe` that writes «hijo». Waiting lets the test put it in the job before it tries.
+    /// Returns what it wrote to its output.
+    #[cfg(windows)]
+    fn lanza_un_hijo(trabajo: Option<&Trabajo>) -> String {
+        use std::io::{Read, Write};
+        use std::os::windows::process::CommandExt;
+        use std::process::{Command, Stdio};
+
+        let mut padre = Command::new("cmd.exe")
+            .raw_arg("/d /c \"set /p x= & cmd.exe /d /c echo hijo\"")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap();
+        if let Some(trabajo) = trabajo {
+            trabajo.asignar(&padre).unwrap();
+        }
+        padre.stdin.take().unwrap().write_all(b"\r\n").unwrap();
+        let mut salida = String::new();
+        padre
+            .stdout
+            .take()
+            .unwrap()
+            .read_to_string(&mut salida)
+            .unwrap();
+        padre.wait().unwrap();
+        salida
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn dentro_del_trabajo_no_se_pueden_lanzar_otros_programas() {
+        // Control: outside the job, the second cmd.exe does run (so the test really checks something).
+        assert!(lanza_un_hijo(None).contains("hijo"));
+
+        let trabajo = Trabajo::nuevo().unwrap();
+        let salida = lanza_un_hijo(Some(&trabajo));
+        assert!(
+            !salida.contains("hijo"),
+            "el proceso del trabajo pudo lanzar otro programa: {salida:?}"
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn un_trabajo_solo_admite_un_proceso() {
+        use std::process::{Command, Stdio};
+
+        let lanzar = || {
+            Command::new("ping")
+                .args(["-n", "30", "127.0.0.1"])
+                .stdout(Stdio::null())
+                .spawn()
+                .unwrap()
+        };
+        let mut primero = lanzar();
+        let mut segundo = lanzar();
+        let trabajo = Trabajo::nuevo().unwrap();
+        trabajo.asignar(&primero).unwrap();
+        assert!(
+            trabajo.asignar(&segundo).is_err(),
+            "admitió un segundo proceso"
+        );
+        let _ = segundo.kill();
+        let _ = segundo.wait();
+        drop(trabajo);
+        let _ = primero.wait();
     }
 }
 
