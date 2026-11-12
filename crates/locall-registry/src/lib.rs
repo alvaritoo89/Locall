@@ -14,7 +14,7 @@
 
 use std::collections::BTreeSet;
 use std::fmt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use locall_store::{Huella, NombreArchivo, Segmento};
@@ -169,6 +169,18 @@ pub enum ErrorRegistro {
     },
     /// The database belongs to a newer version of Locall: it is not touched so as not to break it.
     VersionFutura { encontrada: u32, soportada: u32 },
+    /// SQLite's check found damage (the text is SQLite's first finding).
+    Danada(String),
+    /// A damaged database could not be set aside (for example, another program has it open).
+    Apartar {
+        ruta: PathBuf,
+        error: std::io::Error,
+    },
+    /// Upgrading the database failed; the copy made before trying is kept at `copia`.
+    MigracionFallida {
+        error: Box<ErrorRegistro>,
+        copia: PathBuf,
+    },
 }
 
 impl fmt::Display for ErrorRegistro {
@@ -189,6 +201,18 @@ impl fmt::Display for ErrorRegistro {
                 "la base de datos es de una versión más nueva de Locall (esquema {encontrada}, esta versión entiende \
                  hasta el {soportada}); actualiza Locall"
             ),
+            ErrorRegistro::Danada(detalle) => write!(f, "la base de datos está dañada ({detalle})"),
+            ErrorRegistro::Apartar { ruta, error } => write!(
+                f,
+                "la base de datos está dañada y no se ha podido apartar {} ({error}); cierra los demás programas de \
+                 Locall y vuelve a intentarlo",
+                ruta.display()
+            ),
+            ErrorRegistro::MigracionFallida { error, copia } => write!(
+                f,
+                "no se ha podido actualizar la base de datos ({error}); hay una copia de cómo estaba antes en {}",
+                copia.display()
+            ),
         }
     }
 }
@@ -197,6 +221,8 @@ impl std::error::Error for ErrorRegistro {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             ErrorRegistro::Sqlite(e) => Some(e),
+            ErrorRegistro::Apartar { error, .. } => Some(error),
+            ErrorRegistro::MigracionFallida { error, .. } => Some(error.as_ref()),
             _ => None,
         }
     }
@@ -239,29 +265,51 @@ fn invalido(campo: &'static str, e: impl fmt::Display) -> ErrorRegistro {
 /// The model registry, on top of a SQLite database.
 pub struct Registro {
     conexion: Connection,
+    /// Where the damaged database was set aside when opening, if it was (ADR 0029).
+    apartada: Option<PathBuf>,
 }
 
 impl Registro {
     /// Opens (or creates) the registry in a file and upgrades it to the current schema version.
+    ///
+    /// The database is checked first (ADR 0029). If it is **damaged**, it is not touched: it is renamed to
+    /// `<name>.danada-<seconds>` (with its `-wal` and `-shm`), a new empty one is created and
+    /// [`Registro::base_apartada`] says where the old one is. Before applying migrations to an existing database, a
+    /// copy is made next to it (`<name>.copia-antes-de-v<N>`); it is deleted if everything went well and kept if not.
     pub fn abrir(ruta: &Path) -> Resultado<Registro> {
-        let conexion = Connection::open(ruta)?;
-        // WAL: allows reading while another process (the CLI, the app) writes.
-        conexion.pragma_update(None, "journal_mode", "WAL")?;
-        Registro::preparar(conexion)
+        let (conexion, apartada) = match abrir_y_comprobar(ruta) {
+            Ok(conexion) => (conexion, None),
+            Err(error) if esta_danada(&error) => {
+                let destino = apartar(ruta)?;
+                (abrir_y_comprobar(ruta)?, Some(destino))
+            }
+            Err(error) => return Err(error),
+        };
+        let mut registro = Registro::preparar(conexion, Some(&copia_antes_de_migrar(ruta)))?;
+        registro.apartada = apartada;
+        Ok(registro)
     }
 
     /// An in-memory registry (for tests): it disappears when closed.
     pub fn en_memoria() -> Resultado<Registro> {
-        Registro::preparar(Connection::open_in_memory()?)
+        Registro::preparar(Connection::open_in_memory()?, None)
     }
 
-    fn preparar(mut conexion: Connection) -> Resultado<Registro> {
+    fn preparar(mut conexion: Connection, copia: Option<&Path>) -> Resultado<Registro> {
         conexion.pragma_update(None, "foreign_keys", "ON")?; // so that ON DELETE CASCADE works
         // Deleted data is filled with zeros: a deleted conversation must not be recoverable from the file.
         conexion.pragma_update(None, "secure_delete", "ON")?;
         conexion.busy_timeout(Duration::from_secs(5))?; // wait if another process is writing
-        migrar(&mut conexion)?;
-        Ok(Registro { conexion })
+        migrar(&mut conexion, MIGRACIONES, copia)?;
+        Ok(Registro {
+            conexion,
+            apartada: None,
+        })
+    }
+
+    /// If the database was damaged when opening: where it was set aside (a new one is in use now).
+    pub fn base_apartada(&self) -> Option<&Path> {
+        self.apartada.as_deref()
     }
 
     /// Schema version of the open database.
@@ -483,20 +531,137 @@ fn huellas_de(tx: &Transaction<'_>, id: &str) -> Resultado<Vec<Huella>> {
         .collect()
 }
 
-/// Applies the missing migrations, in order and each in its own transaction.
-fn migrar(conexion: &mut Connection) -> Resultado<()> {
+// ─── Integrity and migrations (ADR 0029) ──────────────────────────────────────
+
+/// Opens the file in WAL mode and runs SQLite's quick check (`PRAGMA quick_check`: the structure of every page and
+/// table, in milliseconds for a database this size).
+fn abrir_y_comprobar(ruta: &Path) -> Resultado<Connection> {
+    let conexion = Connection::open(ruta)?;
+    // WAL: allows reading while another process (the CLI, the app) writes.
+    conexion.pragma_update(None, "journal_mode", "WAL")?;
+    let resultado: String = conexion.pragma_query_value(None, "quick_check", |f| f.get(0))?;
+    if resultado != "ok" {
+        return Err(ErrorRegistro::Danada(resultado));
+    }
+    Ok(conexion)
+}
+
+/// Does this error mean the file is damaged (and not, for example, that another process is using it)?
+fn esta_danada(error: &ErrorRegistro) -> bool {
+    match error {
+        ErrorRegistro::Danada(_) => true,
+        ErrorRegistro::Sqlite(e) => matches!(
+            e.sqlite_error_code(),
+            Some(rusqlite::ErrorCode::DatabaseCorrupt | rusqlite::ErrorCode::NotADatabase)
+        ),
+        _ => false,
+    }
+}
+
+/// `ruta` with `sufijo` appended to its name (`locall.db` + `-wal` → `locall.db-wal`).
+fn con_sufijo(ruta: &Path, sufijo: &str) -> PathBuf {
+    let mut nombre = ruta.as_os_str().to_owned();
+    nombre.push(sufijo);
+    PathBuf::from(nombre)
+}
+
+/// Renames a damaged database (and its `-wal` and `-shm`, if they exist) to `<name>.danada-<seconds>`, without
+/// deleting anything: the user may still want to recover something from it. Returns the new name.
+fn apartar(ruta: &Path) -> Resultado<PathBuf> {
+    let destino = con_sufijo(ruta, &format!(".danada-{}", ahora()));
+    for sufijo in ["", "-wal", "-shm"] {
+        let origen = con_sufijo(ruta, sufijo);
+        if origen.exists() {
+            std::fs::rename(&origen, con_sufijo(&destino, sufijo)).map_err(|error| {
+                ErrorRegistro::Apartar {
+                    ruta: origen.clone(),
+                    error,
+                }
+            })?;
+        }
+    }
+    Ok(destino)
+}
+
+/// Where the copy made before migrating goes: `<name>.copia-antes-de-v<N>`.
+fn copia_antes_de_migrar(ruta: &Path) -> PathBuf {
+    con_sufijo(ruta, &format!(".copia-antes-de-v{VERSION_ESQUEMA}"))
+}
+
+/// Applies the missing `migraciones`, in order and each in its own transaction.
+///
+/// If the database already had data (version > 0) and `copia` is given, a consistent copy is made there first
+/// (`VACUUM INTO`, which also includes what is still in the `-wal`). After migrating, the whole database is checked
+/// (`integrity_check` and `foreign_key_check`). If all is well the copy is deleted; if anything fails it is kept and
+/// the error says where it is. A copy left by an earlier failed attempt is never overwritten: it is the older one.
+fn migrar(conexion: &mut Connection, migraciones: &[&str], copia: Option<&Path>) -> Resultado<()> {
+    let objetivo = migraciones.len() as u32;
     let actual: u32 = conexion.pragma_query_value(None, "user_version", |f| f.get(0))?;
-    if actual > VERSION_ESQUEMA {
+    if actual > objetivo {
         return Err(ErrorRegistro::VersionFutura {
             encontrada: actual,
-            soportada: VERSION_ESQUEMA,
+            soportada: objetivo,
         });
     }
-    for (indice, sql) in MIGRACIONES.iter().enumerate().skip(actual as usize) {
+    if actual == objetivo {
+        return Ok(());
+    }
+    let copia = match copia {
+        Some(copia) if actual > 0 => {
+            if !copia.exists() {
+                let texto = copia.to_str().ok_or_else(|| ErrorRegistro::DatoInvalido {
+                    campo: "ruta de la copia",
+                    detalle: "no es texto válido".into(),
+                })?;
+                conexion.execute("VACUUM INTO ?1", [texto])?;
+            }
+            Some(copia)
+        }
+        _ => None,
+    };
+    let resultado = aplicar_migraciones(conexion, migraciones, actual)
+        .and_then(|()| comprobar_entera(conexion));
+    match (resultado, copia) {
+        (Ok(()), Some(copia)) => {
+            // If it cannot be deleted (rare), it is left there: it does no harm.
+            let _ = std::fs::remove_file(copia);
+            Ok(())
+        }
+        (Ok(()), None) => Ok(()),
+        (Err(error), Some(copia)) => Err(ErrorRegistro::MigracionFallida {
+            error: Box::new(error),
+            copia: copia.to_path_buf(),
+        }),
+        (Err(error), None) => Err(error),
+    }
+}
+
+fn aplicar_migraciones(
+    conexion: &mut Connection,
+    migraciones: &[&str],
+    actual: u32,
+) -> Resultado<()> {
+    for (indice, sql) in migraciones.iter().enumerate().skip(actual as usize) {
         let tx = conexion.transaction()?;
         tx.execute_batch(sql)?;
         tx.pragma_update(None, "user_version", (indice + 1) as u32)?;
         tx.commit()?;
+    }
+    Ok(())
+}
+
+/// The full check (slower than `quick_check`: it also checks that every index matches its table) and that no row
+/// points to something that does not exist.
+fn comprobar_entera(conexion: &Connection) -> Resultado<()> {
+    let resultado: String = conexion.pragma_query_value(None, "integrity_check", |f| f.get(0))?;
+    if resultado != "ok" {
+        return Err(ErrorRegistro::Danada(resultado));
+    }
+    let mut consulta = conexion.prepare("PRAGMA foreign_key_check")?;
+    if consulta.query([])?.next()?.is_some() {
+        return Err(ErrorRegistro::Danada(
+            "hay filas que apuntan a datos que no existen".into(),
+        ));
     }
     Ok(())
 }

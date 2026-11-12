@@ -195,6 +195,15 @@ impl Nucleo {
             })
         })?;
         let registro = Registro::abrir(&rutas.base_de_datos())?;
+        if let Some(apartada) = registro.base_apartada() {
+            // ADR 0029: the damaged database is kept (renamed), never deleted.
+            avisos.push(format!(
+                "la base de datos estaba dañada: se ha apartado en {} y se ha empezado una nueva. Las conversaciones \
+                 anteriores siguen en ese archivo; los modelos descargados siguen en el almacén y se pueden volver a \
+                 instalar sin descargarlos otra vez",
+                apartada.display()
+            ));
+        }
         let planificador = Planificador::nuevo(
             ArrancadorReal::default(),
             OpcionesPlan {

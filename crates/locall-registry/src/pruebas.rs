@@ -156,7 +156,8 @@ fn eliminar_devuelve_las_huellas_y_borra_sus_archivos() {
     ));
 }
 
-/// Temporary database file that is deleted at the end (together with the WAL ones).
+/// Temporary database file that is deleted at the end (together with the WAL ones, the copies made before migrating and
+/// the damaged ones set aside: everything whose name starts with the database's).
 struct BaseDeDatosDePrueba(PathBuf);
 
 impl BaseDeDatosDePrueba {
@@ -170,11 +171,30 @@ impl BaseDeDatosDePrueba {
         b
     }
     fn borrar(&self) {
-        for sufijo in ["", "-wal", "-shm"] {
-            let mut ruta = self.0.clone().into_os_string();
-            ruta.push(sufijo);
+        for ruta in self.relacionados() {
             let _ = std::fs::remove_file(ruta);
         }
+    }
+    /// The files next to the database whose name starts with its own (except the database itself).
+    fn relacionados(&self) -> Vec<PathBuf> {
+        let nombre = self.0.file_name().unwrap().to_string_lossy().into_owned();
+        let mut lista: Vec<PathBuf> = std::fs::read_dir(self.0.parent().unwrap())
+            .unwrap()
+            .filter_map(|e| e.ok().map(|e| e.path()))
+            .filter(|r| {
+                r.file_name()
+                    .is_some_and(|n| n.to_string_lossy().starts_with(&nombre))
+            })
+            .collect();
+        lista.sort();
+        lista
+    }
+    /// The related file whose name contains `marca` (`.danada-`, `.copia-antes-de-`), if there is one.
+    fn buscar(&self, marca: &str) -> Option<PathBuf> {
+        self.relacionados().into_iter().find(|r| {
+            let n = r.file_name().unwrap().to_string_lossy().into_owned();
+            n.contains(marca) && !n.ends_with("-wal") && !n.ends_with("-shm")
+        })
     }
 }
 
@@ -263,6 +283,134 @@ fn una_base_de_datos_v1_se_actualiza_a_v2_sin_perder_nada() {
     assert!(r.conversaciones().unwrap().is_empty());
     r.crear_conversacion("Primera", 5).unwrap();
     assert_eq!(r.conversaciones().unwrap().len(), 1);
+    // The copy made before migrating is deleted because everything went well (ADR 0029).
+    assert_eq!(db.buscar(".copia-antes-de-"), None);
+    assert!(r.base_apartada().is_none());
+}
+
+// ─── Integrity and copies (ADR 0029) ──────────────────────────────────────────
+
+#[test]
+fn un_archivo_que_no_es_una_base_de_datos_se_aparta_sin_borrarlo() {
+    let db = BaseDeDatosDePrueba::nueva("no-es-db");
+    let basura = b"esto no es una base de datos de SQLite, pero ocupa algo de sitio".repeat(100);
+    std::fs::write(&db.0, &basura).unwrap();
+
+    let r = Registro::abrir(&db.0).unwrap();
+    let apartada = r.base_apartada().unwrap().to_path_buf();
+    assert!(
+        apartada.to_string_lossy().contains(".danada-"),
+        "{}",
+        apartada.display()
+    );
+    assert_eq!(
+        std::fs::read(&apartada).unwrap(),
+        basura,
+        "el archivo apartado está intacto"
+    );
+    assert_eq!(
+        r.version_esquema().unwrap(),
+        VERSION_ESQUEMA,
+        "una base nueva"
+    );
+    assert!(r.listar().unwrap().is_empty());
+}
+
+#[test]
+fn una_base_de_datos_estropeada_se_aparta_con_sus_datos() {
+    let db = BaseDeDatosDePrueba::nueva("estropeada");
+    {
+        let mut r = Registro::abrir(&db.0).unwrap();
+        r.registrar(&modelo_4b(), 1).unwrap();
+        for i in 0..50 {
+            r.crear_conversacion(&format!("Conversación {i}"), i)
+                .unwrap();
+        }
+    } // closing it moves everything from the -wal to the main file
+    // Overwrite the second page (4096 bytes after the header page) with garbage, as a disk failure would.
+    let mut bytes = std::fs::read(&db.0).unwrap();
+    assert!(bytes.len() > 8192, "la base debería tener varias páginas");
+    bytes[4096..8192].fill(0xAB);
+    std::fs::write(&db.0, &bytes).unwrap();
+
+    let r = Registro::abrir(&db.0).unwrap();
+    let apartada = r.base_apartada().expect("debería detectar el daño");
+    assert_eq!(
+        std::fs::read(apartada).unwrap(),
+        bytes,
+        "se aparta tal cual, sin tocarla"
+    );
+    assert!(r.listar().unwrap().is_empty(), "se empieza una nueva");
+}
+
+#[test]
+fn una_base_de_datos_sana_no_se_aparta() {
+    let db = BaseDeDatosDePrueba::nueva("sana");
+    drop(Registro::abrir(&db.0).unwrap());
+    let r = Registro::abrir(&db.0).unwrap();
+    assert!(r.base_apartada().is_none());
+    assert_eq!(db.buscar(".danada-"), None);
+}
+
+/// A database at version 2 with one model, and a list of migrations whose third one fails.
+fn v2_con_una_migracion_que_falla(
+    db: &BaseDeDatosDePrueba,
+) -> (Connection, PathBuf, ErrorRegistro) {
+    {
+        let mut r = Registro::abrir(&db.0).unwrap();
+        r.registrar(&modelo_4b(), 1).unwrap();
+    }
+    let mut c = Connection::open(&db.0).unwrap();
+    let copia = db.0.with_extension("db.copia-antes-de-v3");
+    let migraciones = [MIGRACIONES[0], MIGRACIONES[1], "ESTO NO ES SQL;"];
+    let error = migrar(&mut c, &migraciones, Some(&copia)).unwrap_err();
+    (c, copia, error)
+}
+
+#[test]
+fn si_una_migracion_falla_se_conserva_la_copia_de_antes() {
+    let db = BaseDeDatosDePrueba::nueva("migracion-falla");
+    let (c, copia, error) = v2_con_una_migracion_que_falla(&db);
+    match &error {
+        ErrorRegistro::MigracionFallida { copia: dicha, .. } => assert_eq!(dicha, &copia),
+        otro => panic!("error inesperado: {otro}"),
+    }
+    assert!(error.to_string().contains("copia"), "{error}");
+
+    // The database is still at version 2 (the failed migration was rolled back)…
+    let version: u32 = c
+        .pragma_query_value(None, "user_version", |f| f.get(0))
+        .unwrap();
+    assert_eq!(version, 2);
+    // …and the copy is a complete, valid database with the data from before.
+    let guardada = Connection::open(&copia).unwrap();
+    let modelos: i64 = guardada
+        .query_row("SELECT count(*) FROM modelos", [], |f| f.get(0))
+        .unwrap();
+    assert_eq!(modelos, 1);
+}
+
+#[test]
+fn una_copia_de_un_intento_anterior_no_se_sobrescribe() {
+    let db = BaseDeDatosDePrueba::nueva("copia-anterior");
+    let (mut c, copia, _) = v2_con_una_migracion_que_falla(&db);
+    let antes = std::fs::read(&copia).unwrap();
+    // Meanwhile the database changes, and the migration fails again.
+    c.execute("DELETE FROM modelos", []).unwrap();
+    let migraciones = [MIGRACIONES[0], MIGRACIONES[1], "ESTO NO ES SQL;"];
+    assert!(migrar(&mut c, &migraciones, Some(&copia)).is_err());
+    assert_eq!(
+        std::fs::read(&copia).unwrap(),
+        antes,
+        "la copia más antigua se conserva"
+    );
+}
+
+#[test]
+fn una_base_nueva_no_hace_copia() {
+    let db = BaseDeDatosDePrueba::nueva("nueva-sin-copia");
+    drop(Registro::abrir(&db.0).unwrap());
+    assert_eq!(db.buscar(".copia-antes-de-"), None);
 }
 
 #[test]
