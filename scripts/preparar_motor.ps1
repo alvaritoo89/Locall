@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Prepares the engine folder that ships with Locall (ADR 0031): the official llama.cpp build b12189 for the CPU,
     verified by its sha256, with only the files `llama-server` needs and the licenses that go with them.

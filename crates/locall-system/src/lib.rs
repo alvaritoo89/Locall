@@ -198,6 +198,90 @@ pub fn desproteger(cifrado: &[u8], proposito: &[u8]) -> io::Result<Vec<u8>> {
     }
 }
 
+// ─── The user's PATH ──────────────────────────────────────────────────────────
+
+/// Adds `carpeta` to the current user's `PATH` (ADR 0032), so `locall` can be typed in any new terminal. Used by the
+/// installer. Returns `false` if it was already there. Every other entry is kept exactly as it was.
+pub fn anadir_al_path_del_usuario(carpeta: &std::path::Path) -> io::Result<bool> {
+    cambiar_path_del_usuario("Environment", carpeta, true)
+}
+
+/// Removes `carpeta` from the current user's `PATH` (every copy of it). Used by the uninstaller. Returns `false` if it
+/// was not there.
+pub fn quitar_del_path_del_usuario(carpeta: &std::path::Path) -> io::Result<bool> {
+    cambiar_path_del_usuario("Environment", carpeta, false)
+}
+
+fn cambiar_path_del_usuario(
+    subclave: &str,
+    carpeta: &std::path::Path,
+    anadir: bool,
+) -> io::Result<bool> {
+    let carpeta = carpeta.to_str().ok_or_else(|| {
+        io::Error::new(io::ErrorKind::InvalidInput, "la carpeta no es texto válido")
+    })?;
+    #[cfg(windows)]
+    {
+        let (actual, tipo) = windows::path_del_usuario(subclave)?;
+        let nuevo = if anadir {
+            path_con(&actual, carpeta)
+        } else {
+            path_sin(&actual, carpeta)
+        };
+        let Some(nuevo) = nuevo else {
+            return Ok(false);
+        };
+        windows::guardar_path_del_usuario(subclave, &nuevo, tipo)?;
+        if subclave == "Environment" {
+            windows::avisar_cambio_de_entorno();
+        }
+        Ok(true)
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (subclave, carpeta, anadir);
+        Err(no_soportado())
+    }
+}
+
+/// Are these two `PATH` entries the same folder? Ignores case (as Windows does), spaces around, quotes and a final
+/// backslash. An empty entry is never a match.
+fn misma_carpeta(entrada: &str, carpeta: &str) -> bool {
+    let normal = |s: &str| {
+        s.trim()
+            .trim_matches('"')
+            .trim_end_matches(['\\', '/'])
+            .to_lowercase()
+    };
+    !normal(entrada).is_empty() && normal(entrada) == normal(carpeta)
+}
+
+/// `path` with `carpeta` added at the end, or `None` if it is already there.
+fn path_con(path: &str, carpeta: &str) -> Option<String> {
+    if path.split(';').any(|e| misma_carpeta(e, carpeta)) {
+        return None;
+    }
+    let base = path.trim_end_matches(';');
+    Some(if base.is_empty() {
+        carpeta.to_owned()
+    } else {
+        format!("{base};{carpeta}")
+    })
+}
+
+/// `path` without any copy of `carpeta`, or `None` if it was not there. The rest is kept as it was.
+fn path_sin(path: &str, carpeta: &str) -> Option<String> {
+    if !path.split(';').any(|e| misma_carpeta(e, carpeta)) {
+        return None;
+    }
+    Some(
+        path.split(';')
+            .filter(|e| !misma_carpeta(e, carpeta))
+            .collect::<Vec<_>>()
+            .join(";"),
+    )
+}
+
 // ─── Ctrl+C ───────────────────────────────────────────────────────────────────
 
 /// Set to `true` when Ctrl+C is pressed, if [`capturar_ctrl_c`] has been called.
@@ -401,6 +485,77 @@ mod pruebas {
             );
             std::thread::sleep(Duration::from_millis(50));
         }
+    }
+
+    #[test]
+    fn anade_y_quita_una_carpeta_del_path_sin_tocar_lo_demas() {
+        let c = r"C:\Users\Ana\AppData\Local\Locall";
+        assert_eq!(path_con("", c).unwrap(), c);
+        assert_eq!(
+            path_con(r"C:\a;D:\b", c).unwrap(),
+            format!(r"C:\a;D:\b;{c}")
+        );
+        assert_eq!(
+            path_con(r"C:\a;", c).unwrap(),
+            format!(r"C:\a;{c}"),
+            "sin un ; doble"
+        );
+        assert_eq!(path_con(&format!(r"C:\a;{c}"), c), None, "ya estaba");
+        assert_eq!(
+            path_con(r"C:\a;c:\users\ana\appdata\local\LOCALL\", c),
+            None,
+            "sin distinguir mayúsculas ni la barra final"
+        );
+        assert_eq!(
+            path_con(r#"C:\a;"C:\Users\Ana\AppData\Local\Locall""#, c),
+            None,
+            "ni las comillas"
+        );
+
+        let con = format!(r"%USERPROFILE%\bin;{c};C:\x;;{c}\");
+        assert_eq!(
+            path_sin(&con, c).unwrap(),
+            r"%USERPROFILE%\bin;C:\x;",
+            "quita todas las copias y deja lo demás igual (variables y entradas vacías incluidas)"
+        );
+        assert_eq!(path_sin(r"C:\a;C:\Locall-otra", c), None, "no estaba");
+        assert_eq!(path_sin(c, c).unwrap(), "");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn anade_y_quita_del_registro_conservando_el_tipo() {
+        // A key of its own under HKEY_CURRENT_USER, never the user's real Environment.
+        let subclave = format!(r"Software\Locall-pruebas\path-{}", std::process::id());
+        let carpeta = std::path::Path::new(r"C:\Programas\Locall");
+        let previo = r"%USERPROFILE%\bin;C:\Herramientas";
+        windows::guardar_path_del_usuario(
+            &subclave,
+            previo,
+            windows_sys::Win32::System::Registry::REG_EXPAND_SZ,
+        )
+        .unwrap();
+
+        assert!(cambiar_path_del_usuario(&subclave, carpeta, true).unwrap());
+        assert!(
+            !cambiar_path_del_usuario(&subclave, carpeta, true).unwrap(),
+            "la segunda vez no repite"
+        );
+        let (texto, tipo) = windows::path_del_usuario(&subclave).unwrap();
+        assert_eq!(texto, format!(r"{previo};C:\Programas\Locall"));
+        assert_eq!(
+            tipo,
+            windows_sys::Win32::System::Registry::REG_EXPAND_SZ,
+            "las %VARIABLES% siguen funcionando"
+        );
+
+        assert!(cambiar_path_del_usuario(&subclave, carpeta, false).unwrap());
+        assert_eq!(
+            windows::path_del_usuario(&subclave).unwrap().0,
+            previo,
+            "queda como estaba"
+        );
+        windows::borrar_clave_del_usuario(r"Software\Locall-pruebas");
     }
 
     #[cfg(windows)]

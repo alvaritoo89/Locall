@@ -107,7 +107,7 @@ on other computers:
 - [x] Phase 5: desktop app (home, library, chat with saved conversations and real deletion, Hugging Face explorer, settings, import, keyboard shortcuts, accessibility, dark mode)
 - [x] Phase 6: signed catalog of compatible models, and the website ([alvaritoo89.github.io/Locall](https://alvaritoo89.github.io/Locall/))
 - [x] Phase 7: hardening (recovery when the engine dies, malformed-input testing, engine process limits, database integrity checks, encrypted conversations, Windows CI and a security policy)
-- [ ] Phase 8: installer, code signing and distribution · in progress: package contents, engine and licenses ✓
+- [ ] Phase 8: installer, code signing and distribution · in progress: package contents, engine and licenses ✓, Windows installer ✓
 
 ## Repository layout
 
@@ -147,6 +147,14 @@ cargo test
 
 The desktop app (`crates/locall-app`) also needs [Node.js](https://nodejs.org/); run `npm install` and
 `npm run tauri dev` inside that folder to start it in development mode.
+
+To build the Windows installer (`targeteleaseundle
+sis\Locall_<version>_x64-setup.exe`), from PowerShell at the
+repository root ([ADR 0032](docs/adr/0032-instalador.md)):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\construir_instalador.ps1
+```
 
 A note on naming: identifiers in the code (functions, types, variables) are in Spanish, the project's original
 language; comments and documentation are in English.

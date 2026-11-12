@@ -5,8 +5,8 @@ use std::os::windows::io::AsRawHandle;
 use std::process::Child;
 
 use windows_sys::Win32::Foundation::{
-    CloseHandle, GlobalFree, HANDLE, HANDLE_FLAG_INHERIT, INVALID_HANDLE_VALUE, LocalFree,
-    SYSTEMTIME, SetHandleInformation,
+    CloseHandle, ERROR_FILE_NOT_FOUND, ERROR_SUCCESS, GlobalFree, HANDLE, HANDLE_FLAG_INHERIT,
+    INVALID_HANDLE_VALUE, LocalFree, SYSTEMTIME, SetHandleInformation,
 };
 use windows_sys::Win32::Security::Cryptography::{
     CRYPT_INTEGER_BLOB, CRYPTPROTECT_UI_FORBIDDEN, CryptProtectData, CryptUnprotectData,
@@ -29,12 +29,19 @@ use windows_sys::Win32::System::JobObjects::{
 };
 use windows_sys::Win32::System::Memory::{GMEM_MOVEABLE, GlobalAlloc, GlobalLock, GlobalUnlock};
 use windows_sys::Win32::System::ProcessStatus::{K32GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS};
-use windows_sys::Win32::System::Registry::{HKEY_LOCAL_MACHINE, RRF_RT_REG_SZ, RegGetValueW};
+use windows_sys::Win32::System::Registry::{
+    HKEY, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_QUERY_VALUE, KEY_SET_VALUE, REG_EXPAND_SZ,
+    REG_OPTION_NON_VOLATILE, REG_SZ, REG_VALUE_TYPE, RRF_RT_REG_SZ, RegCloseKey, RegCreateKeyExW,
+    RegGetValueW, RegQueryValueExW, RegSetValueExW,
+};
 use windows_sys::Win32::System::SystemInformation::{
     GetLocalTime, GlobalMemoryStatusEx, MEMORYSTATUSEX,
 };
 use windows_sys::Win32::System::Threading::{
     OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION, WaitForSingleObject,
+};
+use windows_sys::Win32::UI::WindowsAndMessaging::{
+    HWND_BROADCAST, SMTO_ABORTIFHUNG, SendMessageTimeoutW, WM_SETTINGCHANGE,
 };
 
 use crate::{FechaHora, Memoria};
@@ -258,6 +265,165 @@ pub fn desproteger(cifrado: &[u8], proposito: &[u8]) -> io::Result<Vec<u8>> {
     }
     // SAFETY: the call succeeded, so `salida` was filled by DPAPI.
     Ok(unsafe { tomar_salida(salida) })
+}
+
+// ─── The user's PATH (HKCU\Environment) ───
+
+/// An open registry key, closed when dropped.
+struct Clave(HKEY);
+
+impl Drop for Clave {
+    fn drop(&mut self) {
+        // SAFETY: the key was opened by `abrir_clave_del_usuario` and is closed exactly once.
+        unsafe { RegCloseKey(self.0) };
+    }
+}
+
+fn error_de_registro(codigo: u32) -> io::Error {
+    io::Error::from_raw_os_error(codigo as i32)
+}
+
+/// Opens (creating it if needed) `HKEY_CURRENT_USER\<subclave>` to read and write values.
+fn abrir_clave_del_usuario(subclave: &str) -> io::Result<Clave> {
+    let nombre = ancho(subclave);
+    let mut clave: HKEY = std::ptr::null_mut();
+    // SAFETY: `nombre` is 0-terminated UTF-16 that lives during the call; null class, security attributes and
+    // disposition are allowed; `clave` is ours to fill.
+    let codigo = unsafe {
+        RegCreateKeyExW(
+            HKEY_CURRENT_USER,
+            nombre.as_ptr(),
+            0,
+            std::ptr::null(),
+            REG_OPTION_NON_VOLATILE,
+            KEY_QUERY_VALUE | KEY_SET_VALUE,
+            std::ptr::null(),
+            &mut clave,
+            std::ptr::null_mut(),
+        )
+    };
+    if codigo != ERROR_SUCCESS {
+        return Err(error_de_registro(codigo));
+    }
+    Ok(Clave(clave))
+}
+
+/// The user's `Path` value in `HKEY_CURRENT_USER\<subclave>` and its type (`REG_EXPAND_SZ` or `REG_SZ`). If it does
+/// not exist: empty, `REG_EXPAND_SZ` (what Windows uses for it).
+pub fn path_del_usuario(subclave: &str) -> io::Result<(String, REG_VALUE_TYPE)> {
+    let clave = abrir_clave_del_usuario(subclave)?;
+    let valor = ancho("Path");
+    let mut tipo: REG_VALUE_TYPE = 0;
+    let mut bytes: u32 = 0;
+    // SAFETY: first call with a null buffer only asks for the type and size; all pointers are valid.
+    let codigo = unsafe {
+        RegQueryValueExW(
+            clave.0,
+            valor.as_ptr(),
+            std::ptr::null(),
+            &mut tipo,
+            std::ptr::null_mut(),
+            &mut bytes,
+        )
+    };
+    if codigo == ERROR_FILE_NOT_FOUND {
+        return Ok((String::new(), REG_EXPAND_SZ));
+    }
+    if codigo != ERROR_SUCCESS {
+        return Err(error_de_registro(codigo));
+    }
+    if tipo != REG_EXPAND_SZ && tipo != REG_SZ {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "el PATH del usuario no es un texto; no se toca",
+        ));
+    }
+    // Room for the value plus a terminator, in u16 units (the value may change between the two calls: the size the
+    // second call reports is checked).
+    let mut texto = vec![0u16; bytes as usize / 2 + 1];
+    let mut capacidad = (texto.len() * 2) as u32;
+    // SAFETY: `texto` has `capacidad` bytes; the other pointers are valid.
+    let codigo = unsafe {
+        RegQueryValueExW(
+            clave.0,
+            valor.as_ptr(),
+            std::ptr::null(),
+            &mut tipo,
+            texto.as_mut_ptr().cast(),
+            &mut capacidad,
+        )
+    };
+    if codigo != ERROR_SUCCESS {
+        return Err(error_de_registro(codigo));
+    }
+    texto.truncate((capacidad as usize / 2).min(texto.len()));
+    while texto.last() == Some(&0) {
+        texto.pop();
+    }
+    let texto = String::from_utf16(&texto).map_err(|_| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            "el PATH del usuario no es texto válido; no se toca",
+        )
+    })?;
+    Ok((texto, tipo))
+}
+
+/// Writes the user's `Path` value, keeping its type.
+pub fn guardar_path_del_usuario(
+    subclave: &str,
+    texto: &str,
+    tipo: REG_VALUE_TYPE,
+) -> io::Result<()> {
+    let clave = abrir_clave_del_usuario(subclave)?;
+    let valor = ancho("Path");
+    let datos = ancho(texto);
+    let bytes = u32::try_from(datos.len() * 2)
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "PATH demasiado largo"))?;
+    // SAFETY: `datos` is 0-terminated UTF-16 of exactly `bytes` bytes (terminator included), alive during the call.
+    let codigo = unsafe {
+        RegSetValueExW(
+            clave.0,
+            valor.as_ptr(),
+            0,
+            tipo,
+            datos.as_ptr().cast(),
+            bytes,
+        )
+    };
+    if codigo != ERROR_SUCCESS {
+        return Err(error_de_registro(codigo));
+    }
+    Ok(())
+}
+
+/// Tells open programs (Explorer, new terminals) that the environment changed, so new terminals see the new PATH.
+pub fn avisar_cambio_de_entorno() {
+    let seccion = ancho("Environment");
+    let mut resultado = 0usize;
+    // SAFETY: broadcasting WM_SETTINGCHANGE with a pointer to a 0-terminated UTF-16 string that lives during the
+    // call; SMTO_ABORTIFHUNG and a 5 s limit mean a hung window cannot block us.
+    unsafe {
+        SendMessageTimeoutW(
+            HWND_BROADCAST,
+            WM_SETTINGCHANGE,
+            0,
+            seccion.as_ptr() as isize,
+            SMTO_ABORTIFHUNG,
+            5000,
+            &mut resultado,
+        )
+    };
+}
+
+/// Deletes `HKEY_CURRENT_USER\<subclave>` and everything under it (only for the tests' own key).
+#[cfg(test)]
+pub fn borrar_clave_del_usuario(subclave: &str) {
+    let nombre = ancho(subclave);
+    // SAFETY: `nombre` is 0-terminated UTF-16 that lives during the call.
+    unsafe {
+        windows_sys::Win32::System::Registry::RegDeleteTreeW(HKEY_CURRENT_USER, nombre.as_ptr())
+    };
 }
 
 /// The Job Object (Windows handle). Dropping it closes the handle and Windows terminates its processes.

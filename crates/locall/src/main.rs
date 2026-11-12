@@ -14,6 +14,9 @@ use locall_config::{Config, Rutas, registros};
 use locall_core::{Nucleo, OpcionesNucleo};
 
 fn main() -> ExitCode {
+    if let Some(codigo) = orden_del_instalador() {
+        return codigo;
+    }
     let orden = match locall_cli::interpretar(std::env::args_os().skip(1)) {
         Ok(orden) => orden,
         Err(error) => {
@@ -50,6 +53,55 @@ fn main() -> ExitCode {
         Err(error) => {
             eprintln!("Error: {error}");
             ExitCode::FAILURE
+        }
+    }
+}
+
+/// The installer's own commands (ADR 0032), not shown in the help: `--instalador-anadir-al-path` and
+/// `--instalador-quitar-del-path` add or remove the folder of this `locall.exe` in the user's `PATH`. They are done
+/// here, in Rust, rather than in the NSIS script, because NSIS has a limit on text length and could cut a long `PATH`.
+/// `None` if this is not one of them.
+fn orden_del_instalador() -> Option<ExitCode> {
+    let mut argumentos = std::env::args_os().skip(1);
+    let orden = argumentos.next()?;
+    let anadir = match orden.to_str()? {
+        "--instalador-anadir-al-path" => true,
+        "--instalador-quitar-del-path" => false,
+        _ => return None,
+    };
+    if argumentos.next().is_some() {
+        eprintln!("Error: esta orden no admite argumentos");
+        return Some(ExitCode::from(2));
+    }
+    let carpeta = match std::env::current_exe() {
+        Ok(exe) => match exe.parent() {
+            Some(carpeta) => carpeta.to_path_buf(),
+            None => return Some(ExitCode::FAILURE),
+        },
+        Err(error) => {
+            eprintln!("Error: no se encuentra locall.exe: {error}");
+            return Some(ExitCode::FAILURE);
+        }
+    };
+    let resultado = if anadir {
+        locall_system::anadir_al_path_del_usuario(&carpeta)
+    } else {
+        locall_system::quitar_del_path_del_usuario(&carpeta)
+    };
+    match resultado {
+        Ok(cambiado) => {
+            let que = match (anadir, cambiado) {
+                (true, true) => "añadida al PATH",
+                (true, false) => "ya estaba en el PATH",
+                (false, true) => "quitada del PATH",
+                (false, false) => "no estaba en el PATH",
+            };
+            println!("{}: {que}", carpeta.display());
+            Some(ExitCode::SUCCESS)
+        }
+        Err(error) => {
+            eprintln!("Error: no se ha podido cambiar el PATH: {error}");
+            Some(ExitCode::FAILURE)
         }
     }
 }
