@@ -148,8 +148,7 @@ cargo test
 The desktop app (`crates/locall-app`) also needs [Node.js](https://nodejs.org/); run `npm install` and
 `npm run tauri dev` inside that folder to start it in development mode.
 
-To build the Windows installer (`targeteleaseundle
-sis\Locall_<version>_x64-setup.exe`), from PowerShell at the
+To build the Windows installer (`target\release\bundle\nsis\Locall_<version>_x64-setup.exe`), from PowerShell at the
 repository root ([ADR 0032](docs/adr/0032-instalador.md)):
 
 ```powershell
