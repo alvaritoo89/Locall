@@ -107,7 +107,7 @@ on other computers:
 - [x] Phase 5: desktop app (home, library, chat with saved conversations and real deletion, Hugging Face explorer, settings, import, keyboard shortcuts, accessibility, dark mode)
 - [x] Phase 6: signed catalog of compatible models, and the website ([alvaritoo89.github.io/Locall](https://alvaritoo89.github.io/Locall/))
 - [x] Phase 7: hardening (recovery when the engine dies, malformed-input testing, engine process limits, database integrity checks, encrypted conversations, Windows CI and a security policy)
-- [ ] Phase 8: installer, code signing and distribution
+- [ ] Phase 8: installer, code signing and distribution · in progress: package contents, engine and licenses ✓
 
 ## Repository layout
 
@@ -133,6 +133,7 @@ on other computers:
 | [`catalogo`](catalogo) | The signed catalog of compatible models |
 | [`web`](web) | Website styles, fonts, logos and script |
 | [`docs/adr`](docs/adr) | Architecture decision records and their rationale |
+| [`scripts`](scripts) | Packaging (engine download and verification, third-party notices and license check) and an OpenAI-client test |
 | [`.github/workflows`](.github/workflows) | Continuous integration on Windows and website publishing |
 
 ## Development

@@ -49,6 +49,10 @@ jobs:
           npm ci --no-audit --no-fund
           npm run build
 
+      # Every third-party component that would be distributed must have an accepted license (ADR 0031).
+      - name: Third-party licenses
+        run: python scripts/avisos_de_terceros.py --comprobar
+
       - name: Clippy
         run: cargo clippy --locked --workspace --all-targets -- -D warnings
 
