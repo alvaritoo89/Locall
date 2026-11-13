@@ -109,7 +109,7 @@ on other computers:
 - [x] Phase 5: desktop app (home, library, chat with saved conversations and real deletion, Hugging Face explorer, settings, import, keyboard shortcuts, accessibility, dark mode)
 - [x] Phase 6: signed catalog of compatible models, and the website ([alvaritoo89.github.io/Locall](https://alvaritoo89.github.io/Locall/))
 - [x] Phase 7: hardening (recovery when the engine dies, malformed-input testing, engine process limits, database integrity checks, encrypted conversations, Windows CI and a security policy)
-- [ ] Phase 8: installer, code signing and distribution · in progress: package contents, engine and licenses ✓, Windows installer ✓, release workflow ✓, version 0.1.0 published with its download page ✓ (code signing pending)
+- [ ] Phase 8: installer, code signing and distribution · in progress: package contents, engine and licenses ✓, Windows installer ✓, release workflow ✓, version 0.1.0 published with its download page ✓, code signing policy and SignPath application (in progress)
 
 ## Repository layout
 

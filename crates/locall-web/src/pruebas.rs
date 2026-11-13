@@ -36,6 +36,7 @@ fn hay_una_pagina_por_modelo_y_todas_las_fijas() {
         "index.html",
         "descargar.html",
         "privacidad.html",
+        "firma.html",
         "404.html",
     ] {
         assert!(rutas.contains(&PathBuf::from(fija)), "{fija}");
@@ -44,7 +45,7 @@ fn hay_una_pagina_por_modelo_y_todas_las_fijas() {
     for m in &c.modelos {
         assert!(rutas.contains(&PathBuf::from("modelos").join(format!("{}.html", m.nombre))));
     }
-    assert_eq!(rutas.len(), 5 + c.modelos.len());
+    assert_eq!(rutas.len(), 6 + c.modelos.len());
 }
 
 #[test]
@@ -64,15 +65,18 @@ fn cada_modelo_lleva_su_comando_y_nunca_dice_probado() {
 }
 
 #[test]
-fn solo_enlaza_a_github_y_hugging_face() {
-    // No fonts, scripts or analytics from other sites.
+fn solo_enlaza_a_github_hugging_face_y_signpath() {
+    // No fonts, scripts or analytics from other sites. SignPath only appears as plain links in the code signing policy
+    // and on the download page (ADR 0035).
     let todo: String = paginas(&oficial()).into_iter().map(|(_, h)| h).collect();
     for (i, _) in todo.match_indices("https://") {
         let resto = &todo[i..];
         assert!(
             resto.starts_with("https://github.com/")
                 || resto.starts_with("https://huggingface.co/")
-                || resto.starts_with("https://docs.github.com/"),
+                || resto.starts_with("https://docs.github.com/")
+                || resto.starts_with("https://signpath.io/")
+                || resto.starts_with("https://signpath.org/"),
             "enlace no permitido: {}",
             &resto[..resto.len().min(80)]
         );
@@ -154,4 +158,31 @@ fn la_clave_de_las_versiones_es_la_del_catalogo() {
         crate::CLAVE_PUBLICA_MINISIGN,
         locall_catalogo::CLAVE_PUBLICA
     );
+}
+
+#[test]
+fn la_politica_de_firma_esta_enlazada_en_todas_las_paginas() {
+    // SignPath Foundation asks for the code signing policy to be reachable from the home and download pages (ADR 0035).
+    for (ruta, html) in paginas(&oficial()) {
+        assert!(
+            html.contains("firma.html\">Firma de código</a>"),
+            "{}",
+            ruta.display()
+        );
+    }
+    let todo: Vec<(PathBuf, String)> = paginas(&oficial());
+    let firma = &todo
+        .iter()
+        .find(|(r, _)| r == &PathBuf::from("firma.html"))
+        .unwrap()
+        .1;
+    assert!(firma.contains("Free code signing provided by"));
+    assert!(firma.contains("certificate by"));
+    assert!(firma.contains("Approvers"));
+    let descargar = &todo
+        .iter()
+        .find(|(r, _)| r == &PathBuf::from("descargar.html"))
+        .unwrap()
+        .1;
+    assert!(descargar.contains("SignPath Foundation"));
 }

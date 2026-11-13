@@ -141,6 +141,7 @@ fn pagina(
 <span>Locall · software libre (Apache-2.0)</span>
 <a href="{REPOSITORIO}">Código en GitHub</a>
 <a href="{raiz}privacidad.html">Privacidad</a>
+<a href="{raiz}firma.html">Firma de código</a>
 </div>
 </footer>
 </body>
@@ -225,9 +226,10 @@ terminal nueva.</li>
 <div class="aviso">
 <p><strong>Windows mostrará un aviso azul</strong> («Windows protegió su PC») porque esta versión todavía no lleva
 firma de código. Para continuar: <strong>Más información → Ejecutar de todas formas</strong>.</p>
-<p>La firma gratuita para proyectos de código abierto solo se puede pedir cuando ya hay una versión publicada: es el
-siguiente paso. Si prefieres esperar a la versión firmada, o comprobar antes el instalador, lee abajo cómo
-hacerlo.</p>
+<p>Locall usa la firma de código gratuita para proyectos de código abierto de
+<a href="https://signpath.org/">SignPath Foundation</a>, que solo se puede pedir cuando ya hay una versión publicada: la
+solicitud está en curso (más detalles en la <a href="firma.html">política de firma de código</a>). Si prefieres
+esperar a la versión firmada, o comprobar antes el instalador, lee abajo cómo hacerlo.</p>
 </div>
 <p>Tus modelos y conversaciones se guardan en <code>%LOCALAPPDATA%\Locall</code>. Si desinstalas Locall (desde
 <em>Configuración → Aplicaciones</em>), se quedan ahí.</p>
@@ -436,6 +438,60 @@ para mirar en GitHub si hay un catálogo de modelos nuevo.</li>
     )
 }
 
+fn firma() -> String {
+    pagina(
+        "",
+        "Firma de código · Locall",
+        "Cómo se firman los programas de Locall: SignPath Foundation, quién aprueba cada firma y qué datos usa Locall.",
+        Seccion::Otra,
+        r##"<h1>Política de firma de código</h1>
+<p class="entradilla">Code signing policy</p>
+<p>Firma de código gratuita gracias a <a href="https://signpath.io/">SignPath.io</a>, con certificado de
+<a href="https://signpath.org/">SignPath Foundation</a>.<br>
+<em>Free code signing provided by <a href="https://signpath.io/">SignPath.io</a>, certificate by
+<a href="https://signpath.org/">SignPath Foundation</a>.</em></p>
+<p class="aviso">Estado: la solicitud a SignPath Foundation está en curso. Hasta que se apruebe, las versiones se
+publican sin firma de código; su huella (<code>SHA256SUMS.txt</code>) va firmada con la clave minisign del proyecto,
+como se explica en la <a href="descargar.html">página de descarga</a>.<br>
+<em>Status: the application to SignPath Foundation is in progress. Until it is approved, releases are published without
+code signing; their hashes (<code>SHA256SUMS.txt</code>) are signed with the project's minisign key.</em></p>
+
+<h2>Qué se firma · What is signed</h2>
+<ul>
+<li>Solo los programas propios de Locall (<code>locall.exe</code>, <code>locall-app.exe</code> y el instalador),
+compilados automáticamente por GitHub Actions a partir del código de
+<a href="https://github.com/alvaritoo89/Locall">este repositorio</a>.<br>
+<em>Only Locall's own programs (<code>locall.exe</code>, <code>locall-app.exe</code> and the installer), built
+automatically by GitHub Actions from the source code in this repository.</em></li>
+<li>Los componentes de terceros, como el motor llama.cpp de la carpeta <code>motor</code>, se distribuyen tal como los
+publican sus autores, sin modificar.<br>
+<em>Third-party components, such as the llama.cpp engine in the <code>motor</code> folder, are distributed unmodified,
+as published by their authors.</em></li>
+<li>Cada firma la aprueba una persona a mano, versión a versión.<br>
+<em>Every signing request is approved by hand, release by release.</em></li>
+</ul>
+
+<h2>Equipo · Team roles</h2>
+<ul>
+<li>Autores y revisores · Committers and reviewers: <a href="https://github.com/alvaritoo89">alvaritoo89</a></li>
+<li>Aprobación de cada firma · Approvers: <a href="https://github.com/alvaritoo89">alvaritoo89</a></li>
+</ul>
+
+<h2>Privacidad · Privacy policy</h2>
+<p>Locall no envía estadísticas, datos de uso ni conversaciones a ningún sitio. Solo se conecta a internet para:</p>
+<ul>
+<li>buscar y descargar modelos de Hugging Face, cuando el usuario lo pide;</li>
+<li>como mucho una vez al día, descargar de GitHub el catálogo firmado de modelos compatibles, sin enviar ningún dato
+del usuario.</li>
+</ul>
+<p><em>Locall does not send statistics, usage data or conversations anywhere. It only connects to the internet to search
+for and download models from Hugging Face when the user asks for it, and, at most once a day, to download the signed
+catalog of compatible models from GitHub, without sending any user data.</em></p>
+<p>Más detalles en la <a href="privacidad.html">página de privacidad</a>.</p>
+"##,
+    )
+}
+
 fn no_encontrada() -> String {
     // GitHub serves this page at any path that does not exist: relative links would break, so the base is used.
     pagina(
@@ -458,6 +514,7 @@ pub fn paginas(catalogo: &Catalogo) -> Vec<(PathBuf, String)> {
         (PathBuf::from("index.html"), inicio(catalogo)),
         (PathBuf::from("descargar.html"), descargar()),
         (PathBuf::from("privacidad.html"), privacidad()),
+        (PathBuf::from("firma.html"), firma()),
         (PathBuf::from("404.html"), no_encontrada()),
         (
             PathBuf::from("modelos").join("index.html"),
