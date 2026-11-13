@@ -1,0 +1,106 @@
+# Prepares a Locall release (ADR 0033): when a version tag such as v0.1.0 is pushed, builds the Windows installer and
+# creates a DRAFT release with it and its SHA256SUMS.txt. A draft is only visible to the repository's owner.
+#
+# Publishing stays in the author's hands: they download SHA256SUMS.txt, sign it with their minisign key (the private
+# key never leaves their computer), upload SHA256SUMS.txt.minisig to the draft, review the notes and press «Publish».
+#
+# Before building, the job checks that the tag matches the version in Cargo.toml, tauri.conf.json and package.json,
+# that the tagged commit is on main (so nothing can be released from another branch), that the release notes exist,
+# and that there is no release for that tag yet (an existing one is never overwritten). The installer is built with
+# the same script as locally (scripts/construir_instalador.ps1), which only accepts the engine with its pinned sha256
+# and fails if any third-party license is not accepted.
+#
+# Security: only the official checkout action, pinned to an exact commit; the GitHub CLI preinstalled on the runner
+# creates the draft. Only this job may write to the repository, and only to create the release.
+
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  instalador:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write # only to create the draft release
+    env:
+      ETIQUETA: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0 # the whole history, to check that the tag is on main
+
+      - name: Checks before building
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:ETIQUETA -notmatch '^v(\d+\.\d+\.\d+)$') { throw "La etiqueta $env:ETIQUETA no tiene la forma vX.Y.Z." }
+          $version = $Matches[1]
+
+          $cargo = (Select-String -Path Cargo.toml -Pattern '^version = "(.+)"$').Matches[0].Groups[1].Value
+          $tauri = (Get-Content crates/locall-app/tauri.conf.json -Raw | ConvertFrom-Json).version
+          $npm = (Get-Content crates/locall-app/package.json -Raw | ConvertFrom-Json).version
+          if ($cargo -ne $version -or $tauri -ne $version -or $npm -ne $version) {
+            throw "La etiqueta dice $version, pero Cargo.toml dice $cargo, tauri.conf.json $tauri y package.json $npm."
+          }
+
+          git merge-base --is-ancestor $env:GITHUB_SHA origin/main
+          if ($LASTEXITCODE -ne 0) { throw "El commit de $env:ETIQUETA no está en main: no se publica desde otra rama." }
+
+          if (-not (Test-Path "docs/releases/$version.md")) { throw "Faltan las notas de la versión: docs/releases/$version.md" }
+
+          gh release view $env:ETIQUETA *> $null
+          if ($LASTEXITCODE -eq 0) { throw "Ya existe una versión $env:ETIQUETA en GitHub: no se sobrescribe." }
+          $global:LASTEXITCODE = 0
+
+          "VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "Versión ${version}: todo en orden."
+
+      - name: Rust 1.99.1 (same version as in development)
+        run: |
+          rustup toolchain install 1.99.1 --profile minimal
+          rustup default 1.99.1
+
+      - name: Build the installer
+        shell: powershell
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/construir_instalador.ps1
+
+      - name: SHA256SUMS.txt
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $nombre = "Locall_$($env:VERSION)_x64-setup.exe"
+          $origen = "target/release/bundle/nsis/$nombre"
+          if (-not (Test-Path $origen)) { throw "No se ha generado $nombre." }
+          New-Item -ItemType Directory -Force publicar | Out-Null
+          Copy-Item $origen publicar/
+          $huella = (Get-FileHash -Algorithm SHA256 "publicar/$nombre").Hash.ToLowerInvariant()
+          # The format of sha256sum (two spaces between hash and name), with LF line endings so the signed bytes are
+          # the same on every system.
+          [IO.File]::WriteAllText("$PWD/publicar/SHA256SUMS.txt", "$huella  $nombre`n", [Text.UTF8Encoding]::new($false))
+          Get-Content publicar/SHA256SUMS.txt
+
+      - name: Draft release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          gh release create $env:ETIQUETA --draft --verify-tag `
+            --title "Locall $($env:VERSION)" `
+            --notes-file "docs/releases/$($env:VERSION).md" `
+            "publicar/Locall_$($env:VERSION)_x64-setup.exe" `
+            publicar/SHA256SUMS.txt
+          if ($LASTEXITCODE -ne 0) { throw "No se ha podido crear el borrador." }
