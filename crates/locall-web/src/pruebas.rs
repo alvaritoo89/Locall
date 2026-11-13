@@ -122,3 +122,36 @@ fn genera_la_web_completa_en_una_carpeta() {
     assert!(escritos.len() > 20);
     let _ = std::fs::remove_dir_all(&destino);
 }
+
+#[test]
+fn la_descarga_enlaza_al_instalador_de_la_version_publicada() {
+    let todo: Vec<(PathBuf, String)> = paginas(&oficial());
+    let descargar = &todo
+        .iter()
+        .find(|(r, _)| r == &PathBuf::from("descargar.html"))
+        .unwrap()
+        .1;
+    let v = crate::VERSION_PUBLICADA;
+    assert!(descargar.contains(&format!(
+        "https://github.com/alvaritoo89/Locall/releases/download/v{v}/Locall_{v}_x64-setup.exe"
+    )));
+    assert!(descargar.contains(crate::CLAVE_PUBLICA_MINISIGN));
+    assert!(
+        descargar.contains("Ejecutar de todas formas"),
+        "explica el aviso de Windows"
+    );
+    assert!(!todo.iter().any(|(_, h)| h.contains("Próximamente")));
+    // The published version has its release notes (ADR 0033): a version that was never prepared cannot be linked.
+    let notas =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(format!("../../docs/releases/{v}.md"));
+    assert!(notas.is_file(), "faltan {}", notas.display());
+}
+
+#[test]
+fn la_clave_de_las_versiones_es_la_del_catalogo() {
+    // One project key (ADR 0033): the same one the app uses to verify the catalog.
+    assert_eq!(
+        crate::CLAVE_PUBLICA_MINISIGN,
+        locall_catalogo::CLAVE_PUBLICA
+    );
+}

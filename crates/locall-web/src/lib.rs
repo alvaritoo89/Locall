@@ -4,7 +4,7 @@
 //! always say the same thing. No new dependencies: the HTML is written by hand and **all catalog text is escaped**
 //! ([`escapar`]), even though it is signed.
 //!
-//! Pages: home, download («Próximamente» until Phase 8), the model library (with filters), one page per model,
+//! Pages: home, download (the latest published version, ADR 0034), the model library (with filters), one page per model,
 //! privacy and the 404 error page. Links are relative, so the site works the same at `alvaritoo89.github.io/Locall/`
 //! as on a custom domain or locally.
 
@@ -16,6 +16,28 @@ use locall_catalogo::{Catalogo, ModeloCatalogo};
 
 /// Where the code lives (header and footer links).
 pub const REPOSITORIO: &str = "https://github.com/alvaritoo89/Locall";
+
+/// The latest version **published** on GitHub (ADR 0034). The download page links to its installer, so it is changed by
+/// hand only after that release has been published: the project's own version (Cargo.toml) goes up before that.
+pub const VERSION_PUBLICADA: &str = "0.1.0";
+
+/// The installer's approximate size, shown next to the download button.
+pub const TAMANO_INSTALADOR: &str = "14 MB";
+
+/// The project's minisign public key (the same one that signs the catalog, ADR 0022 and 0033), to check releases.
+pub const CLAVE_PUBLICA_MINISIGN: &str = "RWTgL0jRTGIJXDFqcD3bREOcjTX2CAHHzp1u+orTwHN5XscqH2mHvk3S";
+
+/// The installer of the published version, on GitHub Releases.
+pub fn url_instalador() -> String {
+    format!(
+        "{REPOSITORIO}/releases/download/v{VERSION_PUBLICADA}/Locall_{VERSION_PUBLICADA}_x64-setup.exe"
+    )
+}
+
+/// The page of the published version, on GitHub Releases (notes, SHA256SUMS.txt and its signature).
+pub fn url_version() -> String {
+    format!("{REPOSITORIO}/releases/tag/v{VERSION_PUBLICADA}")
+}
 
 /// The site's path on GitHub Pages. Only used by the 404 page, which GitHub serves at any path (relative links would
 /// not work there).
@@ -168,8 +190,9 @@ suscripciones y sin enviar tus conversaciones a ningún sitio.</p>
 <p></p>
 {run}
 <h2>¿En qué punto está?</h2>
-<p class="aviso">Locall está en desarrollo y todavía no hay una versión para descargar: llegará con un instalador
-firmado. El código ya es público en <a href="{REPOSITORIO}">GitHub</a>.</p>
+<p class="aviso">Ya puedes <a href="descargar.html">descargar Locall {VERSION_PUBLICADA}</a>, la primera versión
+pública, para Windows. Es una versión inicial: si encuentras algún fallo, cuéntalo en
+<a href="{REPOSITORIO}/issues">GitHub</a>. El código es público.</p>
 "##,
         n = catalogo.modelos.len(),
         pull = comando("locall pull qwen3-4b"),
@@ -187,26 +210,60 @@ firmado. El código ya es público en <a href="{REPOSITORIO}">GitHub</a>.</p>
 fn descargar() -> String {
     let contenido = format!(
         r##"<h1>Descargar</h1>
-<p class="entradilla">Próximamente.</p>
-<div class="aviso">
-<p>Locall está en desarrollo. La versión para Windows llegará con un <strong>instalador firmado</strong> y un comando
-de instalación de una línea, para que Windows no la marque como sospechosa.</p>
-<p>Mientras tanto, el código es público y se puede compilar siguiendo el
-<a href="{REPOSITORIO}#probarlo">README</a>.</p>
+<p class="entradilla">Locall {VERSION_PUBLICADA} para Windows, gratis y de código abierto.</p>
+<div class="botones">
+<a class="boton primario" href="{instalador}">Descargar Locall {VERSION_PUBLICADA} ({TAMANO_INSTALADOR})</a>
+<a class="boton" href="{version}">Notas de la versión</a>
 </div>
+<h2>Instalar</h2>
+<ol>
+<li>Abre el archivo descargado, <code>Locall_{VERSION_PUBLICADA}_x64-setup.exe</code>. Se instala solo para tu usuario:
+no pide permisos de administrador.</li>
+<li>Abre <strong>Locall</strong> desde el menú Inicio. El comando <code>locall</code> también funciona en cualquier
+terminal nueva.</li>
+</ol>
+<div class="aviso">
+<p><strong>Windows mostrará un aviso azul</strong> («Windows protegió su PC») porque esta versión todavía no lleva
+firma de código. Para continuar: <strong>Más información → Ejecutar de todas formas</strong>.</p>
+<p>La firma gratuita para proyectos de código abierto solo se puede pedir cuando ya hay una versión publicada: es el
+siguiente paso. Si prefieres esperar a la versión firmada, o comprobar antes el instalador, lee abajo cómo
+hacerlo.</p>
+</div>
+<p>Tus modelos y conversaciones se guardan en <code>%LOCALAPPDATA%\Locall</code>. Si desinstalas Locall (desde
+<em>Configuración → Aplicaciones</em>), se quedan ahí.</p>
 <h2>Lo que necesitarás</h2>
 <ul>
 <li>Windows 11 de 64 bits (en Windows 10 todavía no se ha comprobado).</li>
 <li>Orientativo: 8 GB de RAM para los modelos pequeños y 16 GB para los medianos. La app te dice si cada modelo cabe
 en tu equipo antes de descargarlo.</li>
-<li>No hace falta tarjeta gráfica.</li>
+<li>No hace falta tarjeta gráfica: los modelos se ejecutan con el procesador.</li>
 </ul>
-"##
+<h2>Comprobar el instalador</h2>
+<p>Junto al instalador, en las <a href="{version}">notas de la versión</a>, están <code>SHA256SUMS.txt</code> (su
+huella) y <code>SHA256SUMS.txt.minisig</code> (la firma de esa huella con la clave del proyecto). Con
+<a href="https://github.com/jedisct1/minisign">minisign</a>, en PowerShell y en la carpeta donde lo hayas descargado
+todo:</p>
+{verificar}
+<p></p>
+{huella}
+<p class="tenue">La firma debe ser válida, y la huella debe coincidir con la que aparece en
+<code>SHA256SUMS.txt</code>. La clave pública es la misma con la que se firma el catálogo de modelos.</p>
+"##,
+        instalador = url_instalador(),
+        version = url_version(),
+        verificar = comando(&format!(
+            "minisign -Vm SHA256SUMS.txt -P {CLAVE_PUBLICA_MINISIGN}"
+        )),
+        huella = comando(&format!(
+            "(Get-FileHash .\\Locall_{VERSION_PUBLICADA}_x64-setup.exe -Algorithm SHA256).Hash.ToLower()"
+        )),
     );
     pagina(
         "",
         "Descargar · Locall",
-        "Descargar Locall para Windows: próximamente.",
+        &format!(
+            "Descarga Locall {VERSION_PUBLICADA} para Windows: modelos de IA en tu propio equipo, gratis."
+        ),
         Seccion::Descargar,
         &contenido,
     )
@@ -366,6 +423,7 @@ Más información en la <a href="https://docs.github.com/es/site-policy/privacy-
 verdad, también del disco.</li>
 <li>Locall solo se conecta a internet para buscar y descargar modelos de Hugging Face y, como mucho una vez al día,
 para mirar en GitHub si hay un catálogo de modelos nuevo.</li>
+<li>No busca actualizaciones por su cuenta: las versiones nuevas se anuncian en esta web y en GitHub.</li>
 <li>No envía estadísticas, ni datos de uso, ni tus conversaciones a ningún sitio. No hay nada que desactivar.</li>
 </ul>
 "##;

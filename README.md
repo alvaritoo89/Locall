@@ -23,8 +23,9 @@
 machine**. No accounts, no subscriptions, and your conversations never leave your computer.
 
 > [!NOTE]
-> Locall is **in development**. It can already be used (desktop app and command line) by building it from source (see
-> [Try it](#try-it)); a signed installer is planned for Phase 8.
+> **Locall 0.1.0 is out**, the first public version: [download it](https://alvaritoo89.github.io/Locall/descargar.html)
+> or get it from [Releases](https://github.com/alvaritoo89/Locall/releases). The installer is not code-signed yet, so
+> Windows shows a SmartScreen warning; signing is the next step.
 >
 > Locall's user interface (the app, the command line and the website) is in **Spanish**. The code, its comments and
 > the documentation are in English.
@@ -56,30 +57,31 @@ a separate process. The command line, the desktop app and the local API are all 
 
 ## Try it
 
-There is no installer yet. In the meantime, from source (Windows 11; Windows 10 has not been verified yet):
+1. Download **`Locall_0.1.0_x64-setup.exe`** from the [download page](https://alvaritoo89.github.io/Locall/descargar.html)
+   or from [Releases](https://github.com/alvaritoo89/Locall/releases/latest), and run it. It installs for your user
+   only, without administrator rights (Windows 11, 64-bit; Windows 10 has not been verified yet).
+2. Windows will show a blue SmartScreen warning because the installer is not code-signed yet: **More info → Run
+   anyway**. You can check it first: `SHA256SUMS.txt` next to it holds its hash, signed with the project's minisign
+   key (the same one that signs the model catalog):
 
-1. Install [Rust](https://www.rust-lang.org/) 1.99 or newer and Visual Studio Build Tools (C++).
-2. Build Locall:
-
-   ```bash
-   cargo build --release
+   ```powershell
+   minisign -Vm SHA256SUMS.txt -P RWTgL0jRTGIJXDFqcD3bREOcjTX2CAHHzp1u+orTwHN5XscqH2mHvk3S
+   (Get-FileHash .\Locall_0.1.0_x64-setup.exe -Algorithm SHA256).Hash.ToLower()
    ```
 
-3. Download the engine: `llama-b12189-bin-win-cpu-x64.zip` from
-   [llama.cpp release b12189](https://github.com/ggml-org/llama.cpp/releases/tag/b12189)
-   (sha256 `f912ea5e3e397c63405c81e732131ab0fa6e72411c80546bb5ad643f7dd82aac`). Extract it into
-   `target\release\motor\`, so that you end up with `target\release\motor\llama-server.exe`.
-4. Use it from `target\release` (in PowerShell, programs in the current folder are run with a leading `.\`):
+3. Open **Locall** from the Start menu, or use the `locall` command in a new terminal:
 
    ```text
-   .\locall catalog                                         recommended (compatible) models
-   .\locall pull qwen3-4b                                   install one from the catalog
-   .\locall pull Qwen/Qwen3-4B-GGUF                         which versions does it have?
-   .\locall pull Qwen/Qwen3-4B-GGUF Qwen3-4B-Q4_K_M.gguf    install it (2.5 GB)
-   .\locall run qwen3-4b-q4_k_m                             chat (Ctrl+C stops the answer)
-   .\locall list                                            your models
-   .\locall help                                            all commands
+   locall catalog                                         recommended (compatible) models
+   locall pull qwen3-4b                                   install one from the catalog
+   locall pull Qwen/Qwen3-4B-GGUF                         which versions does it have?
+   locall pull Qwen/Qwen3-4B-GGUF Qwen3-4B-Q4_K_M.gguf    install it (2.5 GB)
+   locall run qwen3-4b-q4_k_m                             chat (Ctrl+C stops the answer)
+   locall list                                            your models
+   locall help                                            all commands
    ```
+
+To build it from source instead, see [Development](#development).
 
 Locall starts by itself in the background when needed and exits on its own after a while without use. Its data
 (models, settings, saved conversations, logs) lives in `%LOCALAPPDATA%\Locall` and never leaves your computer. Other
@@ -107,7 +109,7 @@ on other computers:
 - [x] Phase 5: desktop app (home, library, chat with saved conversations and real deletion, Hugging Face explorer, settings, import, keyboard shortcuts, accessibility, dark mode)
 - [x] Phase 6: signed catalog of compatible models, and the website ([alvaritoo89.github.io/Locall](https://alvaritoo89.github.io/Locall/))
 - [x] Phase 7: hardening (recovery when the engine dies, malformed-input testing, engine process limits, database integrity checks, encrypted conversations, Windows CI and a security policy)
-- [ ] Phase 8: installer, code signing and distribution · in progress: package contents, engine and licenses ✓, Windows installer ✓, release workflow ✓
+- [ ] Phase 8: installer, code signing and distribution · in progress: package contents, engine and licenses ✓, Windows installer ✓, release workflow ✓, version 0.1.0 published with its download page ✓ (code signing pending)
 
 ## Repository layout
 
@@ -138,7 +140,10 @@ on other computers:
 
 ## Development
 
-Requirements: those in [Try it](#try-it). Some tests use the real engine and models and skip themselves if they are not
+Requirements: Windows 11, [Rust](https://www.rust-lang.org/) 1.99 or newer and Visual Studio Build Tools (C++). To run
+Locall from a source build, put the engine next to `locall.exe` with
+`scripts\preparar_motor.ps1 -Destino target\release` ([ADR 0031](docs/adr/0031-paquete-motor-y-licencias.md)).
+Some tests use the real engine and models and skip themselves if they are not
 found (default paths under `C:\Locall-poc`); tests that download from the internet are marked `#[ignore]`.
 
 ```bash
