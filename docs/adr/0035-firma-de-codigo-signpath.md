@@ -1,6 +1,6 @@
 # ADR 0035 · Phase 8e: code signing with SignPath Foundation
 
-- **Status:** accepted (application in progress)
+- **Status:** accepted; the application was **not approved** (see «Outcome»)
 - **Date:** 2026-11-13
 
 ## Context
@@ -47,3 +47,24 @@ The certificate is issued to **SignPath Foundation**, which appears as the publi
 
 - The website states plainly that signing is in progress, so users know why SmartScreen warns.
 - Even signed, SmartScreen may keep warning for a while until the certificate and the file gain reputation.
+
+## Outcome (2026-11-13)
+
+SignPath Foundation **did not approve** the application. Its answer: the Foundation program is for projects that
+already have a certain level of public trust and visibility (community adoption such as GitHub stars, forks and
+contributors; external articles; independent discussions on sites such as Reddit, Stack Overflow or YouTube;
+institutional backing; sustained activity), and Locall does not show enough of those signals yet. It is explicitly not
+a judgment on the project's quality, and it invites a new application once the project is better known. It also
+offers a paid SignPath subscription.
+
+What changes:
+
+- Releases stay **without Authenticode code signing**; each release's `SHA256SUMS.txt` is still signed with the
+  project's minisign key (ADR 0033), and the website explains how to check it.
+- The code signing policy (`firma.html`) and the download page now state this real situation: the website no longer
+  says that SignPath signs Locall nor that the application is in progress. A test checks it.
+- The policy page stays, because it describes how releases are built, reviewed and signed today, and a new
+  application will need it.
+- The author will apply again once Locall has more public visibility. Until then, the paid options (SignPath's paid
+  subscription, a commercial open-source certificate) stay possible but are not adopted: their price has not been
+  checked, and the minisign-signed hashes already let users verify the installer.

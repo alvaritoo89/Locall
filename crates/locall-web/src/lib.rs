@@ -226,10 +226,10 @@ terminal nueva.</li>
 <div class="aviso">
 <p><strong>Windows mostrará un aviso azul</strong> («Windows protegió su PC») porque esta versión todavía no lleva
 firma de código. Para continuar: <strong>Más información → Ejecutar de todas formas</strong>.</p>
-<p>Locall usa la firma de código gratuita para proyectos de código abierto de
-<a href="https://signpath.org/">SignPath Foundation</a>, que solo se puede pedir cuando ya hay una versión publicada: la
-solicitud está en curso (más detalles en la <a href="firma.html">política de firma de código</a>). Si prefieres
-esperar a la versión firmada, o comprobar antes el instalador, lee abajo cómo hacerlo.</p>
+<p>La firma de código gratuita para proyectos de código abierto (la de
+<a href="https://signpath.org/">SignPath Foundation</a>) exige que el proyecto ya sea conocido, así que Locall la volverá
+a pedir más adelante. Mientras tanto, puedes comprobar que el instalador es el original con su huella firmada, como se
+explica abajo (más detalles en la <a href="firma.html">política de firma de código</a>).</p>
 </div>
 <p>Tus modelos y conversaciones se guardan en <code>%LOCALAPPDATA%\Locall</code>. Si desinstalas Locall (desde
 <em>Configuración → Aplicaciones</em>), se quedan ahí.</p>
@@ -442,39 +442,44 @@ fn firma() -> String {
     pagina(
         "",
         "Firma de código · Locall",
-        "Cómo se firman los programas de Locall: SignPath Foundation, quién aprueba cada firma y qué datos usa Locall.",
+        "Qué va firmado en Locall y cómo comprobarlo, quién aprueba cada versión y qué datos usa Locall.",
         Seccion::Otra,
         r##"<h1>Política de firma de código</h1>
 <p class="entradilla">Code signing policy</p>
-<p>Firma de código gratuita gracias a <a href="https://signpath.io/">SignPath.io</a>, con certificado de
-<a href="https://signpath.org/">SignPath Foundation</a>.<br>
-<em>Free code signing provided by <a href="https://signpath.io/">SignPath.io</a>, certificate by
-<a href="https://signpath.org/">SignPath Foundation</a>.</em></p>
-<p class="aviso">Estado: la solicitud a SignPath Foundation está en curso. Hasta que se apruebe, las versiones se
-publican sin firma de código; su huella (<code>SHA256SUMS.txt</code>) va firmada con la clave minisign del proyecto,
-como se explica en la <a href="descargar.html">página de descarga</a>.<br>
-<em>Status: the application to SignPath Foundation is in progress. Until it is approved, releases are published without
-code signing; their hashes (<code>SHA256SUMS.txt</code>) are signed with the project's minisign key.</em></p>
 
-<h2>Qué se firma · What is signed</h2>
+<h2>Estado actual · Current status</h2>
+<p>Los programas de Locall <strong>todavía no llevan firma de código</strong> (Authenticode): por eso Windows muestra un
+aviso al instalarlo. Lo que sí va firmado, con la clave <a href="https://github.com/jedisct1/minisign">minisign</a> del
+proyecto, es la huella de cada versión (<code>SHA256SUMS.txt</code>) y el catálogo de modelos: así cualquiera puede
+comprobar que el instalador es el original, como se explica en la <a href="descargar.html">página de descarga</a>.<br>
+<em>Locall's programs are <strong>not code-signed yet</strong> (Authenticode), which is why Windows shows a warning when
+installing it. What is signed, with the project's minisign key, is each release's hashes (<code>SHA256SUMS.txt</code>)
+and the model catalog, so anyone can check that the installer is the original one.</em></p>
+<p class="aviso">Locall solicitó la firma gratuita para proyectos de código abierto de
+<a href="https://signpath.org/">SignPath Foundation</a>. Por ahora no se ha aprobado, porque ese programa pide que el
+proyecto ya tenga cierta difusión pública; se volverá a pedir más adelante.<br>
+<em>Locall applied for SignPath Foundation's free code signing for open-source projects. It has not been approved for
+now, because the program requires a certain level of public visibility; Locall will apply again later.</em></p>
+
+<h2>Qué se publica · What is released</h2>
 <ul>
-<li>Solo los programas propios de Locall (<code>locall.exe</code>, <code>locall-app.exe</code> y el instalador),
-compilados automáticamente por GitHub Actions a partir del código de
+<li>Los programas propios de Locall (<code>locall.exe</code>, <code>locall-app.exe</code> y el instalador) se compilan
+automáticamente con GitHub Actions a partir del código de
 <a href="https://github.com/alvaritoo89/Locall">este repositorio</a>.<br>
-<em>Only Locall's own programs (<code>locall.exe</code>, <code>locall-app.exe</code> and the installer), built
+<em>Locall's own programs (<code>locall.exe</code>, <code>locall-app.exe</code> and the installer) are built
 automatically by GitHub Actions from the source code in this repository.</em></li>
 <li>Los componentes de terceros, como el motor llama.cpp de la carpeta <code>motor</code>, se distribuyen tal como los
 publican sus autores, sin modificar.<br>
 <em>Third-party components, such as the llama.cpp engine in the <code>motor</code> folder, are distributed unmodified,
 as published by their authors.</em></li>
-<li>Cada firma la aprueba una persona a mano, versión a versión.<br>
-<em>Every signing request is approved by hand, release by release.</em></li>
+<li>Cada versión la revisa, la firma y la publica una persona a mano.<br>
+<em>Every release is reviewed, signed and published by hand.</em></li>
 </ul>
 
 <h2>Equipo · Team roles</h2>
 <ul>
 <li>Autores y revisores · Committers and reviewers: <a href="https://github.com/alvaritoo89">alvaritoo89</a></li>
-<li>Aprobación de cada firma · Approvers: <a href="https://github.com/alvaritoo89">alvaritoo89</a></li>
+<li>Aprobación y firma de cada versión · Approvers: <a href="https://github.com/alvaritoo89">alvaritoo89</a></li>
 </ul>
 
 <h2>Privacidad · Privacy policy</h2>

@@ -162,7 +162,7 @@ fn la_clave_de_las_versiones_es_la_del_catalogo() {
 
 #[test]
 fn la_politica_de_firma_esta_enlazada_en_todas_las_paginas() {
-    // SignPath Foundation asks for the code signing policy to be reachable from the home and download pages (ADR 0035).
+    // The code signing policy is reachable from every page (ADR 0035) and says the truth about the current state.
     for (ruta, html) in paginas(&oficial()) {
         assert!(
             html.contains("firma.html\">Firma de código</a>"),
@@ -176,13 +176,10 @@ fn la_politica_de_firma_esta_enlazada_en_todas_las_paginas() {
         .find(|(r, _)| r == &PathBuf::from("firma.html"))
         .unwrap()
         .1;
-    assert!(firma.contains("Free code signing provided by"));
-    assert!(firma.contains("certificate by"));
+    assert!(firma.contains("not code-signed yet"));
+    assert!(firma.contains("minisign"));
     assert!(firma.contains("Approvers"));
-    let descargar = &todo
-        .iter()
-        .find(|(r, _)| r == &PathBuf::from("descargar.html"))
-        .unwrap()
-        .1;
-    assert!(descargar.contains("SignPath Foundation"));
+    // SignPath did not approve the application (ADR 0035): the website must not claim it signs Locall.
+    assert!(!firma.contains("Free code signing provided by"));
+    assert!(!todo.iter().any(|(_, h)| h.contains("está en curso")));
 }
