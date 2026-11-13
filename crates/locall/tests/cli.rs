@@ -152,8 +152,12 @@ fn abre_locall_cuando_hace_falta_y_lo_cierra_con_stop() {
     );
 
     // 6) stop really shuts it down.
-    let (codigo, salida, _) = e.locall(&["stop"]);
-    assert_eq!((codigo, salida.trim()), (0, "Locall cerrado."));
+    let (codigo, salida, errores) = e.locall(&["stop"]);
+    assert_eq!(
+        (codigo, salida.trim()),
+        (0, "Locall cerrado."),
+        "stop falló; su salida de errores: {errores}"
+    );
     let (_, salida, _) = e.locall(&["status"]);
     assert!(salida.contains("no está abierto"), "{salida}");
     let (_, salida, _) = e.locall(&["stop"]);
