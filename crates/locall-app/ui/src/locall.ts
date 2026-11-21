@@ -149,6 +149,9 @@ export const guardarAjustes = (cambios: Record<string, number | "auto">) =>
 export const reiniciarLocall = () => invoke<void>("reiniciar_locall");
 export const abrirCarpeta = (cual: "datos" | "modelos") => invoke<void>("abrir_carpeta", { cual });
 
+/** Opens Locall's Discord community in the browser (the Rust side only knows that one address). */
+export const abrirDiscord = () => invoke<void>("abrir_discord");
+
 export const cancelarInstalacion = (repo: string, archivo: string) =>
   invoke<void>("cancelar_instalacion", { repo, archivo });
 

@@ -7,6 +7,7 @@ import {
   type Ajustes as DatosAjustes,
   type ValoresAjustes,
   abrirCarpeta,
+  abrirDiscord,
   guardarAjustes,
   pedirAjustes,
   reiniciarLocall,
@@ -248,6 +249,13 @@ export function Ajustes({ ocupado }: Props) {
           tus conversaciones a ningún sitio, y no hay nada que desactivar.
         </p>
       </section>
+
+      <p className="pequeño tenue comunidad">
+        ¿Dudas, ideas o algo que no funciona?{" "}
+        <button type="button" className="enlace" onClick={() => abrirDiscord().catch((e) => setError(textoError(e)))}>
+          Únete al Discord de Locall
+        </button>
+      </p>
     </>
   );
 }

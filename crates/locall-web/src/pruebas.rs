@@ -76,7 +76,8 @@ fn solo_enlaza_a_github_hugging_face_y_signpath() {
                 || resto.starts_with("https://huggingface.co/")
                 || resto.starts_with("https://docs.github.com/")
                 || resto.starts_with("https://signpath.io/")
-                || resto.starts_with("https://signpath.org/"),
+                || resto.starts_with("https://signpath.org/")
+                || resto.starts_with("https://discord.gg/"),
             "enlace no permitido: {}",
             &resto[..resto.len().min(80)]
         );
@@ -182,4 +183,16 @@ fn la_politica_de_firma_esta_enlazada_en_todas_las_paginas() {
     // SignPath did not approve the application (ADR 0035): the website must not claim it signs Locall.
     assert!(!firma.contains("Free code signing provided by"));
     assert!(!todo.iter().any(|(_, h)| h.contains("está en curso")));
+}
+
+#[test]
+fn el_discord_esta_en_el_pie_de_todas_las_paginas() {
+    assert!(crate::DISCORD.starts_with("https://discord.gg/"));
+    for (ruta, html) in paginas(&oficial()) {
+        assert!(
+            html.contains(&format!("<a href=\"{}\">Discord</a>", crate::DISCORD)),
+            "{}",
+            ruta.display()
+        );
+    }
 }
