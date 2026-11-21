@@ -1207,9 +1207,3 @@ kbd {
     display: flex;
   }
 }
-
-/* The community link at the bottom of Settings: visible, but quiet. */
-.comunidad {
-  margin: 8px 0 24px;
-  text-align: center;
-}

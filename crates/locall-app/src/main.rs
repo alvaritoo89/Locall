@@ -188,22 +188,6 @@ async fn abrir_carpeta(conexion: tauri::State<'_, Conexion>, cual: String) -> Re
     .await
 }
 
-/// The project's Discord community (a permanent invite). The website has its own copy in `crates/locall-web/src/lib.rs`
-/// (`DISCORD`): change both together.
-const DISCORD: &str = "https://discord.gg/6rbwBAvs8x";
-
-/// Opens Locall's Discord community in the default browser. It takes no address from the UI, so this command can only
-/// ever open that one page.
-#[tauri::command]
-fn abrir_discord() -> Result<(), String> {
-    // File Explorer opens web addresses with the default browser (and, as above, its exit code is not checked).
-    std::process::Command::new("explorer.exe")
-        .arg(DISCORD)
-        .spawn()
-        .map(|_| ())
-        .map_err(|e| format!("no se pudo abrir el navegador: {e}"))
-}
-
 // ─── Commands: models ─────────────────────────────────────────────────────────
 
 /// The installed models, with whether they fit on the machine.
@@ -637,7 +621,6 @@ fn main() {
             guardar_ajustes,
             reiniciar_locall,
             abrir_carpeta,
-            abrir_discord,
             instalar,
             cancelar_instalacion,
             conversaciones,

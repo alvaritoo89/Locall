@@ -163,11 +163,6 @@ powershell -ExecutionPolicy Bypass -File scripts\construir_instalador.ps1
 A note on naming: identifiers in the code (functions, types, variables) are in Spanish, the project's original
 language; comments and documentation are in English.
 
-## Community
-
-Questions, ideas or something that does not work? Join Locall's [Discord](https://discord.gg/6rbwBAvs8x) (in Spanish).
-Bugs can also be reported in [Issues](https://github.com/alvaritoo89/Locall/issues).
-
 ## Security
 
 Found a security problem? Please report it privately, as explained in [SECURITY.md](SECURITY.md).

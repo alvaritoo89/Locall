@@ -17,10 +17,6 @@ use locall_catalogo::{Catalogo, ModeloCatalogo};
 /// Where the code lives (header and footer links).
 pub const REPOSITORIO: &str = "https://github.com/alvaritoo89/Locall";
 
-/// The project's Discord community (a permanent invite), linked from the footer. The desktop app has its own copy in
-/// `crates/locall-app/src/main.rs` (`DISCORD`): change both together.
-pub const DISCORD: &str = "https://discord.gg/6rbwBAvs8x";
-
 /// The latest version **published** on GitHub (ADR 0034). The download page links to its installer, so it is changed by
 /// hand only after that release has been published: the project's own version (Cargo.toml) goes up before that.
 pub const VERSION_PUBLICADA: &str = "0.1.0";
@@ -146,7 +142,6 @@ fn pagina(
 <a href="{REPOSITORIO}">Código en GitHub</a>
 <a href="{raiz}privacidad.html">Privacidad</a>
 <a href="{raiz}firma.html">Firma de código</a>
-<a href="{DISCORD}">Discord</a>
 </div>
 </footer>
 </body>
